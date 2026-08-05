@@ -14,7 +14,8 @@ const deviceTokenSchema = new mongoose.Schema(
       index: true,
     },
     token: { type: String, required: true, unique: true },
-    platform: { type: String, enum: ['web', 'android', 'ios'], default: 'web' },
+    // 'app' covers both Android and iOS.
+    platform: { type: String, enum: ['web', 'app'], default: 'web' },
     lastSeenAt: { type: Date, default: Date.now },
   },
   { timestamps: true }

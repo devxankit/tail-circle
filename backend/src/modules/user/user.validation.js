@@ -22,7 +22,9 @@ export const updateMeSchema = z
 
 export const fcmTokenSchema = z.object({
   token: z.string().min(20).max(512),
-  platform: z.enum(['web', 'android', 'ios']).default('web'),
+  // 'app' covers both Android and iOS — the native client doesn't need FCM
+  // to distinguish them, so we don't ask it to.
+  platform: z.enum(['web', 'app']).default('web'),
 });
 
 export const removeFcmTokenSchema = z.object({
