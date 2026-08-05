@@ -229,7 +229,13 @@ export async function startCall(user, bookingId) {
         ? `${doctor.name} has started your video consultation.`
         : `${booking.petSnapshot?.name || 'Pet parent'} is calling for their consultation.`,
       type: 'vet',
-      link: isVet ? `/app/consult/${booking._id}` : `/admin/doctor`,
+      // The vet/clinic call screen lives at /vendor/doctor/consultations
+      // (see frontend App.jsx) — there is no /admin/doctor route. A stale
+      // /admin/doctor link here meant a doctor opening the push notification
+      // directly would land on a dead route with no way to answer.
+      link: isVet
+        ? `/app/consult/${booking._id}`
+        : `/vendor/doctor/consultations?view=video_call&bookingId=${booking._id}`,
       data: { bookingId: String(booking._id), callId: String(call._id) },
     }).catch(() => {});
   }

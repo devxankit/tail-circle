@@ -102,9 +102,14 @@ export function IncomingCallOverlay() {
     if (ringtoneRef.current) {
       ringtoneRef.current.stop();
     }
+    // The vet/clinic call screen only exists under the vendor portal
+    // (`/vendor/doctor/consultations`, see App.jsx) — there is no
+    // `/admin/doctor` route. A doctor is always logged in through the vendor
+    // portal (clinic account), never the superadmin one, so any vendor- or
+    // admin-portal session that receives a ring is answered there.
     const isVendorPortal = location.pathname.startsWith('/admin') || location.pathname.startsWith('/vendor');
     if (isVendorPortal) {
-      navigate(`/admin/doctor?view=video_call&bookingId=${incoming.bookingId}`);
+      navigate(`/vendor/doctor/consultations?view=video_call&bookingId=${incoming.bookingId}`);
     } else {
       navigate(`/app/consult/${incoming.bookingId}`);
     }
