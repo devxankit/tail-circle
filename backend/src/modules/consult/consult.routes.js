@@ -4,6 +4,7 @@ import { authenticate } from '../../middleware/auth.js';
 import { validate } from '../../middleware/validate.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
+import { logger } from '../../utils/logger.js';
 import * as consult from './consult.service.js';
 // Side-effect import: registers the `consult_overage` Razorpay purpose handler.
 import './consult.payment.js';
@@ -21,6 +22,26 @@ const router = Router();
  * server webhook to receive here anymore.
  */
 
+/**
+ * The global error handler only logs 5xx/non-operational errors — a rejected
+ * `authorizeCall()` (wrong window, unpaid, not a participant, …) is a normal
+ * 4xx and is deliberately silent there. For this feature that silence makes a
+ * failed "answer the call" invisible in ops logs, so every consult route logs
+ * its own failures regardless of status code.
+ */
+function logged(handler) {
+  return asyncHandler(async (req, res, next) => {
+    try {
+      await handler(req, res, next);
+    } catch (err) {
+      logger.warn(
+        `consult ${req.method} ${req.originalUrl} — user ${req.user?.id || 'anon'} — ${err.statusCode || 500} ${err.message}`
+      );
+      throw err;
+    }
+  });
+}
+
 /* ── Authenticated call lifecycle ─────────────────────────────────── */
 
 router.use(authenticate);
@@ -28,7 +49,7 @@ router.use(authenticate);
 /** Any live call this user is party to — for resuming after a page reload. */
 router.get(
   '/active',
-  asyncHandler(async (req, res) => {
+  logged(async (req, res) => {
     sendSuccess(res, { data: await consult.getActiveCall(req.user) });
   })
 );
@@ -36,7 +57,7 @@ router.get(
 /** Vet starts the consultation; the pet parent's device rings. */
 router.post(
   '/:bookingId/start',
-  asyncHandler(async (req, res) => {
+  logged(async (req, res) => {
     sendSuccess(res, {
       statusCode: 201,
       message: 'Consultation started',
@@ -48,14 +69,14 @@ router.post(
 /** Either side joins — for the pet parent this is accepting the call. */
 router.post(
   '/:bookingId/join',
-  asyncHandler(async (req, res) => {
+  logged(async (req, res) => {
     sendSuccess(res, { data: await consult.joinCall(req.user, req.params.bookingId) });
   })
 );
 
 router.post(
   '/:bookingId/reject',
-  asyncHandler(async (req, res) => {
+  logged(async (req, res) => {
     sendSuccess(res, { data: await consult.rejectCall(req.user, req.params.bookingId) });
   })
 );
@@ -63,7 +84,7 @@ router.post(
 router.post(
   '/:bookingId/end',
   validate(z.object({ notes: z.string().max(5000).optional() })),
-  asyncHandler(async (req, res) => {
+  logged(async (req, res) => {
     sendSuccess(res, {
       message: 'Consultation ended',
       data: await consult.endCall(req.user, req.params.bookingId, { notes: req.body.notes }),
@@ -74,7 +95,7 @@ router.post(
 /** Pet parent approves per-minute charging past the booked duration. */
 router.post(
   '/:bookingId/overage/consent',
-  asyncHandler(async (req, res) => {
+  logged(async (req, res) => {
     sendSuccess(res, {
       message: 'Extra time approved',
       data: await consult.consentToOverage(req.user, req.params.bookingId),
@@ -85,7 +106,7 @@ router.post(
 /** Vet forgives the overage before it is invoiced. */
 router.post(
   '/:bookingId/overage/waive',
-  asyncHandler(async (req, res) => {
+  logged(async (req, res) => {
     sendSuccess(res, {
       message: 'Extra charge waived',
       data: await consult.waiveOverage(req.user, req.params.bookingId),
@@ -93,10 +114,10 @@ router.post(
   })
 );
 
-/** Rehydrate state + a fresh token. */
+/** Rehydrate state + fresh TURN credentials when the call is live. */
 router.get(
   '/:bookingId',
-  asyncHandler(async (req, res) => {
+  logged(async (req, res) => {
     sendSuccess(res, { data: await consult.getCall(req.user, req.params.bookingId) });
   })
 );

@@ -85,6 +85,9 @@ export function initSocket(httpServer) {
       try {
         await authorizeCall(socket.data.user, bookingId, { enforceWindow: false, requireJoinable: false });
       } catch (err) {
+        // Deliberately logged: a rejected join here is exactly why a call
+        // fails to connect with no server-visible trace otherwise.
+        logger.warn(`call:join-room rejected — user ${userId}, booking ${bookingId} — ${err.message}`);
         return ack?.({ ok: false, error: err.message || 'Not authorized for this call' });
       }
 
@@ -99,6 +102,7 @@ export function initSocket(httpServer) {
       socket.join(room);
       activeCalls.add(bookingId);
       await markParticipantJoined(bookingId, userId);
+      logger.info(`call:join-room ok — user ${userId}, booking ${bookingId}, peerPresent=${peerPresent}`);
 
       socket.to(room).emit('webrtc:peer-joined', { bookingId, userId });
       return ack?.({ ok: true, peerPresent });
