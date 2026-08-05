@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useCall } from '../../../../context/CallContext';
-import { primeDevices, formatDuration } from '../../../../services/livekitRoom';
+import { primeDevices, formatDuration } from '../../../../services/webrtcCall';
 import { cn } from '../../utils/cn';
 
 /**
@@ -19,13 +19,12 @@ export function ConsultCall() {
   const { bookingId } = useParams();
   const navigate = useNavigate();
   const {
-    phase, call, error, remoteTracks, localVideoTrack, micOn, camOn, peerPresent,
+    phase, call, error, remoteStream, localStream, micOn, camOn, peerPresent,
     reconnecting, elapsed, overagePrompt, acceptCall, rejectCall, endCall,
     acceptOverage, toggleMic, toggleCam, flipCamera, reset,
   } = useCall();
 
   const remoteVideoRef = useRef(null);
-  const remoteAudioRef = useRef(null);
   const localVideoRef = useRef(null);
   const [permission, setPermission] = useState(null); // null | {granted, reason}
   const [joining, setJoining] = useState(false);
@@ -38,40 +37,20 @@ export function ConsultCall() {
     return () => { cancelled = true; };
   }, []);
 
-  /* Attach media to elements as tracks arrive. */
+  /* Attach media streams to elements as they arrive. */
   useEffect(() => {
-    if (remoteTracks.video && remoteVideoRef.current) remoteTracks.video.attach(remoteVideoRef.current);
-    if (remoteTracks.audio && remoteAudioRef.current) remoteTracks.audio.attach(remoteAudioRef.current);
-  }, [remoteTracks]);
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream || null;
+  }, [remoteStream]);
 
   useEffect(() => {
-    if (localVideoTrack && localVideoRef.current) {
-      localVideoTrack.attach(localVideoRef.current);
-    } else if (permission?.granted && localVideoRef.current && (phase === 'active' || phase === 'connecting')) {
-      let activeStream = null;
-      navigator.mediaDevices?.getUserMedia?.({ video: true, audio: false })
-        .then((stream) => {
-          activeStream = stream;
-          if (localVideoRef.current) {
-            localVideoRef.current.srcObject = stream;
-            localVideoRef.current.play().catch(() => {});
-          }
-        })
-        .catch(() => {});
-
-      return () => {
-        if (activeStream) {
-          activeStream.getTracks().forEach((t) => t.stop());
-        }
-      };
-    }
-  }, [localVideoTrack, permission, phase]);
+    if (localVideoRef.current) localVideoRef.current.srcObject = localStream || null;
+  }, [localStream]);
 
   const handleJoin = async () => {
     setJoining(true);
     setJoinError('');
     try {
-      await acceptCall(bookingId, { video: true });
+      await acceptCall(bookingId, { video: true, role: 'patient' });
     } catch (e) {
       setJoinError(e.message || 'Could not join the consultation');
     } finally {
@@ -207,7 +186,6 @@ export function ConsultCall() {
           playsInline
           className="w-full h-full object-cover"
         />
-        <audio ref={remoteAudioRef} autoPlay />
 
         {!peerPresent && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gray-900">

@@ -1,5 +1,13 @@
 # LiveKit Implementation Guide
 
+> **No longer this repo's architecture (as of 2026-08-05).** TailCircle
+> removed LiveKit and now runs video consults on direct browser-to-browser
+> WebRTC signalled over Socket.IO — see `tool/VIDEO_CALL_FEATURE.md` for the
+> current design and `backend/turn/README.md` for the TURN/STUN piece that
+> remains. This guide is kept as a reference for the LiveKit integration
+> pattern itself (accurate as a description of *how LiveKit was integrated*),
+> not as documentation of what this codebase currently does.
+
 Production reference for reusing the AppMetaChat LiveKit calling integration in future projects.
 
 This document is based on the current implementation in this repository. It only documents behavior that is directly evidenced in source, configuration, lockfiles, and project docs. Where something is not implemented or cannot be confirmed from code, that is called out explicitly instead of inferred.

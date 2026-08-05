@@ -2,10 +2,8 @@ import { api } from './api';
 
 /**
  * Video consultation signalling — the REST half. The media half is
- * `livekitRoom.js`; the two meet at the token these calls return.
- *
- * Every response that carries a `token` also carries `url` and `iceServers`.
- * Pass all three straight to `joinRoom()`.
+ * `webrtcCall.js`; the two meet at the `roomName` + `iceServers` these calls
+ * return, which get passed straight to `createCall()`.
  */
 
 /** Vet starts the consultation — creates the room and rings the pet parent. */
@@ -42,7 +40,7 @@ export async function waiveOverage(bookingId) {
   return data;
 }
 
-/** Rehydrate after a reload — returns a fresh token when the call is live. */
+/** Rehydrate after a reload — returns fresh TURN credentials when the call is live. */
 export async function getConsult(bookingId) {
   const { data } = await api.get(`/consults/${bookingId}`);
   return data;

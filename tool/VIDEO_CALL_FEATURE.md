@@ -22,32 +22,48 @@ parent and a vet/clinic, not generic social video calling. Entry points:
 
 ## Architecture
 
-- **Media (SFU):** self-hosted **LiveKit** — `livekit-server-sdk` (backend)
-  mints room names + signed JWT tokens; `livekit-client` (frontend) connects
-  directly to the LiveKit server over WebRTC. The backend is never in the
-  media path, only in the signalling/token path.
-- **Signalling (who rings whom):** the app's own **Socket.IO**
-  (`call:incoming` / `call:accept` / `call:reject` / `call:end` /
-  `call:overage-*`), **plus a 3.5s REST-polling fallback**
+> **Updated 2026-08-05** — LiveKit (self-hosted SFU) was removed and replaced
+> with direct browser-to-browser WebRTC signalled over Socket.IO. See the
+> dated entry at the bottom of this file for why and what changed. The
+> "2026-07-28 — Investigation & fixes" section below is kept as-written: it's
+> an accurate historical record of the LiveKit-era implementation, not a
+> description of the current system.
+
+- **Media (P2P):** direct **WebRTC** between the two browsers
+  (`RTCPeerConnection`) — every consult is exactly one vet and one pet
+  parent, so there's no fan-out to justify a media server. The backend is
+  never in the media path, only in the signalling path.
+- **Signalling (who rings whom, and the WebRTC offer/answer/ICE exchange):**
+  the app's own **Socket.IO** (`call:incoming` / `call:accept` /
+  `call:reject` / `call:end` / `call:overage-*` / `call:join-room` /
+  `call:leave-room` / `webrtc:offer` / `webrtc:answer` /
+  `webrtc:ice-candidate`), **plus a 3.5s REST-polling fallback**
   (`GET /consults/active`) because Socket.IO does not reliably stay up on the
   serverless (Vercel) backend deployment.
+- **TURN/STUN:** self-hosted **coturn** (`backend/turn/`) — the relay
+  fallback for strict-NAT networks. The API mints short-lived TURN
+  credentials (`backend/src/services/webrtcSignal.service.js`); it never
+  touches an audio/video packet.
 - **State machine (frontend):** `frontend/src/context/CallContext.jsx` —
   `idle → incoming/outgoing → connecting → active → ended → idle`, mounted
   once at the app root (`App.jsx`) so a call survives navigation.
 - **Billing clock (backend):** `backend/src/modules/consult/consult.service.js`
-  `applyWebhookEvent()` — LiveKit webhooks (`participant_joined/left`,
-  `room_finished`) are the **only** source of truth for `joinedAt`/`leftAt`
-  and billed seconds. The in-call timer the user sees is cosmetic.
+  `markParticipantJoined()` / `markParticipantLeft()` — fired from the
+  authenticated socket joining/leaving the call's signalling room
+  (`backend/src/sockets/index.js`) — are the **only** source of truth for
+  `joinedAt`/`leftAt` and billed seconds. The in-call timer the user sees is
+  cosmetic.
 
 ### Key files
 
 | File | Role |
 |---|---|
-| `backend/src/modules/consult/consult.service.js` | Call lifecycle: `startCall`, `joinCall`, `rejectCall`, `endCall`, overage billing, LiveKit webhook handling. |
+| `backend/src/modules/consult/consult.service.js` | Call lifecycle: `startCall`, `joinCall`, `rejectCall`, `endCall`, overage billing, socket-verified join/leave. |
 | `backend/src/modules/consult/consult.model.js` | `ConsultCall` mongoose model, `participantFor`, `bothConnected`. |
-| `backend/src/services/livekit.service.js` | LiveKit server-SDK wrapper (room create/delete, token minting, TURN creds). |
-| `frontend/src/context/CallContext.jsx` | Global call state machine, socket listeners, LiveKit orchestration. |
-| `frontend/src/services/livekitRoom.js` | `livekit-client` wrapper (`joinRoom`, `resolveLivekitUrl`, `primeDevices`). |
+| `backend/src/services/webrtcSignal.service.js` | Room-name helper + TURN credential minting. |
+| `backend/src/sockets/index.js` | `call:join-room`/`call:leave-room` + `webrtc:*` signalling relay, join/leave billing events. |
+| `frontend/src/context/CallContext.jsx` | Global call state machine, socket listeners, WebRTC orchestration. |
+| `frontend/src/services/webrtcCall.js` | `RTCPeerConnection` wrapper (`createCall`, `leaveCall`, `flipCamera`, `primeDevices`). |
 | `frontend/src/modules/user/features/doctors/ConsultCall.jsx` | Pet-parent call screen. |
 | `frontend/src/modules/Admin/ClinicVeterinaryDoctor/views/VideoConsultationView.jsx` | Vet/clinic call screen. |
 | `frontend/src/modules/user/components/IncomingCallOverlay.jsx` | App-wide "incoming call" ringing overlay. |
@@ -55,20 +71,21 @@ parent and a vet/clinic, not generic social video calling. Entry points:
 ### Call flow
 
 1. Caller hits `POST /consults/:bookingId/start` → creates/gets the
-   `ConsultCall`, ensures the LiveKit room exists, mints the caller's token,
-   sets status `ringing`, emits `call:incoming` + push notification to the
-   *other* party.
+   `ConsultCall`, sets status `ringing`, emits `call:incoming` + push
+   notification to the *other* party. The response carries a room name and
+   TURN credentials, not a token.
 2. Callee's `CallContext` gets `call:incoming` → phase `incoming` →
    `IncomingCallOverlay` shows.
-3. Callee accepts → `POST /consults/:bookingId/join` → mints their token,
-   flips status to `active` if it was `ringing`, emits `call:accept` to the
-   caller.
-4. Both sides `joinRoom(token, url, iceServers)` → connect straight to the
-   LiveKit SFU.
-5. LiveKit webhooks (`POST /consults/webhook/livekit`) update
-   `joinedAt`/`leftAt`/billed seconds — the only trusted clock.
-6. Either side calls `POST /consults/:bookingId/end` → settles overage,
-   deletes the LiveKit room, emits `call:end`.
+3. Callee accepts → `POST /consults/:bookingId/join` → flips status to
+   `active` if it was `ringing`, emits `call:accept` to the caller.
+4. Both sides emit `call:join-room` on their socket; the server re-validates
+   authorization and joins them to the call's Socket.IO room. The **vet's**
+   browser always creates the WebRTC offer (fixed role, avoids glare); the
+   pet parent's browser answers. ICE candidates relay over the same socket.
+5. Each side's `call:join-room` / disconnect updates `joinedAt`/`leftAt` —
+   the only trusted clock.
+6. Either side calls `POST /consults/:bookingId/end` → settles overage, emits
+   `call:end`.
 
 ## 2026-07-28 — Investigation & fixes
 
@@ -200,24 +217,71 @@ warning it must be a real `wss://` URL in any non-local environment.
 These are configuration/deployment gaps, not bugs in this repo's code —
 nothing here can be verified or resolved just by editing files.
 
-- **LiveKit/TURN config is dev-only right now.** `backend/.env` /
-  `frontend/.env` currently point at `ws://localhost:7880` with
-  `LIVEKIT_API_KEY=devkey` / `LIVEKIT_API_SECRET=secret` and empty
+- **TURN config is empty by default.** `backend/.env` ships with empty
   `TURN_URLS`/`TURN_SECRET`. `backend/src/config/env.js`'s
-  `validateProductionConfig()` will hard-fail on these in production — this
-  is expected and by design, but whoever deploys needs to set real LiveKit
-  + TURN credentials in the actual hosting environment (Vercel env vars,
-  not the committed `.env`).
-- **Self-hosted LiveKit + coturn must run somewhere with a public IP.**
-  `backend/livekit/README.md` already notes Windows + Docker Desktop can't
-  serve real users; there's no evidence in-repo that this stack is deployed
-  anywhere reachable. If it isn't, calls will mint valid tokens but never
-  actually connect media in production.
+  `validateProductionConfig()` will hard-fail on an empty `TURN_URLS` in
+  production — this is expected and by design, but whoever deploys needs to
+  set real TURN credentials in the actual hosting environment (Vercel env
+  vars, not the committed `.env`).
+- **Self-hosted coturn must run somewhere with a public IP** if you want
+  calls to survive strict-NAT mobile networks. `backend/turn/README.md`
+  already notes Windows + Docker Desktop can't serve real users. Without it,
+  two peers on friendly networks (same Wi-Fi, most home broadband) will still
+  connect fine via STUN or a direct path — it's specifically strict-NAT
+  mobile carriers and some clinic Wi-Fi that need the relay.
 - **Socket.IO on a serverless backend is inherently flaky** — this is why
   the 3.5s REST-polling fallback exists (`syncActiveConsult` in
   `CallContext.jsx`). Real-time ring delivery may still lag up to ~3.5s in
-  production. Working as designed, just worth knowing if "the phone doesn't
-  ring instantly" comes up again.
+  production, and now that Socket.IO also carries the WebRTC offer/answer/ICE
+  exchange itself, a dropped socket mid-handshake can strand a call in
+  `connecting` — there is no REST fallback for the signalling exchange itself
+  the way there is for ringing.
+
+## 2026-08-05 — LiveKit removed, replaced with WebSocket-signalled P2P WebRTC
+
+Every consult is strictly 1:1 (one vet, one pet parent) — there was never a
+group-call requirement that would justify running media through an SFU. The
+self-hosted LiveKit stack was removed and replaced with direct
+browser-to-browser WebRTC, signalled over the app's existing authenticated
+Socket.IO connection instead of a media server. This is a reversion to the
+architecture the codebase used *before* LiveKit — `sockets/index.js` used to
+carry a comment noting a retired `/video` namespace that did exactly this.
+
+**What changed:**
+- `backend/src/services/livekit.service.js` → `webrtcSignal.service.js`
+  (room-name helper + TURN credential minting only — no room/token API left).
+- `backend/src/sockets/index.js` gained `call:join-room` / `call:leave-room`
+  and a pure relay for `webrtc:offer` / `webrtc:answer` / `webrtc:ice-candidate`.
+- `consult.service.js`'s `applyWebhookEvent()` (LiveKit webhook handler) →
+  `markParticipantJoined()` / `markParticipantLeft()`, called from the socket
+  handlers above instead of a webhook. The billing *engine* (`settleOverage`,
+  `computeBilledSeconds`, overage consent/waive) is unchanged — only the
+  event source that writes `joinedAt`/`leftAt` changed.
+- `frontend/src/services/livekitRoom.js` → `webrtcCall.js`, wrapping a plain
+  `RTCPeerConnection` instead of `livekit-client`. Offerer role is fixed by
+  UI screen (vet always offers) rather than negotiated, to avoid glare
+  without full perfect-negotiation machinery.
+- `CallContext.jsx`'s `remoteTracks: {video, audio}` (LiveKit Track objects)
+  collapsed to a single `remoteStream` (`MediaStream`) — P2P has exactly one
+  peer, so there's nothing to key by kind. `toggleMic`/`toggleCam` now flip
+  `track.enabled` on the local stream directly; `flipCamera` replaces the
+  outgoing video track via `RTCRtpSender.replaceTrack` instead of LiveKit's
+  `switchActiveDevice`.
+- `backend/livekit/` (docker-compose, `livekit.yaml`, nginx config) removed;
+  `backend/livekit/coturn/` moved to `backend/turn/coturn/` — TURN/STUN is
+  still needed for P2P on strict-NAT networks, it just isn't paired with an
+  SFU anymore. See `backend/turn/README.md`.
+- `livekit-server-sdk` / `livekit-client` removed from both `package.json`s.
+  `LIVEKIT_*` env vars removed; `TURN_URLS`/`TURN_SECRET`/`STUN_URLS` kept
+  as-is (same coturn credential scheme, unrelated to LiveKit specifically).
+
+**Trade-off worth knowing:** billing's authoritative clock used to be
+LiveKit's server-verified webhook (proof the SFU itself saw a participant).
+It's now the authenticated Socket.IO connection's join/leave of the call's
+signalling room — proof the browser's *socket* joined, not proof media
+packets flowed. Given every socket is already JWT-authenticated per user,
+this is the same trust level the rest of the app already places in
+Socket.IO elsewhere (`emitToUser`), just newly load-bearing for money.
 
 ## How to sanity-check this feature after touching it
 

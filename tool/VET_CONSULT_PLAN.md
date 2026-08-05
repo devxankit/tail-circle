@@ -1,5 +1,14 @@
 # Vet Consultations — Registration, Dashboard, Booking, Payments & LiveKit Video
 
+> **Superseded 2026-08-05:** Phases 5–7 below describe the original
+> self-hosted LiveKit SFU implementation. LiveKit has since been removed and
+> replaced with direct browser-to-browser WebRTC signalled over Socket.IO —
+> see `tool/VIDEO_CALL_FEATURE.md`'s "2026-08-05" entry for the current
+> architecture and what changed. Kept here as the historical record of what
+> was actually built and verified at the time; the rest of this plan
+> (registration, availability, booking, payments) is unaffected and still
+> current.
+
 ## Status
 
 | Phase | State | Notes |

@@ -4,7 +4,7 @@ import {
 import { connectSocket, getSocket } from '../services/socket';
 import { isLoggedIn, getAccessToken } from '../services/api';
 import * as consultApi from '../services/consultApi';
-import { joinRoom, leaveRoom } from '../services/livekitRoom';
+import { createCall, leaveCall, flipCamera as flipCameraTrack } from '../services/webrtcCall';
 
 function getCurrentUserId() {
   try {
@@ -22,9 +22,10 @@ function getCurrentUserId() {
  *
  *   idle → incoming/outgoing → connecting → active → ended → idle
  *
- * Ringing lives in signalling (Socket.IO or REST polling fallback). LiveKit only enters once a
- * token exists, which is why `connecting` is a distinct phase: the token has
- * been issued but media has not yet flowed.
+ * Ringing lives in signalling (Socket.IO or REST polling fallback). The WebRTC
+ * peer connection only opens once TURN credentials exist, which is why
+ * `connecting` is a distinct phase: authorization is granted but media has
+ * not yet flowed.
  *
  * Mounted once at the app root so a call survives navigation.
  */
@@ -39,58 +40,65 @@ export function CallProvider({ children }) {
   const [incoming, setIncoming] = useState(null); // ring payload from socket or poll
   const [error, setError] = useState('');
 
-  // Media state
-  const [room, setRoom] = useState(null);
-  const [remoteTracks, setRemoteTracks] = useState({ video: null, audio: null });
-  const [localVideoTrack, setLocalVideoTrack] = useState(null);
+  // Media state — plain WebRTC now: one local MediaStream we captured, one
+  // remote MediaStream from the peer, no LiveKit Track wrapper objects.
+  const [localStream, setLocalStream] = useState(null);
+  const [remoteStream, setRemoteStream] = useState(null);
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
   const [peerPresent, setPeerPresent] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
 
   // Timer is display-only; billable duration is computed server-side from
-  // LiveKit webhooks and must never be derived from this.
+  // the socket join/leave events (consult.service.js) and must never be
+  // derived from this.
   const [elapsed, setElapsed] = useState(0);
 
   // Overage
   const [overagePrompt, setOveragePrompt] = useState(null); // {ratePerMinute}
   const [overageAccepted, setOverageAccepted] = useState(false);
 
-  const roomRef = useRef(null);
+  const callRef = useRef(null);
   const bookingRef = useRef(null);
 
   const reset = useCallback(() => {
     setPhase('idle');
     setCall(null);
     setIncoming(null);
-    setRemoteTracks({ video: null, audio: null });
-    setLocalVideoTrack(null);
+    setRemoteStream(null);
+    setLocalStream(null);
     setPeerPresent(false);
     setReconnecting(false);
     setElapsed(0);
     setOveragePrompt(null);
     setOverageAccepted(false);
     setError('');
-    roomRef.current = null;
+    callRef.current = null;
     bookingRef.current = null;
-    setRoom(null);
   }, []);
 
   /* ── Media ────────────────────────────────────────────── */
 
-  const connectMedia = useCallback(async (payload, { video = true } = {}) => {
+  /**
+   * @param opts.role  'vet' | 'patient' — the vet always creates the WebRTC
+   *   offer, the pet parent always answers (see webrtcCall.js), regardless of
+   *   who started the call.
+   */
+  const connectMedia = useCallback(async (payload, { video = true, role } = {}) => {
     setPhase('connecting');
+    const socket = getSocket();
     try {
-      const res = await joinRoom(payload.token, payload.url, {
-        video,
+      const call = await createCall({
+        bookingId: bookingRef.current,
+        isOfferer: role === 'vet',
         iceServers: payload.iceServers || [],
+        video,
+        socket,
         on: {
-          trackSubscribed: ({ track, kind }) =>
-            setRemoteTracks((prev) => ({ ...prev, [kind]: track })),
-          trackUnsubscribed: ({ track }) =>
-            setRemoteTracks((prev) => ({ ...prev, [track.kind]: null })),
+          trackSubscribed: ({ stream }) => setRemoteStream(stream),
           participantConnected: () => { setPeerPresent(true); setPhase('active'); },
           participantDisconnected: () => setPeerPresent(false),
+          connected: () => { setPeerPresent(true); setPhase('active'); },
           reconnecting: () => setReconnecting(true),
           reconnected: () => setReconnecting(false),
           disconnected: () => setPhase((p) => (p === 'ended' ? p : 'ended')),
@@ -98,32 +106,14 @@ export function CallProvider({ children }) {
         },
       });
 
-      const r = res?.room;
-      if (r) {
-        roomRef.current = r;
-        setRoom(r);
-
-        const publishLocal = () => {
-          const pub = r.localParticipant?.getTrackPublication?.('camera');
-          setLocalVideoTrack(pub?.videoTrack || null);
-        };
-        publishLocal();
-        r.localParticipant?.on?.('trackPublished', publishLocal);
-        r.localParticipant?.on?.('trackMuted', publishLocal);
-        r.localParticipant?.on?.('trackUnmuted', publishLocal);
-
-        if (r.remoteParticipants?.size > 0) { setPeerPresent(true); setPhase('active'); }
-      } else {
-        setPhase('active');
-        setPeerPresent(true);
-      }
-      getSocket()?.emit('call:connected', { bookingId: bookingRef.current });
-      return r || null;
+      callRef.current = call;
+      setLocalStream(call.localStream);
+      return call.pc;
     } catch (err) {
-      console.warn('LiveKit connectMedia fallback:', err?.message || err);
+      console.warn('WebRTC connectMedia error:', err?.message || err);
+      setError(err?.message || 'Could not access your camera and microphone');
       setPhase('active');
       setPeerPresent(true);
-      getSocket()?.emit('call:connected', { bookingId: bookingRef.current });
       return null;
     }
   }, []);
@@ -176,7 +166,8 @@ export function CallProvider({ children }) {
 
   const endCall = useCallback(async ({ notes } = {}) => {
     const bookingId = bookingRef.current;
-    await leaveRoom(roomRef.current);
+    leaveCall(callRef.current, getSocket());
+    callRef.current = null;
     let result = null;
     try {
       if (bookingId) result = await consultApi.endConsult(bookingId, { notes });
@@ -196,29 +187,27 @@ export function CallProvider({ children }) {
     setOveragePrompt(null);
   }, []);
 
-  const toggleMic = useCallback(async () => {
-    const r = roomRef.current;
-    if (!r) return;
+  const toggleMic = useCallback(() => {
+    const stream = callRef.current?.localStream;
+    if (!stream) return;
     const next = !micOn;
-    await r.localParticipant.setMicrophoneEnabled(next);
+    stream.getAudioTracks().forEach((t) => { t.enabled = next; });
     setMicOn(next);
   }, [micOn]);
 
-  const toggleCam = useCallback(async () => {
-    const r = roomRef.current;
-    if (!r) return;
+  const toggleCam = useCallback(() => {
+    const stream = callRef.current?.localStream;
+    if (!stream) return;
     const next = !camOn;
-    await r.localParticipant.setCameraEnabled(next);
+    stream.getVideoTracks().forEach((t) => { t.enabled = next; });
     setCamOn(next);
   }, [camOn]);
 
   /** Front/back camera on mobile. */
   const flipCamera = useCallback(async () => {
-    const r = roomRef.current;
-    if (!r) return;
-    const current = r.localParticipant.getTrackPublication?.('camera');
-    const facing = current?.track?.mediaStreamTrack?.getSettings?.().facingMode;
-    await r.switchActiveDevice?.('videoinput', facing === 'user' ? 'environment' : 'user');
+    if (!callRef.current) return;
+    const stream = await flipCameraTrack(callRef.current);
+    if (stream) setLocalStream(stream);
   }, []);
 
   /* ── Socket signalling ────────────────────────────────── */
@@ -238,11 +227,26 @@ export function CallProvider({ children }) {
     const onAccept = () => setPhase((prev) => (prev === 'outgoing' || prev === 'incoming' ? 'connecting' : prev));
     const onEnd = (p) => {
       setIncoming(null);
-      leaveRoom(roomRef.current);
+      leaveCall(callRef.current, socket);
+      callRef.current = null;
       setPhase('ended');
       setCall((c) => (c && p?.status ? { ...c, status: p.status } : c));
     };
-    const onRejected = () => { setIncoming(null); leaveRoom(roomRef.current); setPhase('ended'); setError('The call was declined'); };
+    const onRejected = () => {
+      setIncoming(null);
+      leaveCall(callRef.current, socket);
+      callRef.current = null;
+      setPhase('ended');
+      setError('The call was declined');
+    };
+    // Server cut the call at the overage cap — no LiveKit to force-disconnect
+    // us anymore, so it just tells both sockets to tear down.
+    const onForceEnd = () => {
+      leaveCall(callRef.current, socket);
+      callRef.current = null;
+      setPhase('ended');
+      setError('This consultation was ended because it reached its extra-time limit');
+    };
     const onOverageStarted = (p) => { setOveragePrompt(null); setOverageAccepted(true); setCall((c) => (c ? { ...c, overage: { ...c.overage, ...p } } : c)); };
     // Fired once the call has ended with unpaid overtime (settleOverage on the server).
     const onOverageDue = (p) => setCall((c) => (c ? { ...c, overage: { ...c.overage, status: 'pending', minutes: p.minutes, amount: p.amount } } : c));
@@ -255,6 +259,7 @@ export function CallProvider({ children }) {
     socket.on('call:accept', onAccept);
     socket.on('call:end', onEnd);
     socket.on('call:reject', onRejected);
+    socket.on('call:force-end', onForceEnd);
     socket.on('call:overage-started', onOverageStarted);
     socket.on('call:overage-due', onOverageDue);
     socket.on('call:overage-waived', onOverageWaived);
@@ -265,6 +270,7 @@ export function CallProvider({ children }) {
       socket.off('call:accept', onAccept);
       socket.off('call:end', onEnd);
       socket.off('call:reject', onRejected);
+      socket.off('call:force-end', onForceEnd);
       socket.off('call:overage-started', onOverageStarted);
       socket.off('call:overage-due', onOverageDue);
       socket.off('call:overage-waived', onOverageWaived);
@@ -332,14 +338,14 @@ export function CallProvider({ children }) {
   }, [syncActiveConsult]);
 
   const value = useMemo(() => ({
-    phase, call, incoming, error, room, remoteTracks, localVideoTrack,
+    phase, call, incoming, error, localStream, remoteStream,
     micOn, camOn, peerPresent, reconnecting, elapsed,
     overagePrompt, overageAccepted,
     startCall, acceptCall, rejectCall, endCall, acceptOverage,
     toggleMic, toggleCam, flipCamera, reset,
     isBusy: phase !== 'idle' && phase !== 'ended',
   }), [
-    phase, call, incoming, error, room, remoteTracks, localVideoTrack, micOn, camOn,
+    phase, call, incoming, error, localStream, remoteStream, micOn, camOn,
     peerPresent, reconnecting, elapsed, overagePrompt, overageAccepted,
     startCall, acceptCall, rejectCall, endCall, acceptOverage,
     toggleMic, toggleCam, flipCamera, reset,

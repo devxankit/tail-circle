@@ -98,27 +98,15 @@ export const env = {
   },
 
   /**
-   * LiveKit — self-hosted Community Edition WebRTC SFU for video consults.
+   * TURN/STUN — relay servers for video consults.
    *
-   * The API key/secret are backend-only and used in exactly one place
-   * (services/livekit.service.js) to mint short-lived per-participant JWTs.
-   * The browser never sees the signing secret.
-   *
-   * Two URLs on purpose:
-   *   url     — what CLIENTS dial. Must be publicly reachable (wss:// in prod).
-   *   httpUrl — what THIS SERVER uses for the Room API. Can stay on loopback.
-   * Handing a phone a localhost URL is the single most common self-host failure,
-   * so the production guard below rejects it outright.
+   * Video media is direct browser-to-browser WebRTC (P2P); this is just the
+   * relay fallback for strict-NAT networks (most Indian mobile carriers). The
+   * server's only involvement is minting short-lived TURN credentials — see
+   * services/webrtcSignal.service.js. The signalling exchange itself (offer /
+   * answer / ICE candidates) rides on Socket.IO, not a dedicated media server.
    */
-  livekit: {
-    apiKey: process.env.LIVEKIT_API_KEY || 'devkey',
-    apiSecret: process.env.LIVEKIT_API_SECRET || 'secret',
-    url: process.env.LIVEKIT_URL || 'ws://localhost:7880',
-    httpUrl: process.env.LIVEKIT_HTTP_URL || 'http://localhost:7880',
-    // Verifies LiveKit server webhooks (authoritative join/leave timestamps).
-    webhookEnabled: process.env.LIVEKIT_WEBHOOK_ENABLED !== 'false',
-    // How long a participant token stays valid.
-    tokenTtl: process.env.LIVEKIT_TOKEN_TTL || '2h',
+  turn: {
     // Relay servers handed to clients on strict NAT / mobile networks.
     turnUrls: (process.env.TURN_URLS || '')
       .split(',')
@@ -181,25 +169,12 @@ export function validateProductionConfig(cfg = env) {
     problems.push('SMS enabled but SMS_INDIA_HUB_API_KEY / SENDER_ID / DLT_TEMPLATE_ID incomplete');
   }
 
-  // ── LiveKit ──
-  // Shipping the published dev keypair would let anyone mint a token for any
-  // consultation room, so treat it exactly like a placeholder secret.
-  if (cfg.livekit.apiKey === 'devkey' || cfg.livekit.apiSecret === 'secret') {
-    problems.push('LIVEKIT_API_KEY / LIVEKIT_API_SECRET still use the public dev pair');
-  }
-  if ((cfg.livekit.apiSecret || '').length < 32) {
-    problems.push('LIVEKIT_API_SECRET should be at least 32 chars');
-  }
-  // Clients dial `url` directly. A ws:// or localhost value works on the dev
-  // machine and fails on every real phone, with an opaque connection error.
-  if (!cfg.livekit.url.startsWith('wss://')) {
-    problems.push('LIVEKIT_URL must be a public wss:// URL in production');
-  }
-  if (/localhost|127\.0\.0\.1/.test(cfg.livekit.url)) {
-    problems.push('LIVEKIT_URL points at localhost — remote clients can never reach it');
-  }
-  if (!cfg.livekit.turnUrls.length) {
+  // ── TURN/STUN ──
+  if (!cfg.turn.turnUrls.length) {
     problems.push('TURN_URLS is empty — calls will fail on strict-NAT mobile networks');
+  }
+  if (cfg.turn.turnUrls.length && !cfg.turn.turnSecret) {
+    problems.push('TURN_URLS is set but TURN_SECRET is empty — TURN credentials cannot be minted');
   }
 
   return problems;

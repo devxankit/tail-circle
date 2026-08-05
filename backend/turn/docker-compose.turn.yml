@@ -1,0 +1,41 @@
+# coturn — TURN/STUN relay for TailCircle video consultations.
+#
+# Kept separate from the API's docker-compose.yml on purpose: it uses host
+# networking and a wide UDP relay range, and restarts on a different cadence
+# than the API.
+#
+#   cd backend/turn
+#   cp .env.example .env      # secret, ports, domain
+#   docker compose -f docker-compose.turn.yml up -d
+#
+# Every port is driven from .env — see README.md for the firewall table.
+
+services:
+  coturn:
+    image: coturn/coturn:4.6
+    restart: unless-stopped
+    network_mode: host
+    # coturn does not read env vars, so its ports are passed as CLI flags —
+    # these override the same keys in turnserver.conf.
+    command: >
+      -c /etc/coturn/turnserver.conf
+      --listening-port=${TURN_PORT:-3478}
+      --tls-listening-port=${TURN_TLS_PORT:-5349}
+      --min-port=${TURN_MIN_PORT:-49160}
+      --max-port=${TURN_MAX_PORT:-49200}
+      --realm=${TURN_DOMAIN}
+      --server-name=${TURN_DOMAIN}
+      --external-ip=${TURN_PUBLIC_IP}
+      --static-auth-secret=${TURN_SECRET}
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    healthcheck:
+      test: ["CMD-SHELL", "netstat -ln | grep -q ':${TURN_PORT:-3478}'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }

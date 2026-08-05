@@ -5,29 +5,30 @@ import {
 } from 'lucide-react';
 import { useVendor } from '../context/ClinicVendorContext';
 import { useCall } from '../../../../context/CallContext';
-import { primeDevices, formatDuration } from '../../../../services/livekitRoom';
+import { primeDevices, formatDuration } from '../../../../services/webrtcCall';
 import { waiveOverage } from '../../../../services/consultApi';
 
 /**
  * Vet-side video consultation.
  *
- * Media is real LiveKit now — this used to render a placeholder <div> with the
- * pet's first initial and a purely local timer. The layout (live notes, chat,
- * controls) is unchanged; the fake video panes are replaced by actual tracks.
+ * Media is direct browser-to-browser WebRTC — this used to render a
+ * placeholder <div> with the pet's first initial and a purely local timer.
+ * The layout (live notes, chat, controls) is unchanged; the fake video panes
+ * are replaced by the real local/remote streams.
  *
  * The timer shown here is cosmetic. Billable duration is computed server-side
- * from LiveKit webhooks, so nothing the vet's browser does can alter a charge.
+ * from socket join/leave events, so nothing the vet's browser does can alter
+ * a charge.
  */
 export function VideoConsultationView({ appointment, onNavigate }) {
   const { addDoctorConsultationNotes } = useVendor();
   const {
-    phase, call, incoming, error, remoteTracks, localVideoTrack, micOn, camOn,
+    phase, call, incoming, error, remoteStream, localStream, micOn, camOn,
     peerPresent, reconnecting, elapsed,
     startCall, acceptCall, endCall, toggleMic, toggleCam, reset,
   } = useCall();
 
   const remoteVideoRef = useRef(null);
-  const remoteAudioRef = useRef(null);
   const localVideoRef = useRef(null);
 
   const [showChat, setShowChat] = useState(true);
@@ -62,10 +63,11 @@ export function VideoConsultationView({ appointment, onNavigate }) {
       setPermission(perm);
       if (!perm.granted) return;
       try {
+        // This screen is always the vet side, so it always creates the WebRTC offer.
         if (isAcceptingRing) {
-          await acceptCall(bookingId, { video: true });
+          await acceptCall(bookingId, { video: true, role: 'vet' });
         } else {
-          await startCall(bookingId, { video: true });
+          await startCall(bookingId, { video: true, role: 'vet' });
         }
         if (!cancelled) {
           setChatMessages([{
@@ -85,34 +87,14 @@ export function VideoConsultationView({ appointment, onNavigate }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookingId]);
 
-  /* Attach tracks. */
+  /* Attach media streams as they arrive. */
   useEffect(() => {
-    if (remoteTracks.video && remoteVideoRef.current) remoteTracks.video.attach(remoteVideoRef.current);
-    if (remoteTracks.audio && remoteAudioRef.current) remoteTracks.audio.attach(remoteAudioRef.current);
-  }, [remoteTracks]);
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream || null;
+  }, [remoteStream]);
 
   useEffect(() => {
-    if (localVideoTrack && localVideoRef.current) {
-      localVideoTrack.attach(localVideoRef.current);
-    } else if (permission?.granted && localVideoRef.current) {
-      let activeStream = null;
-      navigator.mediaDevices?.getUserMedia?.({ video: true, audio: false })
-        .then((stream) => {
-          activeStream = stream;
-          if (localVideoRef.current) {
-            localVideoRef.current.srcObject = stream;
-            localVideoRef.current.play().catch(() => {});
-          }
-        })
-        .catch(() => {});
-
-      return () => {
-        if (activeStream) {
-          activeStream.getTracks().forEach((t) => t.stop());
-        }
-      };
-    }
-  }, [localVideoTrack, permission]);
+    if (localVideoRef.current) localVideoRef.current.srcObject = localStream || null;
+  }, [localStream]);
 
   const handleEndCall = async () => {
     if (!window.confirm('End this consultation?')) return;
@@ -207,7 +189,6 @@ export function VideoConsultationView({ appointment, onNavigate }) {
         <div className="flex-1 p-4 flex flex-col relative bg-black">
           <div className="w-full h-full rounded-2xl bg-gray-800 overflow-hidden relative border border-gray-700">
             <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
-            <audio ref={remoteAudioRef} autoPlay />
 
             {/* Overlays for every non-connected state */}
             {phase === 'ended' ? (

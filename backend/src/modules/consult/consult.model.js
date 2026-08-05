@@ -4,14 +4,16 @@ import mongoose from 'mongoose';
  * One video consultation session, bound 1:1 to a `type: 'doctor'` Booking with
  * `visitType: 'video'`.
  *
- * Replaces the old `VideoRoom`, which stored a `crypto.randomBytes` token that
- * no media server ever validated. Rooms are now real LiveKit rooms and tokens
- * are signed JWTs scoped to a single room.
+ * Media is direct browser-to-browser WebRTC (P2P) — every consult is exactly
+ * one vet and one pet parent, so there's never a reason to route it through a
+ * media server. `roomName` is the Socket.IO room the two browsers use to
+ * exchange their offer/answer/ICE candidates (`sockets/index.js`).
  *
- * Billing note: `participants[].joinedAt/leftAt` are written **only** from
- * verified LiveKit webhooks, never from the client. Billable time is the window
- * during which both the vet and the pet parent were connected simultaneously —
- * a client-side timer is display only and is never trusted for money.
+ * Billing note: `participants[].joinedAt/leftAt` are written **only** from the
+ * server-side socket join/leave handlers (`consult.service.js::markParticipantJoined/Left`),
+ * never from a client-reported timestamp. Billable time is the window during
+ * which both the vet and the pet parent were connected simultaneously — a
+ * client-side timer is display only and is never trusted for money.
  */
 
 export const CALL_STATUSES = [
@@ -29,7 +31,7 @@ const participantSchema = new mongoose.Schema(
     _id: false,
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     role: { type: String, enum: ['vet', 'patient'], required: true },
-    identity: { type: String, default: '' }, // LiveKit participant identity
+    identity: { type: String, default: '' }, // unused, kept for backward compatibility
     joinedAt: { type: Date, default: null },
     leftAt: { type: Date, default: null },
     // Cumulative connected seconds across reconnects (mobile networks drop).
@@ -114,10 +116,11 @@ consultCallSchema.index({ doctorId: 1, createdAt: -1 });
  *
  * Deliberately does not touch `joinedAt`/`leftAt` here — this runs on the
  * REST start/join call, before media has actually connected. Those fields
- * are written only from verified LiveKit webhooks (see the billing note
- * above); setting them here would mark someone "connected" the moment they
- * request a token, even if their browser never joins the room, which both
- * flips `bothConnected()` early and inflates billed seconds.
+ * are written only once the client's socket actually joins the call's
+ * signalling room (see the billing note above); setting them here would mark
+ * someone "connected" the moment they call this REST endpoint, even if their
+ * browser never joins the room, which both flips `bothConnected()` early and
+ * inflates billed seconds.
  */
 consultCallSchema.methods.participantFor = function participantFor(userId, role) {
   let p = this.participants.find((x) => String(x.userId) === String(userId));

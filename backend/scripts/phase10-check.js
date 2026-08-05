@@ -146,7 +146,7 @@ async function main() {
   ok(!!reported.id, 'user reportEmergency creates an open request');
   ok((await clinic.listEmergencies()).some((e) => e.id === reported.id), 'reported emergency reaches the clinic list');
 
-  console.log('\n— Video consultations (LiveKit) —');
+  console.log('\n— Video consultations (WebRTC) —');
   // The old fake-token endpoint is retired; it now points callers at the real
   // flow rather than handing out a token no media server would accept.
   let deprecated = null;

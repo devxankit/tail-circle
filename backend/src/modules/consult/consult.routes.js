@@ -1,12 +1,9 @@
 import { Router } from 'express';
-import express from 'express';
 import { z } from 'zod';
 import { authenticate } from '../../middleware/auth.js';
 import { validate } from '../../middleware/validate.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
-import { logger } from '../../utils/logger.js';
-import { receiveWebhook } from '../../services/livekit.service.js';
 import * as consult from './consult.service.js';
 // Side-effect import: registers the `consult_overage` Razorpay purpose handler.
 import './consult.payment.js';
@@ -16,33 +13,13 @@ const router = Router();
 /**
  * Video consultation signalling.
  *
- * Every token-issuing route runs through `authorizeCall()`, which checks the
- * caller is the assigned vet or the assigned pet parent, that the booking is
- * paid and is a video consult, and that we are inside the join window.
+ * Every route runs through `authorizeCall()`, which checks the caller is the
+ * assigned vet or the assigned pet parent, that the booking is paid and is a
+ * video consult, and that we are inside the join window. The actual WebRTC
+ * offer/answer/ICE exchange and the join/leave timing this module bills from
+ * happen over Socket.IO (`sockets/index.js`), not REST — there is no media
+ * server webhook to receive here anymore.
  */
-
-/* ── LiveKit webhook (public, signature-verified) ─────────────────── */
-/**
- * Mounted BEFORE `authenticate` and with its own raw body parser: LiveKit signs
- * the exact bytes it sent, so the JSON parser must not touch them first.
- *
- * Always 200s. A webhook that retries forever because our fulfilment threw is
- * worse than a dropped event — failures are logged and the event is dropped.
- */
-router.post(
-  '/webhook/livekit',
-  express.raw({ type: '*/*' }),
-  asyncHandler(async (req, res) => {
-    try {
-      const event = await receiveWebhook(req.body.toString('utf8'), req.get('Authorization'));
-      const result = await consult.applyWebhookEvent(event);
-      logger.info(`LiveKit webhook ${event.event}: ${JSON.stringify(result)}`);
-    } catch (err) {
-      logger.warn(`LiveKit webhook rejected: ${err.message}`);
-    }
-    res.status(200).json({ received: true });
-  })
-);
 
 /* ── Authenticated call lifecycle ─────────────────────────────────── */
 

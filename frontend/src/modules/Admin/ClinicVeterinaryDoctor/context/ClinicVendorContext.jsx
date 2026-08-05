@@ -98,10 +98,10 @@ export function ClinicVendorProvider({ children }) {
   };
 
   /**
-   * Superseded by the LiveKit consult flow. The vet's call screen now drives
+   * Superseded by the WebRTC consult flow. The vet's call screen now drives
    * `startCall()` from CallContext, which hits POST /consults/:bookingId/start
-   * and returns a real signed token. The old endpoint minted a random string
-   * that no media server ever validated.
+   * and returns a real room name + TURN credentials. The old endpoint minted a
+   * random string that no media server ever validated.
    */
   const startVideoRoom = async (id) => {
     console.warn('startVideoRoom is deprecated — use useCall().startCall(bookingId)');

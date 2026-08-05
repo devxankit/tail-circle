@@ -497,12 +497,13 @@ export async function reportEmergency(userId, body) {
 /* ── Video consultation rooms ─────────────────────────────────────── */
 
 /**
- * Superseded by the LiveKit consult service.
+ * Superseded by the consult service.
  *
  * This used to mint a `crypto.randomBytes` "token" that no media server ever
- * validated — it could not join a call. Real rooms and signed LiveKit JWTs now
- * come from `POST /api/consults/:bookingId/start`, which also enforces that the
- * caller is the assigned vet and that the slot is inside its join window.
+ * validated — it could not join a call. A real room name and TURN credentials
+ * now come from `POST /api/consults/:bookingId/start`, which also enforces
+ * that the caller is the assigned vet and that the slot is inside its join
+ * window.
  *
  * Kept as a redirect so any client still calling the old endpoint fails loudly
  * instead of silently receiving a token that cannot connect.

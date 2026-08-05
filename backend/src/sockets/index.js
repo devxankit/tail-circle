@@ -6,6 +6,8 @@ import { redis, isRedisReady } from '../config/redis.js';
 import { logger } from '../utils/logger.js';
 import { User } from '../modules/user/user.model.js';
 import { SOCKET_EVENTS, rooms } from './events.js';
+import { roomNameFor } from '../services/webrtcSignal.service.js';
+import { authorizeCall, markParticipantJoined, markParticipantLeft } from '../modules/consult/consult.service.js';
 
 let io = null;
 
@@ -66,26 +68,87 @@ export function initSocket(httpServer) {
       // conversation room after a participant check) — never blindly here.
     });
 
-    // Client confirms LiveKit media is actually flowing — distinguishes a real
-    // connection from a token that was issued but never used.
-    socket.on('call:connected', ({ bookingId } = {}) => {
-      if (bookingId) logger.info(`consult ${bookingId}: media connected for user ${userId}`);
+    // Which call rooms (booking ids) this socket has joined — used to settle
+    // join/leave timing on disconnect without the client having to say so.
+    const activeCalls = new Set();
+
+    /**
+     * A participant's browser is ready to exchange WebRTC signalling for a
+     * consultation. Re-checks authorization (the REST start/join call already
+     * did this to get here, but a socket could otherwise be pointed at any
+     * booking id) before letting it into the room, then records the join as
+     * the authoritative timing event overage billing is computed from — see
+     * `consult.service.js::markParticipantJoined`.
+     */
+    socket.on('call:join-room', async ({ bookingId } = {}, ack) => {
+      if (!bookingId) return ack?.({ ok: false, error: 'bookingId required' });
+      try {
+        await authorizeCall(socket.data.user, bookingId, { enforceWindow: false, requireJoinable: false });
+      } catch (err) {
+        return ack?.({ ok: false, error: err.message || 'Not authorized for this call' });
+      }
+
+      const room = roomNameFor(bookingId);
+      // Must be read BEFORE this socket joins — otherwise it would always
+      // see itself and report a peer that isn't really there yet. This is
+      // what tells the offerer (the vet — see webrtcCall.js) whether the
+      // answerer is already waiting, since `webrtc:peer-joined` below only
+      // reaches sockets already in the room, never the one joining now.
+      const peerPresent = (io.sockets.adapter.rooms.get(room)?.size || 0) > 0;
+
+      socket.join(room);
+      activeCalls.add(bookingId);
+      await markParticipantJoined(bookingId, userId);
+
+      socket.to(room).emit('webrtc:peer-joined', { bookingId, userId });
+      return ack?.({ ok: true, peerPresent });
     });
 
-    socket.on('disconnect', () => {});
+    const leaveCallRoom = async (bookingId) => {
+      if (!activeCalls.has(bookingId)) return;
+      activeCalls.delete(bookingId);
+      socket.leave(roomNameFor(bookingId));
+      await markParticipantLeft(bookingId, userId);
+      socket.to(roomNameFor(bookingId)).emit('webrtc:peer-left', { bookingId, userId });
+    };
+
+    socket.on('call:leave-room', ({ bookingId } = {}) => {
+      if (bookingId) leaveCallRoom(bookingId).catch((err) => logger.warn(`call:leave-room failed: ${err.message}`));
+    });
+
+    // Pure relay — the server never interprets SDP/ICE payloads, it just
+    // forwards them to the other socket already sitting in this call's room.
+    // `socket.rooms` only contains rooms this socket actually joined via
+    // call:join-room above, so this can't be used to reach an arbitrary room.
+    const relay = (event) => (payload = {}) => {
+      const { bookingId } = payload;
+      if (!bookingId || !socket.rooms.has(roomNameFor(bookingId))) return;
+      socket.to(roomNameFor(bookingId)).emit(event, { ...payload, from: userId });
+    };
+    socket.on('webrtc:offer', relay('webrtc:offer'));
+    socket.on('webrtc:answer', relay('webrtc:answer'));
+    socket.on('webrtc:ice-candidate', relay('webrtc:ice-candidate'));
+
+    socket.on('disconnect', () => {
+      for (const bookingId of activeCalls) {
+        leaveCallRoom(bookingId).catch((err) => logger.warn(`disconnect leaveCallRoom failed: ${err.message}`));
+      }
+    });
   });
 
   /**
-   * Video consultation signalling (ring / accept / reject / end / overage) is
-   * delivered on THIS namespace via `emitToUser()` — every open session of a
-   * user is already in their private `user:<id>` room, so the vet's dashboard
-   * and the pet parent's phone both ring with no extra subscription.
+   * Video consultation signalling (ring / accept / reject / end / overage,
+   * AND now the WebRTC offer/answer/ICE exchange itself) is delivered on THIS
+   * namespace via `emitToUser()` / the `call:*` and `webrtc:*` handlers above
+   * — every open session of a user is already in their private `user:<id>`
+   * room, so the vet's dashboard and the pet parent's phone both ring with no
+   * extra subscription.
    *
-   * There used to be a separate `/video` namespace relaying WebRTC
-   * offers/answers/ICE peer-to-peer. It is gone: LiveKit is an SFU and does its
-   * own signalling directly with `livekit-client`, so relaying here would fight
-   * the SFU. It also could never have worked alongside `emitToUser`, which
-   * targets this namespace only.
+   * Media used to run through a self-hosted LiveKit SFU, which did its own
+   * signalling directly with `livekit-client`. It's gone: every consult is
+   * strictly 1:1, so there's no fan-out to justify an SFU — the two browsers
+   * now connect directly (P2P WebRTC) and this socket is their signalling
+   * channel.
    */
 
   logger.info('✅ Socket.IO mounted');

@@ -4,14 +4,7 @@ import { env } from '../../config/env.js';
 import { logger } from '../../utils/logger.js';
 import { notify } from '../../services/notify.js';
 import { emitToUser } from '../../sockets/index.js';
-import {
-  roomNameFor,
-  ensureRoom,
-  createParticipantToken,
-  deleteRoom,
-  removeParticipant,
-  connectionInfo,
-} from '../../services/livekit.service.js';
+import { roomNameFor, connectionInfo } from '../../services/webrtcSignal.service.js';
 import { Booking } from '../booking/booking.model.js';
 import { Doctor } from '../provider/doctor.model.js';
 import { ConsultCall } from './consult.model.js';
@@ -19,16 +12,19 @@ import { ConsultCall } from './consult.model.js';
 /**
  * Video consultation lifecycle: ring → accept → active → end.
  *
- * Signalling (who is calling whom) rides on our own REST + Socket.IO. Media
- * rides on LiveKit. The two never mix: this module hands out room names and
- * signed tokens and is otherwise out of the media path entirely.
+ * Media is direct browser-to-browser WebRTC (P2P) — this module is never in
+ * the media path. It hands out a room name and TURN credentials over REST,
+ * then Socket.IO (`sockets/index.js`) relays the offer/answer/ICE exchange
+ * and reports who is actually connected to that room via
+ * `markParticipantJoined` / `markParticipantLeft` below, which now play the
+ * role LiveKit's verified webhooks used to.
  */
 
 /* ── Authorization ────────────────────────────────────────────────── */
 
 /**
- * The join window for a consultation. Deliberately narrow: a token is a grant
- * of access to a live room, so it is only issued around the booked slot.
+ * The join window for a consultation. Deliberately narrow: access to the room
+ * is granted only around the booked slot.
  *
  *   [ startAt − joinLead , startAt + duration + maxOverage + joinGrace ]
  */
@@ -55,8 +51,11 @@ function joinWindow(booking, doctor) {
  * Resolve the booking a user may join, and which side they are on.
  *
  * This is the gate the brief asks for — only the assigned vet and the assigned
- * pet parent can obtain a token, and only for their own appointment, in a
- * payment state that entitles them to it, inside the join window.
+ * pet parent can join, and only for their own appointment, in a payment state
+ * that entitles them to it, inside the join window. Also re-run by the socket
+ * layer (`sockets/index.js`, `call:join-room`) before relaying any signalling
+ * for a call — the REST gate alone would not stop a socket from joining an
+ * arbitrary call's room.
  */
 export async function authorizeCall(
   user,
@@ -88,7 +87,7 @@ export async function authorizeCall(
   // An unpaid consultation is not joinable. `pending_overage` IS joinable — the
   // overage invoice is settled after the call, not before rejoining it.
   //
-  // This gate applies to obtaining a token, NOT to reading the record: a
+  // This gate applies to joining the call, NOT to reading the record: a
   // participant must still be able to open a completed or cancelled
   // consultation to see its notes, receipt and outstanding balance.
   const JOINABLE = ['confirmed', 'in_progress', 'pending_overage'];
@@ -156,7 +155,7 @@ async function getOrCreateCall(booking, doctor) {
   });
 }
 
-function serializeCall(call, { token, url, iceServers } = {}) {
+function serializeCall(call, { iceServers } = {}) {
   return {
     id: String(call._id),
     bookingId: String(call.bookingId),
@@ -174,7 +173,7 @@ function serializeCall(call, { token, url, iceServers } = {}) {
       amount: call.overage.amount,
       status: call.overage.status,
     },
-    ...(token ? { token, url, iceServers } : {}),
+    ...(iceServers ? { iceServers } : {}),
   };
 }
 
@@ -191,8 +190,8 @@ function getPeerUserIds(isVet, booking, doctor) {
 }
 
 /**
- * Vet or pet parent starts the consultation. Creates the room, mints the caller's token,
- * and rings the other participant over their socket.
+ * Vet or pet parent starts the consultation. Hands back the room name and TURN
+ * credentials, and rings the other participant over their socket.
  */
 export async function startCall(user, bookingId) {
   const { booking, doctor, isVet, isOwner } = await authorizeCall(user, bookingId);
@@ -201,17 +200,7 @@ export async function startCall(user, bookingId) {
   const call = await getOrCreateCall(booking, doctor);
   if (call.status === 'ended') throw ApiError.badRequest('This consultation has already ended');
 
-  await ensureRoom(call.roomName, { maxParticipants: 4 });
-
   const role = isVet ? 'vet' : 'patient';
-  const displayName = isVet ? doctor.name : booking.petSnapshot?.name || 'Pet parent';
-
-  const token = await createParticipantToken({
-    userId: user.id,
-    displayName,
-    roomName: call.roomName,
-    role,
-  });
 
   call.participantFor(user.id, role);
   if (call.status === 'scheduled') {
@@ -247,10 +236,10 @@ export async function startCall(user, bookingId) {
 
   emitToUser(user.id, 'call:ringing', { callId: String(call._id), bookingId: String(booking._id) });
 
-  return serializeCall(call, { token, ...connectionInfo(user.id) });
+  return serializeCall(call, connectionInfo(user.id));
 }
 
-/** Either side obtains a token and joins. The parent or vet can join first. */
+/** Either side joins. The parent or vet can join first. */
 export async function joinCall(user, bookingId) {
   const { booking, doctor, role } = await authorizeCall(user, bookingId);
 
@@ -261,15 +250,6 @@ export async function joinCall(user, bookingId) {
   if (['ended', 'rejected', 'cancelled'].includes(call.status)) {
     throw ApiError.badRequest('This consultation has ended');
   }
-
-  await ensureRoom(call.roomName, { maxParticipants: 4 });
-
-  const token = await createParticipantToken({
-    userId: user.id,
-    displayName: role === 'vet' ? doctor.name : booking.petSnapshot?.name || 'Pet parent',
-    roomName: call.roomName,
-    role,
-  });
 
   call.participantFor(user.id, role);
   if (call.status === 'scheduled') {
@@ -304,7 +284,7 @@ export async function joinCall(user, bookingId) {
     }
   }
 
-  return serializeCall(call, { token, ...connectionInfo(user.id) });
+  return serializeCall(call, connectionInfo(user.id));
 }
 
 /** Pet parent or vet declines the incoming call. */
@@ -319,7 +299,6 @@ export async function rejectCall(user, bookingId) {
   call.endedAt = new Date();
   call.events.push({ type: 'rejected', detail: `Declined by ${isVet ? 'vet' : 'pet parent'}` });
   await call.save();
-  await deleteRoom(call.roomName);
 
   const peerIds = getPeerUserIds(isVet, booking, doctor);
   for (const peerId of peerIds) {
@@ -360,7 +339,6 @@ export async function endCall(user, bookingId, { notes } = {}) {
 
   await settleOverage(call, doctor, booking);
   await call.save();
-  await deleteRoom(call.roomName);
 
   const peerIds = getPeerUserIds(isVet, booking, doctor);
   for (const peerId of peerIds) {
@@ -494,12 +472,12 @@ async function settleOverage(call, doctor, booking) {
 /**
  * Rehydrate after a reload, or read a finished consultation.
  *
- * A token is only minted while the call is live; a completed or cancelled
- * consultation still returns its record (notes, duration, overage balance) so
- * the participant can see what happened and what they owe.
+ * TURN credentials are only handed out while the call is live; a completed or
+ * cancelled consultation still returns its record (notes, duration, overage
+ * balance) so the participant can see what happened and what they owe.
  */
 export async function getCall(user, bookingId) {
-  const { booking, doctor, role } = await authorizeCall(user, bookingId, {
+  const { booking } = await authorizeCall(user, bookingId, {
     enforceWindow: false,
     requireJoinable: false,
   });
@@ -507,13 +485,7 @@ export async function getCall(user, bookingId) {
   if (!call) throw ApiError.notFound('No consultation for this appointment');
 
   if (['ringing', 'active'].includes(call.status)) {
-    const token = await createParticipantToken({
-      userId: user.id,
-      displayName: role === 'vet' ? doctor.name : booking.petSnapshot?.name || 'Pet parent',
-      roomName: call.roomName,
-      role,
-    });
-    return serializeCall(call, { token, ...connectionInfo(user.id) });
+    return serializeCall(call, connectionInfo(user.id));
   }
   return serializeCall(call);
 }
@@ -529,58 +501,56 @@ export async function getActiveCall(user) {
   return getCall(user, String(call.bookingId));
 }
 
-/* ── LiveKit webhooks — the authoritative clock ───────────────────── */
+/* ── Socket-verified join/leave — the authoritative clock ──────────── */
 
 /**
- * Apply a verified LiveKit event. These timestamps are the only ones trusted
- * for billing; the in-call timer the user sees is cosmetic.
+ * Called from `sockets/index.js` when a participant's authenticated socket
+ * joins the call's signalling room (`call:join-room`). This is what
+ * `participant_joined` used to be for LiveKit's webhook: the moment both
+ * sides have joined flips the call to `active` and billable time starts
+ * accruing. The client's REST `start`/`join` call already ran `authorizeCall`
+ * to get here — this only records timing, it does not re-authorize.
  */
-export async function applyWebhookEvent(event) {
-  const roomName = event?.room?.name;
-  if (!roomName?.startsWith('consult_')) return { ignored: true };
+export async function markParticipantJoined(bookingId, userId) {
+  const call = await ConsultCall.findOne({ bookingId });
+  if (!call) return;
 
-  const call = await ConsultCall.findOne({ roomName });
-  if (!call) return { ignored: true };
+  const p = call.participants.find((x) => String(x.userId) === String(userId));
+  if (!p) return; // not a recognised participant of this call — nothing to record
 
-  const identity = event?.participant?.identity;
-  const at = event.createdAt ? new Date(Number(event.createdAt) * 1000) : new Date();
+  const now = new Date();
+  p.joinedAt = now; // (re)join after a drop overwrites the previous timestamp
+  p.leftAt = null;
 
-  switch (event.event) {
-    case 'participant_joined': {
-      const p = call.participants.find((x) => String(x.userId) === String(identity));
-      if (p && !p.joinedAt) p.joinedAt = at;
-      else if (p) p.joinedAt = at; // rejoin after a drop
-      if (call.bothConnected() && !call.startedAt) {
-        call.startedAt = at;
-        call.status = 'active';
-        call.events.push({ type: 'connected', detail: 'Both parties connected' });
-      }
-      break;
-    }
-    case 'participant_left': {
-      const p = call.participants.find((x) => String(x.userId) === String(identity));
-      if (p?.joinedAt && !p.leftAt) {
-        p.leftAt = at;
-        const secs = Math.max(0, Math.round((at - p.joinedAt) / 1000));
-        p.connectedSeconds += secs;
-        // Billable time is the overlap, so it advances only while both were on.
-        call.billedSeconds = computeBilledSeconds(call);
-      }
-      break;
-    }
-    case 'room_finished': {
-      if (call.status !== 'ended') {
-        call.billedSeconds = computeBilledSeconds(call);
-        call.events.push({ type: 'room_finished', detail: 'LiveKit closed the room' });
-      }
-      break;
-    }
-    default:
-      return { ignored: true };
+  if (call.bothConnected() && !call.startedAt) {
+    call.startedAt = now;
+    call.status = 'active';
+    call.events.push({ type: 'connected', detail: 'Both parties connected' });
   }
 
   await call.save();
-  return { applied: event.event };
+}
+
+/**
+ * Called when a participant's socket explicitly leaves the call room
+ * (`call:leave-room`) or disconnects outright. Mirrors LiveKit's
+ * `participant_left`: settles connected seconds and recomputes the billable
+ * overlap so overage never advances while only one side is present.
+ */
+export async function markParticipantLeft(bookingId, userId) {
+  const call = await ConsultCall.findOne({ bookingId });
+  if (!call) return;
+
+  const p = call.participants.find((x) => String(x.userId) === String(userId));
+  if (!p?.joinedAt || p.leftAt) return; // already accounted for
+
+  const now = new Date();
+  p.leftAt = now;
+  p.connectedSeconds += Math.max(0, Math.round((now - p.joinedAt) / 1000));
+  // Billable time is the overlap, so it advances only while both were on.
+  call.billedSeconds = computeBilledSeconds(call);
+
+  await call.save();
 }
 
 /**
@@ -609,7 +579,8 @@ export function computeBilledSeconds(call) {
 
 /**
  * Cut a call that has blown past the overage cap. Called by the monitor tick;
- * removing the participants forces both clients to tear down.
+ * tells both clients over their socket to tear down their peer connection —
+ * there is no media server to force-disconnect anymore.
  */
 export async function enforceOverageCap(call) {
   const limit =
@@ -618,7 +589,11 @@ export async function enforceOverageCap(call) {
 
   logger.info(`Consult ${call._id} hit the overage cap — disconnecting`);
   for (const p of call.participants) {
-    await removeParticipant(call.roomName, p.userId);
+    emitToUser(p.userId, 'call:force-end', {
+      callId: String(call._id),
+      bookingId: String(call.bookingId),
+      reason: 'overage_cap',
+    });
   }
   return true;
 }
