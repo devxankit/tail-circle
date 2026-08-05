@@ -110,11 +110,16 @@ export function CallProvider({ children }) {
       setLocalStream(call.localStream);
       return call.pc;
     } catch (err) {
+      // Do NOT fake a connected state here (an earlier version of this code
+      // did, inherited from a LiveKit-era fallback). createCall() failing
+      // means this browser never even joined the call's signalling room —
+      // markParticipantJoined() never fires, the peer can never receive an
+      // offer/answer, and the call can never actually connect. Pretending
+      // otherwise just hides the failure instead of fixing it: the other
+      // side is left waiting forever with no way to know why. Rethrow so the
+      // caller's existing error handling (startCall/acceptCall) surfaces it.
       console.warn('WebRTC connectMedia error:', err?.message || err);
-      setError(err?.message || 'Could not access your camera and microphone');
-      setPhase('active');
-      setPeerPresent(true);
-      return null;
+      throw err;
     }
   }, []);
 
