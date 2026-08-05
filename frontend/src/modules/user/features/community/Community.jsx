@@ -108,8 +108,15 @@ export function Community() {
       } catch (error) {
         console.log('Error sharing', error);
       }
+    } else if (navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        alert('Link copied to clipboard!');
+      } catch {
+        alert('Could not copy the link — please copy it from the address bar.');
+      }
     } else {
-      alert("Link copied to clipboard!");
+      alert('Sharing is not supported on this device.');
     }
   };
 

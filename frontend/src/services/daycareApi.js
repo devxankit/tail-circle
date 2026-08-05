@@ -9,7 +9,7 @@ import { payWithRazorpay } from './payments';
 function toLegacyDaycare(p) {
   return {
     id: p.legacyId || p._id,
-    _id: p._id,
+    _id: p._id, // real Mongo id — use this for /saved-items, not `id` (may be a legacy display id)
     name: p.name,
     verified: p.verified,
     rating: p.rating,

@@ -4,13 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { cn } from '../../utils/cn';
 
-const initialMarketplacePets = [
-  { id: 'm1', name: 'Muffin', species: 'Dog', breed: 'Samoyed', age: '3 Months', gender: 'Male', price: '45000', vaccinated: 'Fully Vaccinated', img: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=300&q=80', location: 'Delhi NCR', verification: true, cert: 'Verified Health Certificate Approved', seller: 'Aakash Sharma' },
-  { id: 'm2', name: 'Simba', species: 'Cat', breed: 'Persian', age: '6 Months', gender: 'Female', price: '25000', vaccinated: 'Fully Vaccinated', img: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=300&q=80', location: 'Mumbai, Maharashtra', verification: true, cert: 'Feline Registry Certificate Validated', seller: 'Pooja Roy' },
-  { id: 'm3', name: 'Kiwi', species: 'Bird', breed: 'Cockatiel', age: '1 Year', gender: 'Male', price: '6000', vaccinated: 'Not Vaccinated', img: 'https://images.unsplash.com/photo-1522276498395-ce8f5bc14013?auto=format&fit=crop&w=300&q=80', location: 'Bangalore, Karnataka', verification: false, cert: 'General Breeder Record', seller: 'Rohan Sen' },
-  { id: 'm4', name: 'Bella', species: 'Rabbit', breed: 'Angora', age: '8 Months', gender: 'Female', price: '3000', vaccinated: 'Fully Vaccinated', img: 'https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?auto=format&fit=crop&w=300&q=80', location: 'Pune, Maharashtra', verification: true, cert: 'Vaccination Slip Attached', seller: 'Nisha Mehta' }
-];
-
 const initialAdoptionPets = [
   { id: 'a1', name: 'Sheru', species: 'Dog', breed: 'Indie', age: '1.5 Years', gender: 'Male', img: 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=300&q=80', shelter: 'Paws Haven NGO', location: 'Mumbai', desc: 'Rescued from street injury, fully healed and looking for a warm family. Sheru is high-energy and very friendly.' },
   { id: 'a2', name: 'Luna', species: 'Cat', breed: 'Domestic Shorthair', age: '1 Year', gender: 'Female', img: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=300&q=80', shelter: 'Happy Tails Rescue', location: 'Pune', desc: 'Calm, loves cuddles, and matches perfectly with apartments or quiet homes.' }

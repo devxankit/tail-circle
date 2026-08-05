@@ -1,8 +1,10 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { ChevronLeft, SlidersHorizontal, MapPin, Star, Heart, Search, Calendar, Headphones, ArrowRight, X, Check, Plus, Loader2 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getDaycares } from '../../../../../services/daycareApi';
+import { getDaycares, createBooking } from '../../../../../services/daycareApi';
 import { fetchPublicBanners } from '../../../../../services/admin';
+import { fetchMyPets, petAgeText } from '../../../../../services/pets';
+import { api } from '../../../../../services/api';
 import { DaycareFilters } from '../components/DaycareFilters';
 import { useDaycareStore } from '../../../../../store/useDaycareStore';
 
@@ -41,18 +43,30 @@ export function DaycareListing() {
     tom.setDate(tom.getDate() + 1);
     return [tom.toISOString().split('T')[0]];
   });
-  const [selectedPetId, setSelectedPetId] = useState('pet1');
+  const [selectedPetId, setSelectedPetId] = useState('other');
   const [customPetName, setCustomPetName] = useState('');
   const [isPickupChecked, setIsPickupChecked] = useState(false);
   const [isMealsChecked, setIsMealsChecked] = useState(false);
   const [isBookingLoading, setIsBookingLoading] = useState(false);
+  const [bookingError, setBookingError] = useState('');
   const [customBanner, setCustomBanner] = useState('');
+  const [myPets, setMyPets] = useState([]);
 
   // Load the admin-managed daycare banner from the API.
   useEffect(() => {
     fetchPublicBanners()
       .then((rows) => setCustomBanner((rows || []).find((b) => b.key === 'daycare')?.image || ''))
       .catch(() => setCustomBanner(''));
+  }, []);
+
+  // Real pets for the "Choose Pet" picker — was hardcoded Bruno/Luna before.
+  useEffect(() => {
+    fetchMyPets()
+      .then((pets) => {
+        setMyPets(pets);
+        if (pets.length > 0) setSelectedPetId(pets[0]._id);
+      })
+      .catch(() => setMyPets([]));
   }, []);
 
   const getCustomDays = () => {
@@ -99,12 +113,8 @@ export function DaycareListing() {
   const handleConfirmBooking = async () => {
     if (!bookingCenter) return;
     setIsBookingLoading(true);
-    
-    // Simulate booking loading
-    await new Promise(r => setTimeout(r, 1200));
+    setBookingError('');
 
-    const bookingId = `TCG${Math.floor(10000000 + Math.random() * 90000000)}`;
-    
     let planName = 'Day Pass';
     let planUnit = 'day';
     let datesArr = [startDate];
@@ -133,11 +143,11 @@ export function DaycareListing() {
       dateTypeStr = 'Multiple Days';
     }
 
-    const petName = selectedPetId === 'other' ? (customPetName || 'Rocky') : (selectedPetId === 'pet1' ? 'Bruno' : 'Luna');
-    const petBreed = selectedPetId === 'pet1' ? 'Golden Retriever' : (selectedPetId === 'pet2' ? 'Labrador' : 'Mixed Breed');
+    const selectedPet = selectedPetId !== 'other' ? myPets.find((p) => p._id === selectedPetId) : null;
+    const petName = selectedPet ? selectedPet.name : (customPetName || 'My Pet');
+    const petBreed = selectedPet?.breed || 'Mixed Breed';
 
-    const newBooking = {
-      id: bookingId,
+    const bookingPayload = {
       center: {
         id: bookingCenter.id,
         name: bookingCenter.name,
@@ -155,16 +165,17 @@ export function DaycareListing() {
       dropoffTime: '8:00 AM',
       pickupTime: '6:00 PM',
       pet: {
-        id: selectedPetId === 'other' ? 'pet_custom' : selectedPetId,
+        _id: selectedPet?._id,
+        id: selectedPet?._id,
         name: petName,
         breed: petBreed
       },
       petAnswers: {
         breed: petBreed,
-        age: '2 Years',
-        size: 'Medium',
-        gender: 'Male',
-        vaccinated: true,
+        age: selectedPet ? petAgeText(selectedPet) || '—' : '—',
+        size: selectedPet?.size || 'Medium',
+        gender: selectedPet?.gender || '—',
+        vaccinated: selectedPet ? Boolean(selectedPet.health?.vaccinated) : false,
         aggressive: false,
         skinIssues: false,
         separationAnxiety: false,
@@ -176,21 +187,22 @@ export function DaycareListing() {
       ],
       totalPrice: totalPrice,
       totalPaid: totalPrice,
-      status: 'Confirmed',
-      createdAt: new Date().toISOString()
+      // Pay-later keeps this a single-tap flow (matches the existing UI, no
+      // payment-method picker here) while still creating a real booking —
+      // same mechanism grooming/PriceSummary.jsx's "COD" option uses.
+      paymentMethod: 'Cash',
     };
 
     try {
-      const existing = JSON.parse(localStorage.getItem('daycareBookings') || '[]');
-      localStorage.setItem('daycareBookings', JSON.stringify([newBooking, ...existing]));
-      setLastConfirmedBooking(newBooking);
-    } catch (e) {
-      console.error(e);
+      const confirmed = await createBooking(bookingPayload);
+      setLastConfirmedBooking(confirmed);
+      setIsBookingOpen(false);
+      navigate('/app/services/daycare/book/success');
+    } catch (err) {
+      setBookingError(err?.response?.data?.message || 'Could not complete the booking. Please try again.');
+    } finally {
+      setIsBookingLoading(false);
     }
-
-    setIsBookingLoading(false);
-    setIsBookingOpen(false);
-    navigate('/app/services/daycare/book/success');
   };
 
   const [daycares, setDaycares] = useState([]);
@@ -202,14 +214,17 @@ export function DaycareListing() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Heart state (saved)
-  const [savedDaycares, setSavedDaycares] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('savedDaycares') || '[]');
-    } catch {
-      return [];
-    }
-  });
+  // Heart state (saved) — real wishlist via /saved-items (targetType 'provider'),
+  // shared with every other "save" heart in the app instead of a local-only list.
+  const [savedDaycares, setSavedDaycares] = useState([]);
+
+  useEffect(() => {
+    api.get('/saved-items')
+      .then(({ data }) => setSavedDaycares(
+        data.filter((s) => s.targetType === 'provider').map((s) => String(s.targetId))
+      ))
+      .catch(() => setSavedDaycares([]));
+  }, []);
 
   useEffect(() => {
     loadDaycares();
@@ -249,14 +264,13 @@ export function DaycareListing() {
 
   const toggleSave = (e, id) => {
     e.stopPropagation();
-    let updated;
-    if (savedDaycares.includes(id)) {
-      updated = savedDaycares.filter(x => x !== id);
-    } else {
-      updated = [...savedDaycares, id];
-    }
-    setSavedDaycares(updated);
-    localStorage.setItem('savedDaycares', JSON.stringify(updated));
+    if (!id) return;
+    const alreadySaved = savedDaycares.includes(id);
+    setSavedDaycares(alreadySaved ? savedDaycares.filter((x) => x !== id) : [...savedDaycares, id]);
+    const call = alreadySaved
+      ? api.delete('/saved-items', { body: { targetType: 'provider', targetId: id } })
+      : api.post('/saved-items', { targetType: 'provider', targetId: id });
+    call.catch(() => setSavedDaycares(savedDaycares)); // revert on failure
   };
 
   // Helper to map facilities to standard icons/emojis
@@ -453,15 +467,15 @@ export function DaycareListing() {
                         </div>
                       )}
                       {/* Heart Button */}
-                      <button 
-                        onClick={(e) => toggleSave(e, center.id)}
+                      <button
+                        onClick={(e) => toggleSave(e, center._id)}
                         className="absolute top-2.5 right-2.5 w-7 h-7 bg-white/95 backdrop-blur-sm rounded-full flex items-center justify-center shadow-sm hover:scale-105 active:scale-90 transition-all z-10 cursor-pointer"
                       >
-                        <Heart 
-                          size={13} 
+                        <Heart
+                          size={13}
                           className={`transition-colors ${
-                            savedDaycares.includes(center.id) 
-                              ? 'fill-red-500 text-red-500' 
+                            savedDaycares.includes(center._id)
+                              ? 'fill-red-500 text-red-500'
                               : 'text-gray-400'
                           }`} 
                         />
@@ -756,10 +770,9 @@ export function DaycareListing() {
               {/* Choose Pet */}
               <div>
                 <label className="text-[12.5px] font-bold text-gray-800 block mb-2">Choose Pet</label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {[
-                    { id: 'pet1', name: 'Bruno' },
-                    { id: 'pet2', name: 'Luna' },
+                    ...myPets.map((p) => ({ id: p._id, name: p.name })),
                     { id: 'other', name: 'Other Pet' }
                   ].map(p => {
                     const isSel = selectedPetId === p.id;
@@ -862,7 +875,10 @@ export function DaycareListing() {
               </div>
 
               {/* Action Button */}
-              <button 
+              {bookingError && (
+                <p className="text-[12px] font-bold text-rose-500 text-center -mb-1">{bookingError}</p>
+              )}
+              <button
                 onClick={handleConfirmBooking}
                 disabled={isBookingLoading || (selectedPetId === 'other' && !customPetName.trim())}
                 className="w-full py-4 mt-2 rounded-[18px] font-black text-[15px] text-white bg-[#66B4B1] shadow-lg shadow-[#66B4B1]/20 hover:bg-[#599D9A] active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none"

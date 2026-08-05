@@ -8,9 +8,17 @@ import { ApiError } from '../../utils/ApiError.js';
 import { emitToUser } from '../../sockets/index.js';
 import { SOCKET_EVENTS } from '../../sockets/events.js';
 import { notify } from '../../services/notify.js';
-import { MatchProfile, Swipe, Match, Conversation, Message, Story } from './social.models.js';
+import { MatchProfile, Swipe, Match, Conversation, Message, Story, StoryView, ProfileReport } from './social.models.js';
 import { AdoptionListing } from '../adoption/adoption.models.js';
-import { ensureConversation, getOwnedConversation, sendMessage } from './chat.service.js';
+import {
+  ensureConversation,
+  getOwnedConversation,
+  sendMessage,
+  getConversationPresence,
+  setConversationMuted,
+  clearConversationForUser,
+  reportAndBlockConversation,
+} from './chat.service.js';
 
 import { getMatchDeck, processSwipe, MATCH_ENGINE_CONFIG, updateEngineConfig } from './matchEngine.service.js';
 
@@ -59,6 +67,23 @@ matchRouter.post(
   })
 );
 
+/** POST /matches/:profileId/report — real "Report {name}"; also passes them permanently. */
+matchRouter.post(
+  '/:profileId/report',
+  validate(z.object({ reason: z.string().trim().max(500).default('') })),
+  asyncHandler(async (req, res) => {
+    const { profileId } = req.params;
+    if (!/^[0-9a-fA-F]{24}$/.test(profileId)) throw ApiError.badRequest('Invalid profile id');
+    await ProfileReport.create({ profileId, reporterId: req.user.id, reason: req.body.reason });
+    await Swipe.updateOne(
+      { userId: req.user.id, profileId },
+      { $set: { action: 'pass' } },
+      { upsert: true }
+    );
+    sendSuccess(res, { statusCode: 201, message: 'Profile reported' });
+  })
+);
+
 /** GET /matches — my matches. */
 matchRouter.get(
   '/',
@@ -75,15 +100,44 @@ matchRouter.get(
 export const chatRouter = Router();
 chatRouter.use(authenticate);
 
-/** GET /chat/conversations */
+/** GET /chat/conversations — includes each conversation's real unread count for me. */
 chatRouter.get(
   '/conversations',
   asyncHandler(async (req, res) => {
-    const conversations = await Conversation.find({ participants: req.user.id }).sort({
-      lastMessageAt: -1,
-      updatedAt: -1,
+    const conversations = await Conversation.find({
+      participants: req.user.id,
+      blockedBy: { $ne: req.user.id },
+    }).sort({ lastMessageAt: -1, updatedAt: -1 });
+    const data = conversations.map((c) => {
+      const obj = c.toJSON();
+      obj.unreadCount = c.unread?.get(String(req.user.id)) || 0;
+      obj.muted = c.mutedBy.some((id) => String(id) === String(req.user.id));
+      return obj;
     });
-    sendSuccess(res, { data: conversations });
+    sendSuccess(res, { data });
+  })
+);
+
+/** GET /chat/conversations/:id — one conversation, incl. real unreadCount/muted. */
+chatRouter.get(
+  '/conversations/:id',
+  asyncHandler(async (req, res) => {
+    const conversation = await getOwnedConversation(req.user.id, req.params.id);
+    const obj = conversation.toJSON();
+    obj.unreadCount = conversation.unread.get(String(req.user.id)) || 0;
+    obj.muted = conversation.mutedBy.some((id) => String(id) === String(req.user.id));
+    sendSuccess(res, { data: obj });
+  })
+);
+
+/** POST /chat/conversations/:id/read — clears my unread count on open. */
+chatRouter.post(
+  '/conversations/:id/read',
+  asyncHandler(async (req, res) => {
+    const conversation = await getOwnedConversation(req.user.id, req.params.id);
+    conversation.unread.set(String(req.user.id), 0);
+    await conversation.save();
+    sendSuccess(res, { data: { unreadCount: 0 } });
   })
 );
 
@@ -116,14 +170,15 @@ chatRouter.post(
   })
 );
 
-/** GET /chat/conversations/:id/messages — history from the Mongo mirror. */
+/** GET /chat/conversations/:id/messages — history from the Mongo mirror, minus anything I've "cleared". */
 chatRouter.get(
   '/conversations/:id/messages',
   asyncHandler(async (req, res) => {
-    await getOwnedConversation(req.user.id, req.params.id);
-    const messages = await Message.find({ conversationId: req.params.id })
-      .sort({ createdAt: 1 })
-      .limit(200);
+    const conversation = await getOwnedConversation(req.user.id, req.params.id);
+    const clearedAt = conversation.clearedAt.get(String(req.user.id));
+    const query = { conversationId: req.params.id };
+    if (clearedAt) query.createdAt = { $gt: clearedAt };
+    const messages = await Message.find(query).sort({ createdAt: 1 }).limit(200);
     sendSuccess(res, { data: messages });
   })
 );
@@ -133,15 +188,58 @@ chatRouter.post(
   '/conversations/:id/messages',
   validate(
     z.object({
-      type: z.enum(['text', 'image']).default('text'),
+      type: z.enum(['text', 'image', 'location']).default('text'),
       text: z.string().trim().max(2000).default(''),
       mediaUrl: z.string().max(1_000_000).nullable().optional(),
+      meta: z
+        .object({ lat: z.number(), lng: z.number() })
+        .nullable()
+        .optional(),
     })
   ),
   asyncHandler(async (req, res) => {
     if (req.body.type === 'text' && !req.body.text) throw ApiError.badRequest('Message is empty');
+    if (req.body.type === 'location' && !req.body.meta) throw ApiError.badRequest('Location coordinates required');
     const message = await sendMessage(req.user, req.params.id, req.body);
     sendSuccess(res, { statusCode: 201, data: message });
+  })
+);
+
+/** POST /chat/conversations/:id/mute — real "Mute Notifications" toggle. */
+chatRouter.post(
+  '/conversations/:id/mute',
+  validate(z.object({ muted: z.boolean() })),
+  asyncHandler(async (req, res) => {
+    const result = await setConversationMuted(req.user.id, req.params.id, req.body.muted);
+    sendSuccess(res, { data: result });
+  })
+);
+
+/** POST /chat/conversations/:id/clear — real "Clear Chat" (hides history for me only). */
+chatRouter.post(
+  '/conversations/:id/clear',
+  asyncHandler(async (req, res) => {
+    const result = await clearConversationForUser(req.user.id, req.params.id);
+    sendSuccess(res, { data: result });
+  })
+);
+
+/** POST /chat/conversations/:id/report — real "Report / Block". */
+chatRouter.post(
+  '/conversations/:id/report',
+  validate(z.object({ reason: z.string().trim().max(500).default('') })),
+  asyncHandler(async (req, res) => {
+    const result = await reportAndBlockConversation(req.user.id, req.params.id, req.body.reason);
+    sendSuccess(res, { data: result });
+  })
+);
+
+/** GET /chat/conversations/:id/presence — real online/last-seen for the header. */
+chatRouter.get(
+  '/conversations/:id/presence',
+  asyncHandler(async (req, res) => {
+    const presence = await getConversationPresence(req.user.id, req.params.id);
+    sendSuccess(res, { data: presence });
   })
 );
 
@@ -150,14 +248,53 @@ chatRouter.post(
 export const storyRouter = Router();
 storyRouter.use(authenticate);
 
-/** GET /stories — active stories (mine + others). */
+/** GET /stories — active stories (mine + others), flagged with whether I've viewed each. */
 storyRouter.get(
   '/',
   asyncHandler(async (req, res) => {
     const stories = await Story.find({ expiresAt: { $gt: new Date() } })
       .sort({ createdAt: -1 })
-      .limit(50);
-    sendSuccess(res, { data: stories });
+      .limit(50)
+      .lean();
+    const viewedIds = await StoryView.find({
+      viewerId: req.user.id,
+      storyId: { $in: stories.map((s) => s._id) },
+    }).distinct('storyId');
+    const viewedSet = new Set(viewedIds.map(String));
+    const data = stories.map((s) => ({
+      ...s,
+      viewed: viewedSet.has(String(s._id)) || String(s.userId) === String(req.user.id),
+    }));
+    sendSuccess(res, { data });
+  })
+);
+
+/** POST /stories/:id/view — record that I watched someone else's story. */
+storyRouter.post(
+  '/:id/view',
+  asyncHandler(async (req, res) => {
+    const story = await Story.findById(req.params.id);
+    if (!story) throw ApiError.notFound('Story not found');
+    if (String(story.userId) !== String(req.user.id)) {
+      await StoryView.updateOne(
+        { storyId: story.id, viewerId: req.user.id },
+        { $setOnInsert: { viewerName: req.user.name || 'Pet Parent', viewerAvatar: req.user.avatarUrl || null } },
+        { upsert: true }
+      );
+    }
+    sendSuccess(res, { data: { ok: true } });
+  })
+);
+
+/** GET /stories/:id/viewers — real "Viewed By" list; story owner only. */
+storyRouter.get(
+  '/:id/viewers',
+  asyncHandler(async (req, res) => {
+    const story = await Story.findById(req.params.id);
+    if (!story) throw ApiError.notFound('Story not found');
+    if (String(story.userId) !== String(req.user.id)) throw ApiError.forbidden('Not your story');
+    const viewers = await StoryView.find({ storyId: story.id }).sort({ createdAt: -1 });
+    sendSuccess(res, { data: viewers });
   })
 );
 

@@ -301,6 +301,7 @@ const serializeBanner = (b) => ({
   slot: b.slot,
   btnText: b.btnText || '',
   bg: b.bg || '',
+  badge: b.badge || '',
   active: b.active,
   sort: b.sort,
 });
@@ -325,6 +326,7 @@ export async function createBanner(actor, body, ip) {
     slot: body.slot || 'Home Hero',
     btnText: body.btnText || '',
     bg: body.bg || '',
+    badge: body.badge || '',
     active: body.active !== false,
     sort: body.sort || 0,
   });
@@ -337,7 +339,7 @@ export async function updateBanner(actor, id, patch, ip) {
   const b = await Banner.findById(id);
   if (!b) throw ApiError.notFound('Banner not found');
   const before = serializeBanner(b);
-  for (const k of ['key', 'title', 'subtitle', 'image', 'link', 'slot', 'btnText', 'bg', 'active', 'sort']) {
+  for (const k of ['key', 'title', 'subtitle', 'image', 'link', 'slot', 'btnText', 'bg', 'badge', 'active', 'sort']) {
     if (patch[k] !== undefined) b[k] = patch[k];
   }
   await b.save();

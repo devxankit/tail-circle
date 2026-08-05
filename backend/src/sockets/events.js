@@ -11,6 +11,7 @@ export const SOCKET_EVENTS = {
   WALLET_UPDATED: 'wallet:updated',
   CHAT_MESSAGE_NEW: 'chat:message:new',
   CHAT_CONVERSATION_UPDATED: 'chat:conversation:updated',
+  PRESENCE_UPDATE: 'presence:update',
 
   // Client → server
   JOIN_ROOM: 'room:join',
@@ -23,4 +24,8 @@ export const rooms = {
   vendor: (vendorId) => `vendor:${vendorId}`,
   admins: () => 'admins',
   conversation: (conversationId) => `conversation:${conversationId}`,
+  // Every authenticated socket joins this — the cheapest way to fan out
+  // online/offline flips to whoever happens to have someone's chat open,
+  // without the server tracking who's watching whom.
+  presence: () => 'presence:all',
 };

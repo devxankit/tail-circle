@@ -3,7 +3,13 @@ import { Search, ChevronLeft, MoreVertical, Heart, MessageCircle, Plus, X, Eye, 
 import { useNavigate } from 'react-router-dom';
 import { cn } from '../../utils/cn';
 import { StoryCamera } from './StoryCamera';
-import { fetchConversations, fetchMatches, fetchStories, publishStory } from '../../../../services/social';
+import {
+  fetchConversations,
+  fetchMatches,
+  fetchStories,
+  publishStory,
+  fetchStoryViewers,
+} from '../../../../services/social';
 
 const chatTime = (iso) => {
   if (!iso) return '';
@@ -14,13 +20,22 @@ const chatTime = (iso) => {
   return date.toLocaleDateString([], { weekday: 'short' });
 };
 
+const storyAge = (iso) => {
+  if (!iso) return '';
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'now';
+  if (mins < 60) return `${mins}m`;
+  return `${Math.floor(mins / 60)}h`;
+};
+
 export function ChatList({ setView }) {
   const navigate = useNavigate();
 
   const [activeStory, setActiveStory] = useState(null);
-  const [myStory, setMyStory] = useState(null);
+  const [myStory, setMyStory] = useState(null); // { id, mediaUrl, createdAt } | null
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [showViewers, setShowViewers] = useState(false);
+  const [viewers, setViewers] = useState([]); // real "Viewed By" list for myStory
 
   useEffect(() => {
     let timer;
@@ -32,47 +47,52 @@ export function ChatList({ setView }) {
     return () => clearTimeout(timer);
   }, [activeStory]);
 
-  // Story circles = my matches; active stories layered on top.
+  // Story circles = my matches; ring lights up when that match's chat has
+  // real unread messages waiting, not a hardcoded flag.
   const [stories, setStories] = useState([]);
   const [chats, setChats] = useState([]);
 
   useEffect(() => {
-    fetchMatches()
-      .then((matches) =>
+    Promise.all([fetchMatches(), fetchConversations()])
+      .then(([matches, conversations]) => {
+        const unreadByConversation = new Map(
+          conversations.map((c) => [String(c._id), c.unreadCount || 0])
+        );
         setStories(
           matches.map((m) => ({
             id: m._id,
             name: m.profileId?.name || 'Match',
             img: m.profileId?.img || '',
-            hasUnseen: false,
+            hasUnseen: (unreadByConversation.get(String(m.conversationId)) || 0) > 0,
           }))
-        )
-      )
-      .catch(() => setStories([]));
-    Promise.all([
-      fetchStories(),
-      import('../../../../services/auth').then((m) => m.getStoredUser()),
-    ])
-      .then(([active, me]) => {
-        const mine = active.find((s) => String(s.userId) === String(me?._id || me?.id));
-        if (mine) setMyStory(mine.mediaUrl);
-      })
-      .catch(() => {});
-    fetchConversations()
-      .then((conversations) =>
+        );
         setChats(
           conversations.map((c) => ({
             conversationId: c._id,
             name: c.counterpart?.name || 'Chat',
             msg: c.lastMessage || 'Say hi! 👋',
             time: chatTime(c.lastMessageAt),
-            unread: 0,
+            unread: c.unreadCount || 0,
             img: c.counterpart?.image || '',
           }))
-        )
-      )
-      .catch(() => setChats([]));
+        );
+      })
+      .catch(() => {
+        setStories([]);
+        setChats([]);
+      });
+    Promise.all([
+      fetchStories(),
+      import('../../../../services/auth').then((m) => m.getStoredUser()),
+    ])
+      .then(([active, me]) => {
+        const mine = active.find((s) => String(s.userId) === String(me?._id || me?.id));
+        if (mine) setMyStory({ id: mine._id, mediaUrl: mine.mediaUrl, createdAt: mine.createdAt });
+      })
+      .catch(() => {});
   }, []);
+
+  const totalUnread = chats.reduce((sum, c) => sum + (c.unread || 0), 0);
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -95,7 +115,9 @@ export function ChatList({ setView }) {
               className="w-9 h-9 rounded-full bg-primary-main flex items-center justify-center text-white hover:bg-primary-dark transition-colors shadow-inner relative"
             >
               <MessageCircle size={18} strokeWidth={2} />
-              <span className="absolute top-[6px] right-[6px] w-2 h-2 bg-error rounded-full border border-white"></span>
+              {totalUnread > 0 && (
+                <span className="absolute top-[6px] right-[6px] w-2 h-2 bg-error rounded-full border border-white"></span>
+              )}
             </button>
           </div>
         </div>
@@ -107,10 +129,12 @@ export function ChatList({ setView }) {
         <div className="flex overflow-x-auto hide-scrollbar px-4 gap-4">
           
           {/* Add Your Story */}
-          <div 
+          <div
             onClick={() => {
               if (myStory) {
-                setActiveStory({ id: 'mine', name: 'Your Story', img: myStory, isMine: true });
+                setActiveStory({ id: myStory.id, name: 'Your Story', img: myStory.mediaUrl, createdAt: myStory.createdAt, isMine: true });
+                setViewers([]);
+                fetchStoryViewers(myStory.id).then(setViewers).catch(() => setViewers([]));
               } else {
                 setIsCameraOpen(true);
               }
@@ -119,7 +143,7 @@ export function ChatList({ setView }) {
           >
             <div className="w-16 h-16 rounded-full relative">
               <div className={cn("w-full h-full rounded-full overflow-hidden border-2 transition-all", myStory ? "border-primary-main p-[2px]" : "border-transparent bg-bg-secondary")}>
-                <img src={myStory || "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=100&q=80"} alt="Your Story" className={cn("w-full h-full object-cover rounded-full", !myStory && "opacity-80")} />
+                <img src={myStory?.mediaUrl || "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=100&q=80"} alt="Your Story" className={cn("w-full h-full object-cover rounded-full", !myStory && "opacity-80")} />
               </div>
               {!myStory && (
                 <div className="absolute bottom-0 right-0 bg-primary-main w-5 h-5 rounded-full border-2 border-white flex items-center justify-center text-white shadow-sm">
@@ -195,10 +219,10 @@ export function ChatList({ setView }) {
           <div className="absolute top-8 left-4 right-4 flex justify-between items-center z-20">
             <div className="flex items-center gap-2">
               <div className="w-10 h-10 rounded-full border-2 border-white/50 overflow-hidden bg-bg-secondary">
-                <img src={activeStory.id === 'mine' ? "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=100&q=80" : activeStory.img} alt="avatar" className="w-full h-full object-cover" />
+                <img src={activeStory.isMine ? "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=100&q=80" : activeStory.img} alt="avatar" className="w-full h-full object-cover" />
               </div>
               <span className="text-white font-bold drop-shadow-md">{activeStory.name}</span>
-              <span className="text-white/70 text-xs ml-2">2h</span>
+              {activeStory.createdAt && <span className="text-white/70 text-xs ml-2">{storyAge(activeStory.createdAt)}</span>}
             </div>
             <button onClick={() => { setActiveStory(null); setShowViewers(false); }} className="text-white hover:text-gray-300 p-2"><X size={28} /></button>
           </div>
@@ -213,28 +237,37 @@ export function ChatList({ setView }) {
           {/* Footer actions */}
           {activeStory.isMine ? (
             <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex flex-col items-center z-20">
-              <button 
-                onClick={() => setShowViewers(!showViewers)} 
+              <button
+                onClick={() => setShowViewers(!showViewers)}
                 className="text-white flex flex-col items-center gap-1 hover:text-primary-main transition-colors mb-2"
               >
                 <ChevronUp size={24} className={showViewers ? "rotate-180 transition-transform" : "transition-transform"} />
-                <span className="text-sm font-bold flex items-center gap-2"><Eye size={16} /> 42 Viewers</span>
+                <span className="text-sm font-bold flex items-center gap-2"><Eye size={16} /> {viewers.length} {viewers.length === 1 ? 'Viewer' : 'Viewers'}</span>
               </button>
-              
+
               {showViewers && (
                 <div className="w-full bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-4 mt-2 animate-in slide-in-from-bottom-4 duration-300">
                   <h4 className="text-white text-sm font-bold mb-4">Viewed By</h4>
-                  <div className="flex flex-col gap-3 max-h-48 overflow-y-auto hide-scrollbar">
-                    {['Luna', 'Charlie', 'Max', 'Bella'].map((viewer, i) => (
-                      <div key={i} className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full overflow-hidden bg-bg-secondary border border-white/20">
-                          <img src={`https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=100&q=80&sig=${i+20}`} className="w-full h-full object-cover" />
+                  {viewers.length === 0 ? (
+                    <p className="text-white/60 text-sm text-center py-2">No views yet</p>
+                  ) : (
+                    <div className="flex flex-col gap-3 max-h-48 overflow-y-auto hide-scrollbar">
+                      {viewers.map((v) => (
+                        <div key={v._id} className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full overflow-hidden bg-bg-secondary border border-white/20">
+                            {v.viewerAvatar ? (
+                              <img src={v.viewerAvatar} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-primary-main/30 text-white text-xs font-bold">
+                                {(v.viewerName || '?')[0]}
+                              </div>
+                            )}
+                          </div>
+                          <span className="text-white font-medium text-sm">{v.viewerName || 'Pet Parent'}</span>
                         </div>
-                        <span className="text-white font-medium text-sm">{viewer}</span>
-                        <button className="ml-auto text-white/50 hover:text-white"><Heart size={16} /></button>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

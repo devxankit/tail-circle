@@ -59,6 +59,9 @@ const userSchema = new Schema(
     isPhoneVerified: { type: Boolean, default: false },
     isBlocked: { type: Boolean, default: false },
     lastLoginAt: { type: Date },
+    // Updated when a user's last active socket disconnects — powers real
+    // "Online" / "Last seen" presence instead of a hardcoded chat label.
+    lastSeenAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

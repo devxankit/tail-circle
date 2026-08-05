@@ -168,3 +168,10 @@ export async function updateBookingStatus(id, status) {
   const { data } = await api.post(`/bookings/${booking._id}/cancel`);
   return toLegacyGroomingBooking(data);
 }
+
+/** Real reschedule — was a localStorage-only rewrite before. */
+export async function rescheduleBooking(id, date, timeSlot) {
+  const booking = await getBookingById(id);
+  const { data } = await api.post(`/bookings/${booking._id}/reschedule`, { date: toYMD(date), time: timeSlot });
+  return toLegacyGroomingBooking(data);
+}

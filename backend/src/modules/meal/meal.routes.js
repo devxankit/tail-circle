@@ -11,7 +11,13 @@ import * as mealService from './meal.service.js';
 const router = Router();
 
 const linesSchema = z
-  .array(z.object({ mealId: z.string().max(20), qty: z.number().int().min(1).max(20) }))
+  .array(
+    z.object({
+      mealId: z.string().max(20),
+      qty: z.number().int().min(1).max(20),
+      customisationId: z.string().max(20).optional(),
+    })
+  )
   .min(1)
   .max(20);
 

@@ -5,6 +5,18 @@ import { DashboardHeader } from './DashboardHeader';
 import { Card } from '../../components/ui/Card';
 import { fetchPublicBanners } from '../../../../services/admin';
 
+// Cosmetic style presets, cycled by index over real API content — kept out
+// of the component so effects that use them don't need them as a dep.
+const OFFER_STYLES = [
+  { bg: 'from-[#FEF4F3] to-[#FEF4F3]', textColor: 'text-[#F87B68]', badgeColor: 'bg-[#F87B68]' },
+  { bg: 'from-[#EFF7F7] to-[#EFF7F7]', textColor: 'text-[#66B4B1]', badgeColor: 'bg-[#66B4B1]' },
+];
+const BESTSELLER_STYLES = [
+  { badgeBg: 'bg-[#66B4B1]', circleBg: 'bg-[#FAF7F2]' },
+  { badgeBg: 'bg-[#F87B68]', circleBg: 'bg-[#FAF7F2]' },
+  { badgeBg: 'bg-[#66B4B1]', circleBg: 'bg-[#FAF7F2]' },
+];
+
 export function Home() {
   const navigate = useNavigate();
   const carouselRef = useRef(null);
@@ -13,10 +25,7 @@ export function Home() {
   const heroCarouselRef = useRef(null);
   const [isPaused, setIsPaused] = useState(false);
   const [showAllServices, setShowAllServices] = useState(false);
-  const [likedPlaydates, setLikedPlaydates] = useState({});
   const [likedProducts, setLikedProducts] = useState({});
-  const [showMemorialModal, setShowMemorialModal] = useState(false);
-  const [submissionSuccess, setSubmissionSuccess] = useState(false);
   const [matchSlideIndex, setMatchSlideIndex] = useState(0);
   const [heroSlideIndex, setHeroSlideIndex] = useState(0);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
@@ -58,13 +67,6 @@ export function Home() {
     }, 4000);
     return () => clearInterval(timer);
   }, [matchCarouselSlides.length]);
-
-  const toggleLikePlaydate = (id) => {
-    setLikedPlaydates(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }));
-  };
 
   const toggleLikeProduct = (id) => {
     setLikedProducts(prev => ({
@@ -149,262 +151,105 @@ export function Home() {
     { name: 'Adopt', image: '/assets/quick_links/adopt.png', path: '/app/adopt' },
   ];
 
-  const playdates = [
-    {
-      id: 1,
-      name: "Bella",
-      gender: "female",
-      rating: "4.8",
-      distance: "2.4 km away",
-      image: "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?auto=format&fit=crop&w=400&q=80",
-      bg: "bg-[#FAF7F2]",
-      badgeBg: "bg-[#599D9A]",
-      buttonBg: "bg-[#599D9A] hover:bg-[#599D9A] shadow-[#599D9A]/20",
-      tags: [
-        { text: "Friendly", bg: "bg-[#FAF7F2] text-[#599D9A]", icon: "paw" },
-        { text: "Loves to play", bg: "bg-[#FAF7F2] text-[#F87B68]", icon: "ball" }
-      ]
-    },
-    {
-      id: 2,
-      name: "Rocky",
-      gender: "male",
-      rating: "4.9",
-      distance: "1.2 km away",
-      image: "https://images.unsplash.com/photo-1518020382113-a7e8fc38eac9?auto=format&fit=crop&w=400&q=80",
-      bg: "bg-[#FCEAE7]",
-      badgeBg: "bg-[#F87B68]",
-      buttonBg: "bg-[#599D9A] hover:bg-[#599D9A] shadow-[#599D9A]/20",
-      tags: [
-        { text: "Playful", bg: "bg-[#FAF7F2] text-[#599D9A]", icon: "paw" },
-        { text: "Good with dogs", bg: "bg-[#FAF7F2] text-[#F87B68]", icon: "dog" }
-      ]
-    },
-    {
-      id: 3,
-      name: "Luna",
-      gender: "female",
-      rating: "4.7",
-      distance: "3.8 km away",
-      image: "https://images.unsplash.com/photo-1517423738875-5ce310acd3da?auto=format&fit=crop&w=400&q=80",
-      bg: "bg-[#BFE0DF]",
-      badgeBg: "bg-[#66B4B1]",
-      buttonBg: "bg-[#599D9A] hover:bg-[#599D9A] shadow-[#599D9A]/20",
-      tags: [
-        { text: "Gentle", bg: "bg-[#FAF7F2] text-[#599D9A]", icon: "paw" },
-        { text: "Shy at first", bg: "bg-[#FAF7F2] text-[#F87B68]", icon: "heart" }
-      ]
-    }
-  ];
+  // Upcoming events — real GET /events (same data EventList.jsx books against).
+  const [upcomingEvents, setUpcomingEvents] = useState([]);
+  useEffect(() => {
+    import('../../../../services/api').then(({ api }) =>
+      api.get('/events').then(({ data }) =>
+        setUpcomingEvents(
+          data.slice(0, 3).map((e) => ({
+            id: e.legacyId ?? e._id,
+            title: e.title,
+            location: e.location,
+            date: e.dateDay,
+            month: e.monthText,
+            going: e.going,
+            image: e.img,
+            avatars: e.avatars || [],
+          }))
+        )
+      ).catch(() => {})
+    );
+  }, []);
 
-  const upcomingEvents = [
-    {
-      id: 1,
-      title: "Dog Birthday Party",
-      location: "Happy Paws Cafe",
-      date: "25",
-      month: "JUN",
-      going: 12,
-      image: "/assets/events/event_birthday.png",
-      avatars: [
-        "https://randomuser.me/api/portraits/men/32.jpg",
-        "https://randomuser.me/api/portraits/women/44.jpg",
-        "https://randomuser.me/api/portraits/men/46.jpg"
-      ]
-    },
-    {
-      id: 2,
-      title: "Summer Pool Party",
-      location: "Wagging Tails Resort",
-      date: "28",
-      month: "JUN",
-      going: 24,
-      image: "/assets/events/event_pool.png",
-      avatars: [
-        "https://randomuser.me/api/portraits/women/65.jpg",
-        "https://randomuser.me/api/portraits/men/55.jpg",
-        "https://randomuser.me/api/portraits/women/33.jpg"
-      ]
-    },
-    {
-      id: 3,
-      title: "Pet Fashion Show",
-      location: "Brilliant Convention Center",
-      date: "02",
-      month: "JUL",
-      going: 15,
-      image: "/assets/events/event_fashion.png",
-      avatars: [
-        "https://randomuser.me/api/portraits/men/22.jpg",
-        "https://randomuser.me/api/portraits/women/12.jpg",
-        "https://randomuser.me/api/portraits/men/34.jpg"
-      ]
-    }
-  ];
-
-  const specialOffers = [
-    {
-      id: 1,
-      discount: "20% OFF",
-      title: "Premium Grooming",
-      desc: "Give your pet the best care they deserve.",
-      btnText: "Book Now",
-      image: "/assets/offers/offer_grooming.png",
-      bg: "from-[#FEF4F3] to-[#FEF4F3]",
-      textColor: "text-[#F87B68]",
-      badgeColor: "bg-[#F87B68]",
-      btnColor: "bg-[#F87B68]"
-    },
-    {
-      id: 2,
-      discount: "30% OFF",
-      title: "Fresh Meals",
-      desc: "Healthy, fresh meals delivered to your door.",
-      btnText: "Subscribe",
-      image: "/assets/offers/offer_food.png",
-      bg: "from-[#EFF7F7] to-[#EFF7F7]",
-      textColor: "text-[#66B4B1]",
-      badgeColor: "bg-[#66B4B1]",
-      btnColor: "bg-[#66B4B1]"
-    },
-    {
-      id: 3,
-      discount: "FREE",
-      title: "Vet Checkup",
-      desc: "First consultation is absolutely free.",
-      btnText: "Claim Now",
-      image: "/assets/offers/offer_vet.png",
-      bg: "from-[#EFF7F7] to-[#EFF7F7]",
-      textColor: "text-[#66B4B1]",
-      badgeColor: "bg-[#66B4B1]",
-      btnColor: "bg-[#66B4B1]"
-    },
-    {
-      id: 4,
-      discount: "50% OFF",
-      title: "Toys Clearance",
-      desc: "Huge discounts on premium toys & accessories.",
-      btnText: "Shop Now",
-      image: "/assets/offers/offer_toys.png",
-      bg: "from-[#EFF7F7] to-[#EFF7F7]",
-      textColor: "text-[#66B4B1]",
-      badgeColor: "bg-[#66B4B1]",
-      btnColor: "bg-[#66B4B1]"
-    }
-  ];
-
+  // Special offers — real Banner rows (slot 'Home Offers'); only content
+  // (title/desc/badge/image/link) is data, the two-tone styling is cosmetic
+  // and cycles from OFFER_STYLES same as it always did.
+  const [specialOffers, setSpecialOffers] = useState([]);
+  useEffect(() => {
+    fetchPublicBanners()
+      .then((rows) => {
+        const offers = (rows || []).filter((b) => b.slot === 'Home Offers');
+        setSpecialOffers(
+          offers.map((b, i) => ({
+            id: b.id,
+            discount: b.badge || '',
+            title: b.title,
+            desc: b.subtitle,
+            btnText: b.btnText || 'View',
+            image: b.image,
+            path: b.link || '/app/shop',
+            ...OFFER_STYLES[i % OFFER_STYLES.length],
+          }))
+        );
+      })
+      .catch(() => setSpecialOffers([]));
+  }, []);
   // Repeat special offers for seamless infinite scroll illusion
-  const displaySpecialOffers = [...specialOffers, ...specialOffers, ...specialOffers, ...specialOffers, ...specialOffers];
+  const displaySpecialOffers = specialOffers.length
+    ? [...specialOffers, ...specialOffers, ...specialOffers, ...specialOffers, ...specialOffers]
+    : [];
 
-  const bestSellers = [
-    {
-      id: 1,
-      badgeText: "#1 BEST SELLER",
-      badgeBg: "bg-[#66B4B1]",
-      brand: "Royal Canin",
-      desc: "Puppy Medium",
-      rating: "4.8",
-      reviews: "1.2K",
-      price: "₹2,199",
-      originalPrice: "₹2,699",
-      discount: "18% OFF",
-      image: "/assets/products/royal_canin_custom.png",
-      circleBg: "bg-[#FAF7F2]",
-      tags: [
-        { text: "Puppy", bg: "bg-[#FAF7F2] text-[#66B4B1]", icon: "dog" },
-        { text: "Medium Breed", bg: "bg-[#FAF7F2] text-[#66B4B1]", icon: "paw" }
-      ]
-    },
-    {
-      id: 2,
-      badgeText: "#2 BEST SELLER",
-      badgeBg: "bg-[#F87B68]",
-      brand: "Pedigree",
-      desc: "Adult Dog Food",
-      rating: "4.7",
-      reviews: "980",
-      price: "₹789",
-      originalPrice: "₹999",
-      discount: "21% OFF",
-      image: "/assets/products/pedigree_custom.png",
-      circleBg: "bg-[#FAF7F2]",
-      tags: [
-        { text: "Adult", bg: "bg-[#FAF7F2] text-[#F87B68]", icon: "dog" },
-        { text: "All Breeds", bg: "bg-[#FAF7F2] text-[#F87B68]", icon: "paw" }
-      ]
-    },
-    {
-      id: 3,
-      badgeText: "#3 BEST SELLER",
-      badgeBg: "bg-[#66B4B1]",
-      brand: "Drools",
-      desc: "Puppy Nutrition",
-      rating: "4.6",
-      reviews: "870",
-      price: "₹1,299",
-      originalPrice: "₹1,599",
-      discount: "19% OFF",
-      image: "/assets/products/drools_custom.png",
-      circleBg: "bg-[#FAF7F2]",
-      tags: [
-        { text: "Puppy", bg: "bg-[#FAF7F2] text-[#66B4B1]", icon: "dog" },
-        { text: "All Breeds", bg: "bg-[#FAF7F2] text-[#66B4B1]", icon: "paw" }
-      ]
-    }
-  ];
+  // Best sellers — real GET /shop/products?bestsellers=true (isBestseller flag).
+  const formatReviewCount = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n || 0));
+  const [bestSellers, setBestSellers] = useState([]);
+  useEffect(() => {
+    import('../../../../services/shop').then(({ fetchProducts }) =>
+      fetchProducts({ bestsellers: true, limit: 3 })
+        .then((products) =>
+          setBestSellers(
+            products.map((p, i) => ({
+              id: p.id,
+              badgeText: `#${i + 1} BEST SELLER`,
+              brand: p.brand || p.name,
+              desc: p.subCategory || p.category,
+              rating: p.rating?.toFixed(1) || '—',
+              reviews: formatReviewCount(p.reviewsData?.total),
+              price: `₹${p.price}`,
+              originalPrice: p.mrp > p.price ? `₹${p.mrp}` : null,
+              discount: p.discountRange ? `${p.discountRange}% OFF` : null,
+              image: p.img,
+              tags: [p.petType, p.lifeStage].filter(Boolean).map((t) => ({ text: t, bg: 'bg-[#FAF7F2] text-[#66B4B1]', icon: t === 'Dog' ? 'dog' : 'paw' })),
+              _product: p,
+              ...BESTSELLER_STYLES[i % BESTSELLER_STYLES.length],
+            }))
+          )
+        )
+        .catch(() => setBestSellers([]))
+    );
+  }, []);
 
-  const premiumServices = [
-    {
-      id: 1,
-      title: "Vet Consultation",
-      subtitle: "24/7 Available",
-      bg: "bg-white",
-      btnBg: "bg-[#599D9A]",
-      image: "/images/vet_consultation.png",
-      path: "/app/services/doctors"
-    },
-    {
-      id: 2,
-      title: "Home Grooming",
-      subtitle: "At Your Doorstep",
-      bg: "bg-white",
-      btnBg: "bg-[#599D9A]",
-      image: "/images/home_grooming.png",
-      path: "/app/services/grooming"
-    }
-  ];
-
-  const communityHighlights = [
-    {
-      id: 1,
-      author: "Sarah & Bruno",
-      time: "2 hours ago",
-      avatar: "https://randomuser.me/api/portraits/women/44.jpg",
-      image: "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=400&q=80",
-      likes: 125,
-      comments: 12
-    },
-    {
-      id: 2,
-      author: "Mike & Bella",
-      time: "5 hours ago",
-      avatar: "https://randomuser.me/api/portraits/men/32.jpg",
-      image: "https://images.unsplash.com/photo-1583337130417-3346a1be7dee?auto=format&fit=crop&w=400&q=80",
-      likes: 98,
-      comments: 8
-    },
-    {
-      id: 3,
-      author: "Emma & Leo",
-      time: "1 day ago",
-      avatar: "https://randomuser.me/api/portraits/women/65.jpg",
-      image: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=400&q=80",
-      likes: 76,
-      comments: 6
-    }
-  ];
-
-  const displayPlaydates = [...playdates, ...playdates, ...playdates, ...playdates, ...playdates];
+  // Community highlights — real GET /community/posts (top 3 latest).
+  const [communityHighlights, setCommunityHighlights] = useState([]);
+  useEffect(() => {
+    import('../../../../services/social').then(({ fetchPosts }) =>
+      fetchPosts()
+        .then((posts) =>
+          setCommunityHighlights(
+            posts.slice(0, 3).map((p) => ({
+              id: p.id,
+              author: p.author,
+              time: p.time,
+              avatar: p.authorAvatar,
+              image: p.image,
+              likes: p.likes,
+              comments: p.comments,
+            }))
+          )
+        )
+        .catch(() => setCommunityHighlights([]))
+    );
+  }, []);
 
   const categoryCards = [
     { name: 'Grooming', tag: 'SPA', desc: 'Spa & salon', image: '/assets/quick_links/grooming_spa.png', bg: 'bg-[#599D9A]', path: '/app/services/grooming' },
@@ -730,9 +575,9 @@ export function Home() {
           className="flex overflow-x-auto snap-x snap-mandatory hide-scrollbar -mx-4 px-4 gap-4 pb-2"
         >
           {displaySpecialOffers.map((offer, index) => (
-            <div 
-              key={`${offer.id}-${index}`} 
-              onClick={() => navigate('/app/shop')}
+            <div
+              key={`${offer.id}-${index}`}
+              onClick={() => navigate(offer.path)}
               className={`w-[85vw] max-w-[340px] aspect-[21/10] rounded-3xl bg-gradient-to-r ${offer.bg} p-5 relative overflow-hidden snap-center flex flex-col justify-between cursor-pointer hover:scale-[1.02] transition-transform shrink-0`}
             >
               
@@ -782,7 +627,7 @@ export function Home() {
             <div 
               key={item.id} 
               className="min-w-[170px] max-w-[170px] bg-white rounded-3xl p-3 flex flex-col snap-center border border-slate-100 shadow-[0_8px_30px_rgba(0,0,0,0.02)] hover:shadow-md transition-shadow relative cursor-pointer"
-              onClick={() => navigate(`/app/shop/item/${item.id}`)}
+              onClick={() => navigate(`/app/shop/product/${item.id}`)}
             >
               {/* Top Row: Badge & Heart Button */}
               <div className="flex justify-between items-center mb-2">
@@ -851,17 +696,21 @@ export function Home() {
                 {/* Price Row */}
                 <div className="flex items-center mt-2.5">
                   <span className="text-[14px] font-black text-gray-900">{item.price}</span>
-                  <span className="text-[10px] text-gray-400 font-bold line-through ml-1">{item.originalPrice}</span>
-                  <span className="text-[8.5px] font-black text-red-600 bg-red-50 px-1 py-0.5 rounded ml-1">
-                    {item.discount}
-                  </span>
+                  {item.originalPrice && (
+                    <span className="text-[10px] text-gray-400 font-bold line-through ml-1">{item.originalPrice}</span>
+                  )}
+                  {item.discount && (
+                    <span className="text-[8.5px] font-black text-red-600 bg-red-50 px-1 py-0.5 rounded ml-1">
+                      {item.discount}
+                    </span>
+                  )}
                 </div>
 
                 {/* Add to Cart Button */}
-                <button 
+                <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    // Add to cart logic
+                    import('../../../../services/shop').then(({ addToCart }) => addToCart(item._product).catch(() => {}));
                   }}
                   className="w-full mt-2.5 py-2.5 bg-[#66B4B1] hover:bg-[#599D9A] text-white rounded-xl font-bold text-[10.5px] flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-sm shadow-[#66B4B1]/10"
                 >
@@ -947,114 +796,6 @@ export function Home() {
         </div>
       </div>
 
-
-
-      {/* Talk to Us Memorial Modal */}
-      {showMemorialModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[999] flex items-end justify-center animate-in fade-in duration-300">
-          <div className="absolute inset-0" onClick={() => setShowMemorialModal(false)} />
-          
-          <div className="bg-white rounded-t-[32px] w-full max-w-[480px] p-6 pb-8 relative z-10 shadow-2xl animate-in slide-in-from-bottom duration-300 max-h-[90vh] overflow-y-auto">
-            <div className="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-5 cursor-pointer" onClick={() => setShowMemorialModal(false)} />
-            
-            <div className="flex justify-between items-start mb-4">
-              <div>
-                <h3 className="text-[22px] font-black text-gray-900 leading-none">Talk to Us</h3>
-                <p className="text-[12px] text-gray-500 font-bold mt-2 leading-relaxed">
-                  Provide details below and our care team will contact you shortly.
-                </p>
-              </div>
-              <button 
-                onClick={() => setShowMemorialModal(false)}
-                className="text-gray-400 hover:text-gray-600 font-bold text-lg p-1.5 bg-gray-50 rounded-full cursor-pointer leading-none flex items-center justify-center w-8 h-8"
-              >
-                ✕
-              </button>
-            </div>
-
-            {submissionSuccess ? (
-              <div className="py-8 flex flex-col items-center text-center animate-in zoom-in duration-300">
-                <div className="w-16 h-16 rounded-full bg-[#8580E1]/10 text-[#8580E1] flex items-center justify-center mb-4">
-                  <svg className="w-8 h-8 fill-current" viewBox="0 0 24 24">
-                    <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/>
-                  </svg>
-                </div>
-                <h4 className="text-[18px] font-black text-gray-900">Request Sent Successfully</h4>
-                <p className="text-[12.5px] text-gray-600 font-bold mt-2 leading-relaxed px-4">
-                  Thank you for reaching out. Our support team responds with deep care and will contact you shortly.
-                </p>
-                <button 
-                  onClick={() => setShowMemorialModal(false)}
-                  className="mt-6 w-full py-3 bg-[#8580E1] hover:bg-[#7972E6] text-white rounded-xl font-bold text-sm shadow-md transition-all active:scale-95 cursor-pointer"
-                >
-                  Close
-                </button>
-              </div>
-            ) : (
-              <form 
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  setSubmissionSuccess(true);
-                }}
-                className="flex flex-col gap-4 mt-2"
-              >
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[12.5px] font-black text-gray-700">Pet Name (optional)</label>
-                  <input 
-                    type="text"
-                    placeholder="e.g. Bruno"
-                    className="w-full bg-[#F5F6FA] border border-transparent focus:border-[#8580E1] focus:bg-white rounded-xl py-3.5 px-4 outline-none text-[13px] font-bold placeholder:text-gray-400 placeholder:font-semibold transition-all"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[12.5px] font-black text-gray-700">Your Name *</label>
-                  <input 
-                    type="text"
-                    required
-                    placeholder="Your full name"
-                    className="w-full bg-[#F5F6FA] border border-transparent focus:border-[#8580E1] focus:bg-white rounded-xl py-3.5 px-4 outline-none text-[13px] font-bold placeholder:text-gray-400 placeholder:font-semibold transition-all"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[12.5px] font-black text-gray-700">Phone Number *</label>
-                  <input 
-                    type="tel"
-                    required
-                    placeholder="+91 98765 43210"
-                    className="w-full bg-[#F5F6FA] border border-transparent focus:border-[#8580E1] focus:bg-white rounded-xl py-3.5 px-4 outline-none text-[13px] font-bold placeholder:text-gray-400 placeholder:font-semibold transition-all"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[12.5px] font-black text-gray-700">Message (optional)</label>
-                  <textarea 
-                    rows={3}
-                    placeholder="Anything you'd like us to know..."
-                    className="w-full bg-[#F5F6FA] border border-transparent focus:border-[#8580E1] focus:bg-white rounded-xl py-3.5 px-4 outline-none text-[13px] font-bold placeholder:text-gray-400 placeholder:font-semibold transition-all resize-none"
-                  />
-                </div>
-
-                <button 
-                  type="submit"
-                  className="mt-2 w-full py-3.5 bg-[#EAE6DF] hover:bg-[#DED9CE] text-[#8C8476] font-black text-[13px] rounded-xl flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
-                >
-                  <svg className="w-4 h-4 fill-current rotate-45" viewBox="0 0 24 24">
-                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-                  </svg>
-                  <span>Send Support Request</span>
-                </button>
-
-                <p className="text-[11px] text-gray-400 text-center leading-normal mt-2 px-4 font-semibold">
-                  All conversations are kept private. Our team is trained in pet loss support and will respond with empathy and care.
-                </p>
-              </form>
-            )}
-
-          </div>
-        </div>
-      )}
 
     </div>
   );

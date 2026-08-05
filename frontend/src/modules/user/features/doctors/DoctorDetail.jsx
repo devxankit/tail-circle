@@ -1,28 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Star, Clock, MapPin, Award, Users, MessageSquare, Phone, Video } from 'lucide-react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
+import { getDoctor } from '../../../../services/doctorsApi';
 
 export function DoctorDetail() {
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  
-  const doctor = location.state?.doctor || {
-    id: 'dr-sarah',
-    name: 'Dr. Sarah Jenkins',
-    spec: 'General Vet',
-    exp: '10 yrs',
-    rating: 4.9,
-    img: 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=400&q=80',
-    online: true,
-    patients: '1.5k+',
-    reviews: '420',
-    about: 'Dr. Sarah Jenkins is a highly experienced General Veterinarian with over 10 years of expertise in treating domestic pets. She specializes in preventive care, vaccinations, and nutritional advice for dogs and cats.',
-    clinic: 'PetCare Central Clinic',
-    address: '123 Avenue, New York',
-    consultFee: '₹499'
-  };
+
+  // Reached directly (refresh / deep link / shared URL) without the doctor
+  // handed off via router state — fetch the real record instead of showing
+  // a fixed "Dr. Sarah Jenkins" fallback. `online`/`patients` are honestly
+  // left unset here since there's no real data source for either.
+  const [fetchedDoctor, setFetchedDoctor] = useState(null);
+  useEffect(() => {
+    if (location.state?.doctor || !id) return;
+    getDoctor(id)
+      .then((d) =>
+        setFetchedDoctor({
+          id: d._id,
+          name: d.name,
+          spec: d.spec,
+          exp: d.expText,
+          rating: d.rating,
+          img: d.img,
+          reviews: d.reviews,
+          about: d.about?.bio,
+          clinic: d.clinic,
+          address: d.location,
+          consultFee: d.price ? `₹${d.price}` : null,
+        })
+      )
+      .catch(() => {});
+  }, [id, location.state]);
+
+  const doctor = location.state?.doctor || fetchedDoctor || { id, name: 'Loading…', spec: '', rating: null, reviews: null };
 
   return (
     <div className="flex flex-col h-full bg-white absolute inset-0 z-[60] animate-in slide-in-from-right duration-300">

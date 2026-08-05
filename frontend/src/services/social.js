@@ -104,11 +104,27 @@ export async function fetchMatches() {
   return data;
 }
 
+/** Report a swipe-deck profile — also passes them permanently. */
+export async function reportProfile(profileId, reason = '') {
+  await api.post(`/matches/${profileId}/report`, { reason });
+}
+
 /* ── chat ─────────────────────────────────────────────── */
 
 export async function fetchConversations() {
   const { data } = await api.get('/chat/conversations');
   return data;
+}
+
+/** Single conversation (includes real `unreadCount` / `muted`) — used to seed the chat header's menu state. */
+export async function fetchConversation(conversationId) {
+  const { data } = await api.get(`/chat/conversations/${conversationId}`);
+  return data;
+}
+
+/** Clears my unread badge for this conversation — call when the room opens. */
+export async function markConversationRead(conversationId) {
+  await api.post(`/chat/conversations/${conversationId}/read`);
 }
 
 export async function ensureAdoptionConversation(listingId) {
@@ -121,9 +137,50 @@ export async function fetchMessages(conversationId) {
   return data;
 }
 
-export async function sendChatMessage(conversationId, { type = 'text', text = '', mediaUrl = null }) {
-  const { data } = await api.post(`/chat/conversations/${conversationId}/messages`, { type, text, mediaUrl });
+export async function sendChatMessage(conversationId, { type = 'text', text = '', mediaUrl = null, meta = null }) {
+  const { data } = await api.post(`/chat/conversations/${conversationId}/messages`, { type, text, mediaUrl, meta });
   return data;
+}
+
+/** Mute/unmute — real toggle persisted on the conversation. */
+export async function setConversationMuted(conversationId, muted) {
+  const { data } = await api.post(`/chat/conversations/${conversationId}/mute`, { muted });
+  return data;
+}
+
+/** Clears chat history for me only; the other side (if any) still has it. */
+export async function clearConversation(conversationId) {
+  const { data } = await api.post(`/chat/conversations/${conversationId}/clear`);
+  return data;
+}
+
+/** Reports + blocks — hides the conversation and (for a match) passes it permanently. */
+export async function reportAndBlockConversation(conversationId, reason = '') {
+  const { data } = await api.post(`/chat/conversations/${conversationId}/report`, { reason });
+  return data;
+}
+
+/** Real online/last-seen for the chat header — see chat.service.js::getConversationPresence. */
+export async function fetchConversationPresence(conversationId) {
+  const { data } = await api.get(`/chat/conversations/${conversationId}/presence`);
+  return data; // { online, lastSeenAt, source, userId? }
+}
+
+/**
+ * Live presence updates over Socket.IO. `onUpdate({ userId, online, lastSeenAt })`
+ * fires for ANY user's presence flip (server fans out to everyone rather than
+ * tracking per-conversation subscribers) — callers filter to the id they care
+ * about. Returns an unsubscribe fn; no-ops if the socket can't be established.
+ */
+export async function subscribeToPresence(onUpdate) {
+  try {
+    const { connectSocket } = await import('./socket');
+    const socket = connectSocket();
+    socket.on('presence:update', onUpdate);
+    return () => socket.off('presence:update', onUpdate);
+  } catch {
+    return () => {};
+  }
 }
 
 /**
@@ -156,5 +213,16 @@ export async function fetchStories() {
 
 export async function publishStory(mediaUrl, caption = '') {
   const { data } = await api.post('/stories', { mediaUrl, caption });
+  return data;
+}
+
+/** Records that I watched someone else's story (skips my own, server-side). */
+export async function viewStory(storyId) {
+  await api.post(`/stories/${storyId}/view`).catch(() => {});
+}
+
+/** Real "Viewed By" list for one of MY stories. */
+export async function fetchStoryViewers(storyId) {
+  const { data } = await api.get(`/stories/${storyId}/viewers`);
   return data;
 }

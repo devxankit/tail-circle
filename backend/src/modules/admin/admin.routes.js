@@ -190,6 +190,7 @@ router.post(
       slot: z.string().max(60).optional(),
       btnText: z.string().max(40).optional(),
       bg: z.string().max(120).optional(),
+      badge: z.string().max(40).optional(),
       active: z.boolean().optional(),
       sort: z.number().int().optional(),
     })

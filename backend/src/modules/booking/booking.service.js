@@ -586,6 +586,37 @@ export async function cancelBooking(userId, bookingId) {
 }
 
 /**
+ * Move a daycare/grooming booking to a new date/time — the "Reschedule"
+ * button in MyBookingDetail.jsx used to only rewrite a localStorage copy.
+ * Doctor/event bookings aren't supported here yet (different slot model).
+ */
+export async function rescheduleBooking(userId, bookingId, { date, time }) {
+  const booking = await Booking.findOne({ _id: bookingId, userId });
+  if (!booking) throw ApiError.notFound('Booking not found');
+  if (!CANCELLABLE_BOOKING_STATUSES.includes(booking.status)) {
+    throw ApiError.badRequest('This booking can no longer be rescheduled');
+  }
+  if (!['daycare', 'grooming'].includes(booking.type) || !booking.providerId) {
+    throw ApiError.badRequest('Rescheduling is not supported for this booking type');
+  }
+
+  const oldDate = booking.schedule.startDate;
+  const oldTime = booking.schedule.time;
+  if (oldDate === date && oldTime === time) return booking;
+
+  await takeSlot({ providerId: booking.providerId, date, time, capacity: 2 });
+  if (oldDate && oldTime) {
+    await releaseSlot({ providerId: booking.providerId, date: oldDate, time: oldTime }).catch(() => {});
+  }
+
+  booking.schedule.startDate = date;
+  booking.schedule.time = time;
+  booking.timeline.push({ status: booking.status, note: `Rescheduled to ${date} ${time}` });
+  await booking.save();
+  return booking;
+}
+
+/**
  * Slot availability for a **provider** (daycare / grooming) on a date, from its
  * `details.slotTemplate` blob. Returns a bare array — the grooming booking
  * screen consumes it directly.

@@ -11,6 +11,15 @@ import { authorizeCall, markParticipantJoined, markParticipantLeft } from '../mo
 
 let io = null;
 
+// userId -> number of open sockets. A user counts as online while this is
+// > 0; presence flips to offline only once their last tab/app disconnects.
+const onlineCounts = new Map();
+
+/** True if any socket for this user is currently connected. */
+export function isUserOnline(userId) {
+  return (onlineCounts.get(String(userId)) || 0) > 0;
+}
+
 /** Socket.IO handshake auth — shared by the default and `/video` namespaces. */
 async function sameAuth(socket, next) {
   try {
@@ -59,9 +68,19 @@ export function initSocket(httpServer) {
   io.on('connection', (socket) => {
     const { id: userId, role } = socket.data.user;
     socket.join(rooms.user(userId));
+    socket.join(rooms.presence());
     if (role === 'admin') socket.join(rooms.admins());
     // Clinics listen for `emergency:new` broadcasts (nearby-clinic fan-out).
     if (role === 'vendor') socket.join('clinics');
+
+    // Presence: first socket for this user flips them online; broadcast so
+    // any open chat showing their status updates live instead of staying
+    // stuck on whatever it last rendered.
+    const wasOnline = isUserOnline(userId);
+    onlineCounts.set(userId, (onlineCounts.get(userId) || 0) + 1);
+    if (!wasOnline) {
+      io.to(rooms.presence()).emit(SOCKET_EVENTS.PRESENCE_UPDATE, { userId, online: true, lastSeenAt: null });
+    }
 
     socket.on(SOCKET_EVENTS.JOIN_ROOM, () => {
       // Room joins beyond the defaults are granted per-feature (e.g. a
@@ -154,6 +173,21 @@ export function initSocket(httpServer) {
     socket.on('disconnect', () => {
       for (const bookingId of activeCalls) {
         leaveCallRoom(bookingId).catch((err) => logger.warn(`disconnect leaveCallRoom failed: ${err.message}`));
+      }
+
+      const remaining = (onlineCounts.get(userId) || 1) - 1;
+      if (remaining <= 0) {
+        onlineCounts.delete(userId);
+        const lastSeenAt = new Date();
+        User.updateOne({ _id: userId }, { lastSeenAt }).exec()
+          .catch((err) => logger.warn(`presence lastSeenAt update failed for ${userId}: ${err.message}`));
+        io.to(rooms.presence()).emit(SOCKET_EVENTS.PRESENCE_UPDATE, {
+          userId,
+          online: false,
+          lastSeenAt: lastSeenAt.toISOString(),
+        });
+      } else {
+        onlineCounts.set(userId, remaining);
       }
     });
   });

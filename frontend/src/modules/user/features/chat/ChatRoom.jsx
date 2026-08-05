@@ -1,11 +1,32 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, MoreVertical, Plus, Send, Image as ImageIcon, MapPin, User, BellOff, Flag, Trash2 } from 'lucide-react';
+import { ArrowLeft, MoreVertical, Plus, Send, Image as ImageIcon, MapPin, User, Bell, BellOff, Flag, Trash2 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { fetchMessages, sendChatMessage, subscribeToConversation } from '../../../../services/social';
+import {
+  fetchMessages,
+  sendChatMessage,
+  subscribeToConversation,
+  fetchConversationPresence,
+  subscribeToPresence,
+  markConversationRead,
+  fetchConversation,
+  setConversationMuted,
+  clearConversation,
+  reportAndBlockConversation,
+} from '../../../../services/social';
 import { getStoredUser } from '../../../../services/auth';
 
 const msgTime = (value) =>
   new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+/** "Online" is real now — this only formats the fallback when they're not. */
+const formatLastSeen = (iso) => {
+  if (!iso) return null;
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return 'Last seen just now';
+  if (mins < 60) return `Last seen ${mins}m ago`;
+  if (mins < 1440) return `Last seen ${Math.floor(mins / 60)}h ago`;
+  return `Last seen ${new Date(iso).toLocaleDateString([], { day: 'numeric', month: 'short' })}`;
+};
 
 export function ChatRoom() {
   const navigate = useNavigate();
@@ -24,12 +45,46 @@ export function ChatRoom() {
   };
 
   const [messages, setMessages] = useState([]);
+  const [muted, setMuted] = useState(false);
+
+  // Real presence — fetched once, then kept live over Socket.IO. `null`
+  // while loading so the header doesn't flash a wrong status.
+  const [presence, setPresence] = useState(null);
+
+  // Seed the Mute toggle from what's actually persisted, so re-opening the
+  // room doesn't forget a mute from a previous visit.
+  useEffect(() => {
+    if (!conversationId) return;
+    fetchConversation(conversationId).then((c) => setMuted(Boolean(c.muted))).catch(() => {});
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (!conversationId) return undefined;
+    let unsubscribe = () => {};
+
+    fetchConversationPresence(conversationId)
+      .then(setPresence)
+      .catch(() => setPresence({ online: false, lastSeenAt: null, source: 'unknown' }));
+
+    subscribeToPresence((update) => {
+      setPresence((prev) => {
+        if (!prev?.userId || String(update.userId) !== String(prev.userId)) return prev;
+        return { ...prev, online: update.online, lastSeenAt: update.lastSeenAt };
+      });
+    }).then((fn) => {
+      unsubscribe = fn;
+    });
+
+    return () => unsubscribe();
+  }, [conversationId]);
 
   // History from Mongo (REST) + live delivery over Socket.IO (deduped by key).
   useEffect(() => {
     if (!conversationId) return undefined;
     let unsubscribe = () => {};
     const seen = new Set();
+
+    markConversationRead(conversationId).catch(() => {});
 
     fetchMessages(conversationId)
       .then((history) => {
@@ -40,6 +95,8 @@ export function ChatRoom() {
             type: m.type,
             text: m.text,
             url: m.mediaUrl,
+            lat: m.meta?.lat ?? null,
+            lng: m.meta?.lng ?? null,
             time: msgTime(m.createdAt),
             isSelf: String(m.senderId) === myId,
           }))
@@ -60,6 +117,8 @@ export function ChatRoom() {
           type: live.type || 'text',
           text: live.text || '',
           url: live.mediaUrl,
+          lat: live.meta?.lat ?? null,
+          lng: live.meta?.lng ?? null,
           time: msgTime(live.at || Date.now()),
           isSelf: false,
         },
@@ -157,16 +216,52 @@ export function ChatRoom() {
   };
 
   const handleSendLocation = () => {
-    const newMsg = {
-      id: Date.now(),
-      type: 'location',
-      address: 'Central Park Dog Run',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isSelf: true
-    };
-    
-    setMessages([...messages, newMsg]);
     setShowAttach(false);
+    if (!('geolocation' in navigator)) {
+      alert('Location sharing is not supported on this device.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude: lat, longitude: lng } = pos.coords;
+        const newMsg = {
+          id: Date.now(),
+          type: 'location',
+          lat,
+          lng,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isSelf: true,
+        };
+        setMessages((prev) => [...prev, newMsg]);
+        if (conversationId) {
+          sendChatMessage(conversationId, { type: 'location', meta: { lat, lng } }).catch(() => {});
+        }
+      },
+      () => alert("Couldn't get your location — check location permissions and try again."),
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
+
+  const handleToggleMute = () => {
+    const next = !muted;
+    setMuted(next);
+    setShowMenu(false);
+    if (conversationId) setConversationMuted(conversationId, next).catch(() => setMuted(!next));
+  };
+
+  const handleClearChat = () => {
+    setShowMenu(false);
+    setMessages([]);
+    if (conversationId) clearConversation(conversationId).catch(() => {});
+  };
+
+  const handleReportBlock = () => {
+    setShowMenu(false);
+    if (!conversationId) return navigate(-1);
+    const reason = window.prompt("What's wrong with this chat? (optional)") || '';
+    reportAndBlockConversation(conversationId, reason)
+      .then(() => navigate(-1))
+      .catch(() => alert('Could not submit the report — please try again.'));
   };
 
   return (
@@ -181,7 +276,15 @@ export function ChatRoom() {
         </div>
         <div className="ml-3 flex-1 cursor-pointer" onClick={() => navigate('/app/profile')}>
           <h2 className="font-bold text-text-primary text-base leading-tight">{activePet.name}</h2>
-          <span className="text-xs text-success font-medium">Online</span>
+          {presence?.online && (
+            <span className="text-xs text-success font-medium">Online</span>
+          )}
+          {presence && !presence.online && presence.lastSeenAt && (
+            <span className="text-xs text-text-secondary font-medium">{formatLastSeen(presence.lastSeenAt)}</span>
+          )}
+          {presence && !presence.online && !presence.lastSeenAt && presence.source !== 'unknown' && (
+            <span className="text-xs text-text-secondary font-medium">Offline</span>
+          )}
         </div>
         
         <div className="relative" ref={menuRef}>
@@ -201,21 +304,21 @@ export function ChatRoom() {
               >
                 <User size={16} /> View Profile
               </button>
-              <button 
-                onClick={() => setShowMenu(false)}
+              <button
+                onClick={handleToggleMute}
                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-bg-secondary text-sm text-text-primary transition-colors"
               >
-                <BellOff size={16} /> Mute Notifications
+                {muted ? <Bell size={16} /> : <BellOff size={16} />} {muted ? 'Unmute Notifications' : 'Mute Notifications'}
               </button>
               <div className="h-[1px] bg-border-light my-1"></div>
-              <button 
-                onClick={() => { setShowMenu(false); setMessages([]); }}
+              <button
+                onClick={handleClearChat}
                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-error/10 text-sm text-error transition-colors"
               >
                 <Trash2 size={16} /> Clear Chat
               </button>
-              <button 
-                onClick={() => setShowMenu(false)}
+              <button
+                onClick={handleReportBlock}
                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-error/10 text-sm text-error transition-colors"
               >
                 <Flag size={16} /> Report / Block
@@ -246,23 +349,30 @@ export function ChatRoom() {
               </div>
             )}
             
-            {/* Location Message */}
+            {/* Location Message — a real static map of the actual shared coordinates */}
             {m.type === 'location' && (
-              <div className={`p-3 text-sm flex flex-col gap-2 ${m.isSelf ? 'bg-primary-main text-white rounded-2xl rounded-tr-sm' : 'bg-white text-text-primary rounded-2xl rounded-tl-sm shadow-sm border border-border-light/50'}`}>
+              <a
+                href={m.lat != null ? `https://www.openstreetmap.org/?mlat=${m.lat}&mlon=${m.lng}#map=16/${m.lat}/${m.lng}` : undefined}
+                target="_blank"
+                rel="noreferrer"
+                className={`p-3 text-sm flex flex-col gap-2 ${m.isSelf ? 'bg-primary-main text-white rounded-2xl rounded-tr-sm' : 'bg-white text-text-primary rounded-2xl rounded-tl-sm shadow-sm border border-border-light/50'}`}
+              >
                 <div className="w-full h-24 bg-gray-200 rounded-xl overflow-hidden relative">
-                  {/* Mock map image */}
-                  <img src="https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=300&q=80" alt="Map" className="w-full h-full object-cover opacity-80" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-8 h-8 rounded-full bg-error/20 flex items-center justify-center animate-pulse">
-                      <MapPin size={20} className="text-error" fill="currentColor" />
-                    </div>
-                  </div>
+                  {m.lat != null ? (
+                    <img
+                      src={`https://staticmap.openstreetmap.de/staticmap.php?center=${m.lat},${m.lng}&zoom=15&size=300x150&markers=${m.lat},${m.lng},red-pushpin`}
+                      alt="Shared location map"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-text-secondary text-xs">Location unavailable</div>
+                  )}
                 </div>
                 <div className="font-medium flex items-center gap-1">
-                  <MapPin size={14} className={m.isSelf ? "text-white" : "text-primary-main"} /> 
+                  <MapPin size={14} className={m.isSelf ? "text-white" : "text-primary-main"} />
                   <span className="truncate">Shared Location</span>
                 </div>
-              </div>
+              </a>
             )}
             
             <span className={`text-[10px] text-text-secondary mt-1 block ${m.isSelf ? 'text-right mr-1' : 'ml-1'}`}>

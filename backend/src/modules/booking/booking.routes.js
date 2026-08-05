@@ -75,4 +75,14 @@ router.post(
   })
 );
 
+/** POST /bookings/:id/reschedule — daycare/grooming only (see service). */
+router.post(
+  '/:id/reschedule',
+  validate(z.object({ date: dateStr, time: z.string().min(1).max(40) })),
+  asyncHandler(async (req, res) => {
+    const booking = await bookingService.rescheduleBooking(req.user.id, req.params.id, req.body);
+    sendSuccess(res, { message: 'Booking rescheduled', data: booking });
+  })
+);
+
 export default router;

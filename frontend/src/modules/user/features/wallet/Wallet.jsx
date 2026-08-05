@@ -60,12 +60,24 @@ export function Wallet() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processSuccess, setProcessSuccess] = useState(false);
 
-  const contacts = [
-    { id: 1, name: 'Dr. Sarah Jenkins', role: 'Veterinarian', avatar: '🩺' },
-    { id: 2, name: 'Aakash Sharma', role: 'Groomer', avatar: '✂️' },
-    { id: 3, name: 'Emma Watson', role: 'Pet Playdate', avatar: '🐕' },
-    { id: 4, name: 'TailShop Store', role: 'Supplies Partner', avatar: '🛍️' }
-  ];
+  // Real chat contacts (was 4 invented names) — quick-pick only; the phone
+  // field below is what actually reaches a real recipient's wallet.
+  const [contacts, setContacts] = useState([]);
+  useEffect(() => {
+    import('../../../../services/social').then(({ fetchConversations }) =>
+      fetchConversations()
+        .then((conversations) =>
+          setContacts(
+            conversations
+              .filter((c) => c.counterpart?.name)
+              .slice(0, 8)
+              .map((c) => ({ id: c._id, name: c.counterpart.name, role: c.counterpart.subtitle || 'Chat', image: c.counterpart.image }))
+          )
+        )
+        .catch(() => setContacts([]))
+    );
+  }, []);
+  const [sendPhone, setSendPhone] = useState('');
 
   // Add money submit handler — opens the Razorpay sheet, credits on confirm.
   const handleAddMoney = async (e) => {
@@ -89,18 +101,22 @@ export function Wallet() {
     }
   };
 
-  // Send money submit handler
+  // Send money submit handler — either a real phone number (reaches an
+  // actual registered user's wallet) or a quick-pick contact (a labeled
+  // outgoing transaction only, same as the backend's documented "demo
+  // contact" transfer mode).
   const handleSendMoney = async (e) => {
     e.preventDefault();
     const val = parseFloat(amountToSend);
-    if (!selectedContact || isNaN(val) || val <= 0 || val > balance) return;
+    const recipientName = selectedContact?.name || sendPhone;
+    if (!recipientName || isNaN(val) || val <= 0 || val > balance) return;
 
     setIsProcessing(true);
     try {
       await sendMoney({
-        name: selectedContact.name,
-        icon: selectedContact.avatar,
-        title: `Sent to ${selectedContact.name}`,
+        phone: sendPhone || undefined,
+        name: selectedContact?.name,
+        title: `Sent to ${recipientName}`,
         amount: val,
         note: sendNote,
       });
@@ -111,26 +127,27 @@ export function Wallet() {
         setProcessSuccess(false);
         setActiveModal(null);
         setSelectedContact(null);
+        setSendPhone('');
         setAmountToSend('');
         setSendNote('');
       }, 1500);
-    } catch {
+    } catch (err) {
       setIsProcessing(false);
+      alert(err.message || 'Could not send money — please try again.');
     }
   };
 
-  // Scan QR simulator handler (camera/QR is a genuine client concern).
-  const handleSimulateScan = () => {
-    setIsProcessing(true);
-    setTimeout(() => {
-      setIsProcessing(false);
-      setScannedMerchant({
-        name: 'TailCircle Shop Counter #3',
-        upiId: 'tailcircle@paytm'
-      });
-      setAmountToPay('249.00');
-      setScanStep('confirm');
-    }, 1000);
+  // No camera/QR-decoding integration exists — this used to fake a scan
+  // result (fixed merchant + fixed ₹249 amount) after a spinner. Real manual
+  // entry instead: the merchant is whatever UPI ID the user actually typed,
+  // and the amount is genuinely theirs to enter on the confirm step.
+  const [manualUpiId, setManualUpiId] = useState('');
+  const handleManualUpiEntry = (e) => {
+    e.preventDefault();
+    if (!manualUpiId.trim()) return;
+    setScannedMerchant({ name: manualUpiId.trim(), upiId: manualUpiId.trim() });
+    setAmountToPay('');
+    setScanStep('confirm');
   };
 
   // Confirm Scan Pay handler
@@ -141,6 +158,7 @@ export function Wallet() {
     setIsProcessing(true);
     try {
       await payMerchant({
+        merchantId: scannedMerchant.upiId,
         name: scannedMerchant.name,
         title: `Paid to ${scannedMerchant.name}`,
         amount: val,
@@ -162,15 +180,6 @@ export function Wallet() {
 
   return (
     <div className="flex flex-col h-full bg-bg-secondary absolute inset-0 z-50 animate-in slide-in-from-bottom-full text-text-primary">
-      {/* CSS Animation Injector for Laser Scanner */}
-      <style>{`
-        @keyframes scanLine {
-          0% { top: 10%; }
-          50% { top: 90%; }
-          100% { top: 10%; }
-        }
-      `}</style>
-
       {/* Header */}
       <div className="flex items-center px-4 py-4 bg-bg-secondary sticky top-0 z-10">
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 rounded-full hover:bg-border-light transition-colors text-text-primary">
@@ -188,7 +197,7 @@ export function Wallet() {
           <h2 className="text-4xl font-black mb-6">₹{balance.toFixed(2)}</h2>
           
           <div className="flex justify-between items-center opacity-85 text-xs font-mono tracking-wider">
-            <span>**** **** **** 4829</span>
+            <span>TailCircle Wallet</span>
             <span>TailCircle Pay</span>
           </div>
         </div>
@@ -329,7 +338,7 @@ export function Wallet() {
                       <CreditCard className={paymentMethod === 'card' ? "text-primary-main" : "text-slate-400"} size={22} />
                       <div>
                         <p className="text-xs font-bold text-slate-900">Credit / Debit Card</p>
-                        <p className="text-[10px] text-slate-400">Saved Visa Card ending 4829</p>
+                        <p className="text-[10px] text-slate-400">Pay with any saved or new card via Razorpay</p>
                       </div>
                     </button>
                   </div>
@@ -357,7 +366,7 @@ export function Wallet() {
                   <CheckCircle2 size={56} className="animate-bounce" />
                 </div>
                 <h3 className="text-xl font-bold text-slate-950">Payment Sent Successfully!</h3>
-                <p className="text-slate-500 text-sm mt-1">₹{parseFloat(amountToSend).toFixed(2)} sent to {selectedContact?.name}.</p>
+                <p className="text-slate-500 text-sm mt-1">₹{parseFloat(amountToSend).toFixed(2)} sent to {selectedContact?.name || sendPhone}.</p>
               </div>
             ) : isProcessing ? (
               <div className="flex flex-col items-center justify-center py-12">
@@ -374,33 +383,47 @@ export function Wallet() {
                 </div>
 
                 {/* Recipient Selection */}
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Select Contact</label>
-                  <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-1">
-                    {contacts.map(c => {
-                      const isSel = selectedContact?.id === c.id;
-                      return (
-                        <button 
-                          type="button"
-                          key={c.id}
-                          onClick={() => setSelectedContact(c)}
-                          className={`flex flex-col items-center p-3 rounded-2xl border shrink-0 transition-all ${
-                            isSel ? 'border-primary-main bg-primary-light/10 ring-2 ring-primary-main/10' : 'border-slate-100 bg-slate-50'
-                          }`}
-                        >
-                          <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-sm text-lg mb-2">
-                            {c.avatar}
-                          </div>
-                          <span className="text-xs font-bold text-slate-900 leading-tight w-20 text-center truncate">{c.name.split(' ')[0]}</span>
-                          <span className="text-[9px] text-slate-400">{c.role}</span>
-                        </button>
-                      );
-                    })}
+                {contacts.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Recent Chats</label>
+                    <div className="flex gap-3 overflow-x-auto hide-scrollbar pb-1">
+                      {contacts.map(c => {
+                        const isSel = selectedContact?.id === c.id;
+                        return (
+                          <button
+                            type="button"
+                            key={c.id}
+                            onClick={() => { setSelectedContact(c); setSendPhone(''); }}
+                            className={`flex flex-col items-center p-3 rounded-2xl border shrink-0 transition-all ${
+                              isSel ? 'border-primary-main bg-primary-light/10 ring-2 ring-primary-main/10' : 'border-slate-100 bg-slate-50'
+                            }`}
+                          >
+                            <div className="w-10 h-10 rounded-full bg-white overflow-hidden flex items-center justify-center shadow-sm mb-2">
+                              {c.image ? <img src={c.image} alt={c.name} className="w-full h-full object-cover" /> : <User size={18} className="text-slate-400" />}
+                            </div>
+                            <span className="text-xs font-bold text-slate-900 leading-tight w-20 text-center truncate">{c.name.split(' ')[0]}</span>
+                            <span className="text-[9px] text-slate-400 truncate w-20 text-center">{c.role}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
+                )}
+
+                {/* Real recipient by phone number */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Or Send by Phone Number</label>
+                  <input
+                    type="tel"
+                    value={sendPhone}
+                    onChange={(e) => { setSendPhone(e.target.value); setSelectedContact(null); }}
+                    placeholder="Recipient's phone number"
+                    className="w-full bg-slate-50 border border-slate-200 h-12 rounded-xl px-3 text-sm outline-none focus:border-primary-main"
+                  />
                 </div>
 
                 {/* Amount input */}
-                {selectedContact && (
+                {(selectedContact || sendPhone) && (
                   <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-top-3">
                     <div className="flex flex-col gap-2">
                       <div className="flex justify-between items-center">
@@ -432,12 +455,12 @@ export function Wallet() {
                       />
                     </div>
 
-                    <Button 
-                      type="submit" 
+                    <Button
+                      type="submit"
                       disabled={!amountToSend || parseFloat(amountToSend) <= 0 || parseFloat(amountToSend) > balance}
                       className="w-full h-14 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl mt-2 text-base disabled:opacity-50 disabled:shadow-none"
                     >
-                      Send ₹{parseFloat(amountToSend || 0).toFixed(2)} to {selectedContact.name.split(' ')[0]}
+                      Send ₹{parseFloat(amountToSend || 0).toFixed(2)} to {selectedContact ? selectedContact.name.split(' ')[0] : sendPhone}
                     </Button>
                   </div>
                 )}
@@ -476,30 +499,39 @@ export function Wallet() {
                   </button>
                 </div>
 
-                {/* QR Scanner view screen box simulator */}
+                {/* Camera-based QR decoding isn't wired up yet — shown as a
+                    dormant viewfinder, with a real manual UPI entry below
+                    rather than a button that fakes a successful scan. */}
                 <div className="w-64 h-64 bg-slate-950 rounded-3xl relative overflow-hidden border-4 border-slate-800 flex items-center justify-center shadow-lg">
-                  {/* Glowing Laser Red scan line */}
-                  <div className="absolute left-0 right-0 h-1 bg-emerald-400 shadow-[0_0_12px_#34D399] z-10" style={{ animation: 'scanLine 2.5s ease-in-infinite' }}></div>
-                  
-                  {/* Simulated corner frames */}
                   <div className="absolute top-4 left-4 w-6 h-6 border-t-4 border-l-4 border-primary-main rounded-tl-lg"></div>
                   <div className="absolute top-4 right-4 w-6 h-6 border-t-4 border-r-4 border-primary-main rounded-tr-lg"></div>
                   <div className="absolute bottom-4 left-4 w-6 h-6 border-b-4 border-l-4 border-primary-main rounded-bl-lg"></div>
                   <div className="absolute bottom-4 right-4 w-6 h-6 border-b-4 border-r-4 border-primary-main rounded-br-lg"></div>
-                  
-                  <QrCode size={96} className="text-slate-700 opacity-60 animate-pulse" />
+
+                  <QrCode size={96} className="text-slate-700 opacity-60" />
                 </div>
 
                 <p className="text-slate-400 text-xs text-center font-medium px-6 leading-relaxed">
-                  Hold your camera up to a merchant's TailCircle Pay QR code to complete payments automatically.
+                  Camera scanning isn't available yet — enter the merchant's UPI ID below instead.
                 </p>
 
-                <Button 
-                  onClick={handleSimulateScan} 
-                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold h-14 rounded-xl flex items-center justify-center gap-2"
-                >
-                  <SparklesIcon /> Simulate Successful Scan
-                </Button>
+                <form onSubmit={handleManualUpiEntry} className="w-full flex flex-col gap-3">
+                  <input
+                    type="text"
+                    required
+                    value={manualUpiId}
+                    onChange={(e) => setManualUpiId(e.target.value)}
+                    placeholder="merchant@upi"
+                    className="w-full bg-slate-50 border border-slate-200 h-12 rounded-xl px-4 text-sm font-medium outline-none focus:border-primary-main"
+                  />
+                  <Button
+                    type="submit"
+                    disabled={!manualUpiId.trim()}
+                    className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold h-14 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    Continue to Pay
+                  </Button>
+                </form>
               </div>
             ) : (
               // Confirm Merchant Scan payment step
@@ -553,16 +585,5 @@ export function Wallet() {
         </div>
       )}
     </div>
-  );
-}
-
-// Quick component for sparkle icon
-function SparklesIcon() {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-sparkles">
-      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
-      <path d="m5 3 1 2.5L8.5 6 6 7 5 9.5 4 7 1.5 6 4 5.5z"/>
-      <path d="m19 17 1 2.5 2.5.5-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1z"/>
-    </svg>
   );
 }

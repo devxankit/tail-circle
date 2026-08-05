@@ -32,6 +32,7 @@ const bannerSchema = new mongoose.Schema(
     slot: { type: String, default: 'Home Hero' },
     btnText: { type: String, default: '' }, // Home carousel CTA
     bg: { type: String, default: '' }, // Home carousel gradient classes
+    badge: { type: String, default: '' }, // small overlay pill, e.g. "20% OFF" (Home Offers slot)
     active: { type: Boolean, default: true },
     sort: { type: Number, default: 0 },
     seedKey: { type: String },

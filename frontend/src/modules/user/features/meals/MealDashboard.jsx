@@ -49,7 +49,7 @@ export function MealDashboard() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Menu'); // 'Menu' or 'My Orders'
   const [foodCategory, setFoodCategory] = useState('Dog'); // 'Dog' or 'Cat'
-  const [cart, setCart] = useState({}); // { mealId: quantity }
+  const [cart, setCart] = useState({}); // { mealId: { qty, customisationId } }
   const [subscription, setSubscription] = useState(null);
   const [localOrders, setLocalOrders] = useState([]);
   const [selectedMealForModal, setSelectedMealForModal] = useState(null);
@@ -98,13 +98,13 @@ export function MealDashboard() {
     }
   };
 
-  const handleOrderWithPrepaid = async (mealId, qty) => {
+  const handleOrderWithPrepaid = async (mealId, qty, customisationId) => {
     if (mealBalance < qty) {
       alert("Not enough prepaid meals. Please purchase a new plan.");
       return;
     }
     try {
-      await orderPrepaid([{ mealId, qty }]);
+      await orderPrepaid([{ mealId, qty, customisationId }]);
       refreshAccount();
       refreshOrders();
       setSelectedMealForModal(null);
@@ -194,28 +194,35 @@ export function MealDashboard() {
     navigate('/app/meals/subscribe', { state: { planId, category: foodCategory } });
   };
 
-  const updateCartQty = (mealId, delta) => {
+  // Cart lines carry their chosen customisation now — was silently dropped
+  // before (the modal showed a surcharge that was never actually charged).
+  const updateCartQty = (mealId, delta, customisationId) => {
     setCart(prev => {
-      const current = prev[mealId] || 0;
+      const current = prev[mealId]?.qty || 0;
       const newQty = Math.max(0, current + delta);
       if (newQty === 0) {
         const next = { ...prev };
         delete next[mealId];
         return next;
       }
-      return { ...prev, [mealId]: newQty };
+      return { ...prev, [mealId]: { qty: newQty, customisationId: customisationId || prev[mealId]?.customisationId || 'c1' } };
     });
   };
 
-  const cartItemsCount = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
+  const cartItemsCount = Object.values(cart).reduce((sum, line) => sum + line.qty, 0);
   const cartTotal = Object.keys(cart).reduce((sum, mealId) => {
     const meal = availableMeals.find(m => m.id === mealId);
-    return sum + (meal ? meal.price * cart[mealId] : 0);
+    const custom = dummyCustomisations.find(c => c.id === cart[mealId].customisationId);
+    return sum + (meal ? (meal.price + (custom?.price || 0)) * cart[mealId].qty : 0);
   }, 0);
 
   const handleCheckoutALaCarte = async () => {
     try {
-      const items = Object.keys(cart).map((mealId) => ({ mealId, qty: cart[mealId] }));
+      const items = Object.keys(cart).map((mealId) => ({
+        mealId,
+        qty: cart[mealId].qty,
+        customisationId: cart[mealId].customisationId,
+      }));
       await orderALaCarte(items);
       refreshOrders();
       setCart({});
@@ -581,11 +588,11 @@ export function MealDashboard() {
               {/* Food Cards Grid */}
               <div className="flex flex-col gap-4">
                 {availableMeals.filter(m => m.category === foodCategory).map((meal, index) => {
-                  const cartQty = cart[meal.id] || 0;
+                  const cartQty = cart[meal.id]?.qty || 0;
                   return (
-                    <div 
-                      key={meal.id} 
-                      onClick={() => { setSelectedMealForModal(meal); setModalQty(cart[meal.id] || 1); setSelectedCustomisation('c1'); }}
+                    <div
+                      key={meal.id}
+                      onClick={() => { setSelectedMealForModal(meal); setModalQty(cart[meal.id]?.qty || 1); setSelectedCustomisation(cart[meal.id]?.customisationId || 'c1'); }}
                       className="bg-white rounded-3xl p-5 flex justify-between gap-4 relative border border-[#FAF7F2] shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer"
                     >
                       
@@ -923,18 +930,16 @@ export function MealDashboard() {
               </div>
               
               {mealBalance > 0 ? (
-                <button 
-                  onClick={() => handleOrderWithPrepaid(selectedMealForModal.id, modalQty)}
+                <button
+                  onClick={() => handleOrderWithPrepaid(selectedMealForModal.id, modalQty, selectedCustomisation)}
                   className="flex-1 py-3.5 rounded-xl font-black text-[14px] text-white shadow-[0_4px_12px_rgba(89,157,154,0.3)] active:scale-[0.98] transition-all bg-[#599D9A] hover:bg-[#4C8684] uppercase tracking-wide"
                 >
                   Order (Deduct {modalQty} Meal{modalQty > 1 ? 's' : ''})
                 </button>
               ) : (
-                <button 
+                <button
                   onClick={() => {
-                    const currentCart = { ...cart };
-                    currentCart[selectedMealForModal.id] = modalQty;
-                    setCart(currentCart);
+                    setCart({ ...cart, [selectedMealForModal.id]: { qty: modalQty, customisationId: selectedCustomisation } });
                     setSelectedMealForModal(null);
                   }}
                   className="flex-1 py-3.5 rounded-xl font-bold text-base text-white shadow-md active:scale-[0.98] transition-all hover:opacity-90"

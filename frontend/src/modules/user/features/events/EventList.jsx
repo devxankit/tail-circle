@@ -299,9 +299,27 @@ export function EventList() {
     setIsPackageSheetOpen(true);
   };
 
-  // Submit package request
-  const handleConfirmPackage = () => {
-    setPackageSuccess(true);
+  // Submit package request — real POST /events/requests, was a no-op before.
+  const [packageError, setPackageError] = useState('');
+  const [isSubmittingPackage, setIsSubmittingPackage] = useState(false);
+  const handleConfirmPackage = async () => {
+    setPackageError('');
+    setIsSubmittingPackage(true);
+    try {
+      const { api } = await import('../../../../services/api');
+      await api.post('/events/requests', {
+        packageType,
+        date: packageDate,
+        budget: selectedPackage?.price ? `₹${selectedPackage.price}` : undefined,
+        petName: pets[0]?.name,
+        notes: `Location: ${packageLocation} • Tier: ${packageTier} • Package: ${selectedPackage?.title || ''}`,
+      });
+      setPackageSuccess(true);
+    } catch (err) {
+      setPackageError(err.message || 'Could not submit your request. Please try again.');
+    } finally {
+      setIsSubmittingPackage(false);
+    }
   };
 
   // Filter events
@@ -906,16 +924,19 @@ export function EventList() {
                 </div>
 
                 {/* Action CTA */}
+                {packageError && (
+                  <p className="text-[12px] font-bold text-rose-500 text-center mb-2 shrink-0">{packageError}</p>
+                )}
                 <button
                   onClick={handleConfirmPackage}
-                  disabled={!packageDate}
+                  disabled={!packageDate || isSubmittingPackage}
                   className={`w-full py-3.5 rounded-[16px] text-[14px] font-black shadow-lg transition-all mt-auto cursor-pointer ${
-                    packageDate 
-                      ? 'bg-[#599D9A] text-white hover:bg-[#599D9A] shadow-[#599D9A]/15 active:scale-95' 
+                    packageDate
+                      ? 'bg-[#599D9A] text-white hover:bg-[#599D9A] shadow-[#599D9A]/15 active:scale-95 disabled:opacity-60'
                       : 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
                   }`}
                 >
-                  REQUEST CALLBACK
+                  {isSubmittingPackage ? 'SUBMITTING...' : 'REQUEST CALLBACK'}
                 </button>
               </div>
             ) : (

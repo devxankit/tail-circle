@@ -278,7 +278,10 @@ export function DoctorList() {
               <p className="text-[#F87B68] text-[12px] font-medium">Call our 24/7 emergency helpline</p>
             </div>
           </div>
-          <button className="bg-[#F87B68] text-white px-4 py-2 rounded-full text-[13px] font-bold shadow-sm active:scale-95 transition-transform">
+          <button
+            onClick={() => { window.location.href = 'tel:+919000000000'; }}
+            className="bg-[#F87B68] text-white px-4 py-2 rounded-full text-[13px] font-bold shadow-sm active:scale-95 transition-transform"
+          >
             Call Now
           </button>
         </div>

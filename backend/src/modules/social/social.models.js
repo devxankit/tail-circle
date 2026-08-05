@@ -95,6 +95,17 @@ const matchProfileSchema = new mongoose.Schema(
 );
 export const MatchProfile = mongoose.model('MatchProfile', matchProfileSchema);
 
+/** "Report {name}" on a swipe-deck profile. */
+const profileReportSchema = new mongoose.Schema(
+  {
+    profileId: { type: mongoose.Schema.Types.ObjectId, ref: 'MatchProfile', required: true },
+    reporterId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    reason: { type: String, default: '' },
+  },
+  { timestamps: true }
+);
+export const ProfileReport = mongoose.model('ProfileReport', profileReportSchema);
+
 const swipeSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -140,6 +151,11 @@ const conversationSchema = new mongoose.Schema(
     lastMessage: { type: String, default: '' },
     lastMessageAt: { type: Date, default: null },
     unread: { type: Map, of: Number, default: {} },
+    // Real backing for the chat header's Mute/Clear/Block menu — no more
+    // buttons that just close the menu and touch nothing.
+    mutedBy: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], default: [] },
+    blockedBy: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], default: [] },
+    clearedAt: { type: Map, of: Date, default: {} }, // per-user "clear chat for me"
   },
   { timestamps: true }
 );
@@ -154,14 +170,31 @@ const messageSchema = new mongoose.Schema(
       required: true,
     },
     senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    type: { type: String, enum: ['text', 'image'], default: 'text' },
+    type: { type: String, enum: ['text', 'image', 'location'], default: 'text' },
     text: { type: String, default: '', maxlength: 2000 },
     mediaUrl: { type: String, default: null },
+    // Real coordinates for type 'location' — from navigator.geolocation, not
+    // a fixed "Central Park Dog Run" string.
+    meta: {
+      lat: { type: Number, default: null },
+      lng: { type: Number, default: null },
+    },
   },
   { timestamps: true }
 );
 messageSchema.index({ conversationId: 1, createdAt: 1 });
 export const Message = mongoose.model('Message', messageSchema);
+
+/** "Report / Block" from the chat header — same shape as PostReport. */
+const chatReportSchema = new mongoose.Schema(
+  {
+    conversationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Conversation', required: true },
+    reporterId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    reason: { type: String, default: '' },
+  },
+  { timestamps: true }
+);
+export const ChatReport = mongoose.model('ChatReport', chatReportSchema);
 
 const storySchema = new mongoose.Schema(
   {
@@ -175,3 +208,16 @@ const storySchema = new mongoose.Schema(
 );
 storySchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 export const Story = mongoose.model('Story', storySchema);
+
+/** One row per (story, viewer) — powers the real "Viewed By" list/count. */
+const storyViewSchema = new mongoose.Schema(
+  {
+    storyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Story', required: true, index: true },
+    viewerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    viewerName: { type: String, default: '' },
+    viewerAvatar: { type: String, default: null },
+  },
+  { timestamps: true }
+);
+storyViewSchema.index({ storyId: 1, viewerId: 1 }, { unique: true });
+export const StoryView = mongoose.model('StoryView', storyViewSchema);

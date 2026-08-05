@@ -233,13 +233,28 @@ export function Login() {
             <div className="flex-1 h-[1px] bg-gray-300"></div>
           </div>
           <div className="flex justify-center gap-5">
-            <button type="button" className="w-[3.5rem] h-[3.5rem] bg-white rounded-full shadow-[0_4px_15px_rgba(0,0,0,0.06)] flex items-center justify-center active:scale-95 transition-transform border border-gray-100 hover:bg-[#FAF7F2]">
+            {/* No OAuth backend exists yet (auth.routes.js is phone/OTP only) —
+                these tell the user that honestly instead of silently doing
+                nothing when tapped. */}
+            <button
+              type="button"
+              onClick={() => alert('Google sign-in is coming soon. Please continue with your phone number for now.')}
+              className="w-[3.5rem] h-[3.5rem] bg-white rounded-full shadow-[0_4px_15px_rgba(0,0,0,0.06)] flex items-center justify-center active:scale-95 transition-transform border border-gray-100 hover:bg-[#FAF7F2]"
+            >
               <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-6 h-6" alt="Google" />
             </button>
-            <button type="button" className="w-[3.5rem] h-[3.5rem] bg-white rounded-full shadow-[0_4px_15px_rgba(0,0,0,0.06)] flex items-center justify-center active:scale-95 transition-transform border border-gray-100 hover:bg-[#FAF7F2]">
+            <button
+              type="button"
+              onClick={() => alert('Facebook sign-in is coming soon. Please continue with your phone number for now.')}
+              className="w-[3.5rem] h-[3.5rem] bg-white rounded-full shadow-[0_4px_15px_rgba(0,0,0,0.06)] flex items-center justify-center active:scale-95 transition-transform border border-gray-100 hover:bg-[#FAF7F2]"
+            >
               <img src="https://www.svgrepo.com/show/475647/facebook-color.svg" className="w-6 h-6" alt="Facebook" />
             </button>
-            <button type="button" className="w-[3.5rem] h-[3.5rem] bg-white rounded-full shadow-[0_4px_15px_rgba(0,0,0,0.06)] flex items-center justify-center active:scale-95 transition-transform border border-gray-100 hover:bg-[#FAF7F2]">
+            <button
+              type="button"
+              onClick={() => alert('Apple sign-in is coming soon. Please continue with your phone number for now.')}
+              className="w-[3.5rem] h-[3.5rem] bg-white rounded-full shadow-[0_4px_15px_rgba(0,0,0,0.06)] flex items-center justify-center active:scale-95 transition-transform border border-gray-100 hover:bg-[#FAF7F2]"
+            >
               <img src="https://www.svgrepo.com/show/511330/apple-173.svg" className="w-6 h-6" alt="Apple" />
             </button>
           </div>

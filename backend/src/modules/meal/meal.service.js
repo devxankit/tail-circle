@@ -7,6 +7,16 @@ import { MealPlan, Meal, MealAccount, MealOrder } from './meal.models.js';
 
 const toPaise = (rupees) => Math.round(rupees * 100);
 
+// Server-side catalog for per-item customisation — mirrors MealDashboard.jsx's
+// picker exactly, so the price the modal shows is the price actually charged
+// (customisationId used to be accepted from the client and silently dropped).
+export const MEAL_CUSTOMISATIONS = {
+  c1: { name: 'Standard Portion', price: 0 },
+  c2: { name: 'Extra Meat', price: 120 },
+  c3: { name: 'Extra Veggies', price: 60 },
+  c4: { name: 'Premium Broth', price: 90 },
+};
+
 export async function getAccount(userId) {
   let account = await MealAccount.findOne({ userId });
   if (!account) account = await MealAccount.create({ userId });
@@ -108,7 +118,15 @@ export async function orderWithPrepaid(user, lines) {
   const items = lines.map((l) => {
     const meal = byId.get(l.mealId);
     if (!meal) throw ApiError.badRequest(`Unknown meal: ${l.mealId}`);
-    return { mealId: meal.legacyId, name: meal.name, quantity: l.qty, price: 0 };
+    // Credit-based — a customisation never changes what's deducted, but its
+    // name still rides along as a real kitchen note instead of being dropped.
+    const custom = MEAL_CUSTOMISATIONS[l.customisationId];
+    return {
+      mealId: meal.legacyId,
+      name: custom && custom.name !== 'Standard Portion' ? `${meal.name} (${custom.name})` : meal.name,
+      quantity: l.qty,
+      price: 0,
+    };
   });
   const creditsNeeded = items.reduce((s, i) => s + i.quantity, 0);
 
@@ -139,7 +157,15 @@ export async function orderALaCarte(user, lines) {
   const items = lines.map((l) => {
     const meal = byId.get(l.mealId);
     if (!meal) throw ApiError.badRequest(`Unknown meal: ${l.mealId}`);
-    return { mealId: meal.legacyId, name: meal.name, quantity: l.qty, price: meal.price };
+    // Server-priced, same as the base meal — the customisation surcharge the
+    // modal shows is now what's actually charged, not just displayed.
+    const custom = MEAL_CUSTOMISATIONS[l.customisationId] || MEAL_CUSTOMISATIONS.c1;
+    return {
+      mealId: meal.legacyId,
+      name: custom.name !== 'Standard Portion' ? `${meal.name} (${custom.name})` : meal.name,
+      quantity: l.qty,
+      price: meal.price + custom.price,
+    };
   });
   const totalRupees = items.reduce((s, i) => s + i.price * i.quantity, 0);
 

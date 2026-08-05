@@ -1,7 +1,7 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { ArrowLeft, MessageCircle, Phone } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getBookingById } from '../../../../../services/groomingApi';
+import { getBookingById, updateBookingStatus, rescheduleBooking } from '../../../../../services/groomingApi';
 
 export function MyBookingDetail() {
   const { id } = useParams();
@@ -12,6 +12,7 @@ export function MyBookingDetail() {
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showRescheduleModal, setShowRescheduleModal] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [actionError, setActionError] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
 
@@ -22,10 +23,9 @@ export function MyBookingDetail() {
   const loadBooking = async () => {
     setLoading(true);
     try {
-      const savedBookings = JSON.parse(localStorage.getItem('groomingBookings') || '[]');
-      let b = savedBookings.find(x => x.id === id) || savedBookings[0];
+      const b = await getBookingById(id);
       setBooking(b);
-      
+
       if (b) {
         setSelectedDate(b.date);
         setSelectedTime(b.timeSlot || '10:00 AM');
@@ -39,16 +39,13 @@ export function MyBookingDetail() {
 
   const handleCancel = async () => {
     setIsProcessing(true);
+    setActionError('');
     try {
-      const savedBookings = JSON.parse(localStorage.getItem('groomingBookings') || '[]');
-      const idx = savedBookings.findIndex(x => x.id === (booking.id || id));
-      if (idx !== -1) {
-        savedBookings[idx].status = 'Cancelled';
-        localStorage.setItem('groomingBookings', JSON.stringify(savedBookings));
-      }
-      await new Promise(r => setTimeout(r, 800)); // Simulate API call
+      await updateBookingStatus(booking.id || id, 'Cancelled');
       setShowCancelModal(false);
-      loadBooking();
+      await loadBooking();
+    } catch (err) {
+      setActionError(err?.message || 'Could not cancel this booking. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -56,17 +53,13 @@ export function MyBookingDetail() {
 
   const handleReschedule = async () => {
     setIsProcessing(true);
+    setActionError('');
     try {
-      const savedBookings = JSON.parse(localStorage.getItem('groomingBookings') || '[]');
-      const idx = savedBookings.findIndex(x => x.id === (booking.id || id));
-      if (idx !== -1) {
-        savedBookings[idx].date = selectedDate;
-        savedBookings[idx].timeSlot = selectedTime;
-        localStorage.setItem('groomingBookings', JSON.stringify(savedBookings));
-      }
-      await new Promise(r => setTimeout(r, 800)); // Simulate API call
+      await rescheduleBooking(booking.id || id, selectedDate, selectedTime);
       setShowRescheduleModal(false);
-      loadBooking();
+      await loadBooking();
+    } catch (err) {
+      setActionError(err?.message || 'Could not reschedule this booking. Please try again.');
     } finally {
       setIsProcessing(false);
     }
@@ -209,6 +202,7 @@ export function MyBookingDetail() {
             <p className="text-[14px] text-gray-500 font-medium mb-6 leading-relaxed">
               Are you sure you want to cancel this booking? This action cannot be undone. Refund will be processed in 3-5 business days.
             </p>
+            {actionError && <p className="text-[13px] font-bold text-red-500 mb-4">{actionError}</p>}
             <div className="flex gap-3">
               <button 
                 onClick={() => setShowCancelModal(false)}
@@ -260,8 +254,9 @@ export function MyBookingDetail() {
               </div>
             </div>
 
+            {actionError && <p className="text-[13px] font-bold text-red-500 mb-4">{actionError}</p>}
             <div className="flex gap-3">
-              <button 
+              <button
                 onClick={() => setShowRescheduleModal(false)}
                 className="flex-1 py-3.5 rounded-[12px] font-bold text-[14px] bg-gray-100 text-gray-700 active:scale-95 transition-all"
               >

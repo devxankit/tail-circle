@@ -2,11 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { ShoppingCart, ShoppingBag, Search, ArrowLeft, Heart, MapPin } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ShopList } from './ShopList';
+import { api } from '../../../../services/api';
 
 export function Shop() {
   const navigate = useNavigate();
   const location = useLocation();
   const [cartCount, setCartCount] = useState(0);
+  const [deliveryPincode, setDeliveryPincode] = useState('');
+
+  useEffect(() => {
+    api.get('/addresses')
+      .then(({ data }) => {
+        const address = data.find((a) => a.isDefault) || data[0];
+        if (address) setDeliveryPincode(address.pincode);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const updateCartCount = () => {
@@ -40,7 +51,7 @@ export function Shop() {
           
           {/* Heart & Cart */}
           <div className="flex items-center gap-4 flex-shrink-0 ml-1">
-            <button className="text-gray-700">
+            <button onClick={() => navigate('/app/profile/saved')} className="text-gray-700">
               <Heart size={26} strokeWidth={2} />
             </button>
             <button 
@@ -62,9 +73,9 @@ export function Shop() {
           <div className="flex items-center gap-1.5 text-[14px]">
             <MapPin size={16} className="text-[#F87B68]" />
             <span className="text-gray-500">Deliver to:</span>
-            <span className="font-bold text-gray-800">560034</span>
+            <span className="font-bold text-gray-800">{deliveryPincode || 'Add an address'}</span>
           </div>
-          <button className="text-[#F87B68] font-bold text-[14px]">Change</button>
+          <button onClick={() => navigate('/app/profile/address')} className="text-[#F87B68] font-bold text-[14px]">Change</button>
         </div>
       </div>
 

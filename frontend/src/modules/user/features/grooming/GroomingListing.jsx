@@ -3,6 +3,7 @@ import { ArrowLeft, SlidersHorizontal, MapPin, Heart, Star } from 'lucide-react'
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { getGroomingShops } from '../../../../services/groomingApi';
+import { api } from '../../../../services/api';
 import { GroomingFilterSheet } from './GroomingFilterSheet';
 
 export function GroomingListing() {
@@ -11,16 +12,31 @@ export function GroomingListing() {
   const [loading, setLoading] = useState(true);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [sortBy, setSortBy] = useState('Nearest');
+  const [savedShops, setSavedShops] = useState([]);
 
   useEffect(() => {
     loadShops();
+    api.get('/saved-items')
+      .then(({ data }) => setSavedShops(data.filter((s) => s.targetType === 'provider').map((s) => String(s.targetId))))
+      .catch(() => setSavedShops([]));
   }, []);
+
+  const toggleSave = (e, id) => {
+    e.stopPropagation();
+    if (!id) return;
+    const alreadySaved = savedShops.includes(id);
+    setSavedShops(alreadySaved ? savedShops.filter((x) => x !== id) : [...savedShops, id]);
+    const call = alreadySaved
+      ? api.delete('/saved-items', { body: { targetType: 'provider', targetId: id } })
+      : api.post('/saved-items', { targetType: 'provider', targetId: id });
+    call.catch(() => setSavedShops(savedShops)); // revert on failure
+  };
 
   const loadShops = async () => {
     setLoading(true);
     try {
       const data = await getGroomingShops();
-      // Simulate sorting logic on the frontend
+      // Sort client-side by each shop's real distanceText field.
       let sorted = [...data];
       if (sortBy === 'Lowest Price') {
         sorted.sort((a, b) => a.startingPrice - b.startingPrice);
@@ -40,7 +56,6 @@ export function GroomingListing() {
       // Re-sort when sortBy changes without refetching for demo
       let sorted = [...shops];
       if (sortBy === 'Nearest') {
-        // Just keeping original order as mock "nearest"
         sorted.sort((a, b) => parseFloat(a.distance) - parseFloat(b.distance));
       } else if (sortBy === 'Lowest Price') {
         sorted.sort((a, b) => a.startingPrice - b.startingPrice);
@@ -115,8 +130,11 @@ export function GroomingListing() {
             >
               <div className="w-[100px] h-[110px] rounded-[16px] overflow-hidden relative shrink-0">
                 <img src={shop.image} alt={shop.name} className="w-full h-full object-cover" />
-                <button className="absolute top-2 right-2 w-7 h-7 bg-white/80 backdrop-blur-sm rounded-full flex items-center justify-center">
-                  <Heart size={14} className="text-gray-400" />
+                <button
+                  onClick={(e) => toggleSave(e, shop._id)}
+                  className="absolute top-2 right-2 w-7 h-7 bg-white/80 backdrop-blur-sm rounded-full flex items-center justify-center"
+                >
+                  <Heart size={14} className={savedShops.includes(shop._id) ? 'fill-red-500 text-red-500' : 'text-gray-400'} />
                 </button>
               </div>
               <div className="flex flex-col flex-1 py-1">

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Heart, MapPin, MoreHorizontal, Filter, MessageCircle, Sparkles, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '../../utils/cn';
-import { fetchMatchDeck, swipeProfile, fetchMatches } from '../../../../services/social';
+import { fetchMatchDeck, swipeProfile, fetchMatches, reportProfile } from '../../../../services/social';
 import { MatchesFilterModal } from './MatchesFilterModal';
 
 const DEFAULT_FILTERS = {
@@ -98,6 +98,16 @@ export function MatchSwipe({ setView }) {
         scrollRef.current.scrollTop = 0;
       }
     }, 400);
+  };
+
+  // Real report — was a decorative link/icon with no handler before.
+  const handleReport = () => {
+    if (!currentProfile) return;
+    const reason = window.prompt(`Why are you reporting ${currentProfile.name}? (optional)`);
+    if (reason === null) return; // cancelled
+    reportProfile(currentProfile.id, reason)
+      .then(() => handleAction('pass'))
+      .catch(() => alert('Could not submit the report — please try again.'));
   };
 
   const onTouchStart = (e) => {
@@ -301,7 +311,7 @@ export function MatchSwipe({ setView }) {
                     {currentProfile.breed} • {currentProfile.age} yrs
                   </p>
                 </div>
-                <button className="text-gray-400 hover:text-gray-600 p-1">
+                <button onClick={handleReport} className="text-gray-400 hover:text-gray-600 p-1">
                   <MoreHorizontal size={24} />
                 </button>
               </div>
@@ -456,7 +466,7 @@ export function MatchSwipe({ setView }) {
 
               {/* Bottom Actions */}
               <div className="px-4 mt-10 mb-6 flex justify-center">
-                <button className="text-gray-400 text-sm font-bold hover:text-gray-600 transition underline decoration-gray-300 underline-offset-4">
+                <button onClick={handleReport} className="text-gray-400 text-sm font-bold hover:text-gray-600 transition underline decoration-gray-300 underline-offset-4">
                   Report {currentProfile.name}
                 </button>
               </div>

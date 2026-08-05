@@ -26,6 +26,13 @@ const BANNERS = [
   { key: 'home_health', title: 'Pet Health Insurance', btnText: 'Get Quote', image: '/assets/banners/banner_health.png', bg: 'from-[#F9D5CE] to-[#F9D5CE]', link: '/app/services', slot: 'Home Hero', sort: 1 },
   { key: 'home_grooming', title: 'Grooming at Home', btnText: 'Book Now', image: '/assets/banners/banner_grooming_home.png', bg: 'from-[#80C1BF] to-[#66B4B1]', link: '/app/services/grooming', slot: 'Home Hero', sort: 2 },
   { key: 'home_travel', title: 'Pet Travel Agent Services', btnText: 'Explore', image: '/assets/banners/banner_travel.png', bg: 'from-[#9FD1CF] to-[#BFE0DF]', link: '/app/services', slot: 'Home Hero', sort: 3 },
+  // Home "Special Offers" rail (retires Home.jsx's hardcoded `specialOffers`
+  // array). Colors/tags for these are computed client-side from index —
+  // only real content (title/desc/badge/image/link) lives here.
+  { key: 'offer_grooming', title: 'Premium Grooming', subtitle: 'Give your pet the best care they deserve.', badge: '20% OFF', btnText: 'Book Now', image: '/assets/offers/offer_grooming.png', link: '/app/services/grooming', slot: 'Home Offers', sort: 20 },
+  { key: 'offer_meals', title: 'Fresh Meals', subtitle: 'Healthy, fresh meals delivered to your door.', badge: '30% OFF', btnText: 'Subscribe', image: '/assets/offers/offer_food.png', link: '/app/meals', slot: 'Home Offers', sort: 21 },
+  { key: 'offer_vet', title: 'Vet Checkup', subtitle: 'First consultation is absolutely free.', badge: 'FREE', btnText: 'Claim Now', image: '/assets/offers/offer_vet.png', link: '/app/services/doctors', slot: 'Home Offers', sort: 22 },
+  { key: 'offer_toys', title: 'Toys Clearance', subtitle: 'Huge discounts on premium toys & accessories.', badge: '50% OFF', btnText: 'Shop Now', image: '/assets/offers/offer_toys.png', link: '/app/shop', slot: 'Home Offers', sort: 23 },
   // Section-page promo banners (admin-managed via BannersContent → replaces the
   // fresh_food/adoption/daycare localStorage CMS read by 4 user screens).
   { key: 'fresh_food', title: 'Fresh Food', image: '', slot: 'Section', sort: 10 },

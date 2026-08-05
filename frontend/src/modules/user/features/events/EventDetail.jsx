@@ -22,6 +22,28 @@ export function EventDetail() {
     navigate(`/app/services/events/${eventId}/checkout`, { state: { event } });
   };
 
+  const handleShare = async () => {
+    const shareData = { title: event.title, text: `Check out ${event.title} on TailCircle`, url: window.location.href };
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch { /* user cancelled */ }
+    } else if (navigator.clipboard) {
+      try {
+        await navigator.clipboard.writeText(shareData.url);
+        alert('Link copied to clipboard!');
+      } catch {
+        alert('Could not copy the link — please copy it from the address bar.');
+      }
+    } else {
+      alert('Sharing is not supported on this device.');
+    }
+  };
+
+  const mapUrl = event.location
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(event.location)}`
+    : null;
+
   return (
     <div className="flex flex-col h-full bg-white absolute inset-0 z-[60] animate-in slide-in-from-right duration-300">
       
@@ -33,7 +55,8 @@ export function EventDetail() {
         >
           <ArrowLeft size={20} />
         </button>
-        <button 
+        <button
+          onClick={handleShare}
           className="absolute top-4 right-4 z-10 w-10 h-10 bg-white/80 backdrop-blur-md rounded-full flex items-center justify-center shadow-sm text-text-primary hover:bg-white transition-colors"
         >
           <Share2 size={18} />
@@ -56,7 +79,7 @@ export function EventDetail() {
               <Calendar size={24} />
             </div>
             <div>
-              <p className="text-sm font-bold text-text-primary">{event.day} {event.month} 2026</p>
+              <p className="text-sm font-bold text-text-primary">{event.day} {event.month}</p>
               <p className="text-xs text-text-secondary">{event.time}</p>
             </div>
           </div>
@@ -66,7 +89,7 @@ export function EventDetail() {
               <Users size={24} />
             </div>
             <div>
-              <p className="text-sm font-bold text-text-primary">150+ Going</p>
+              <p className="text-sm font-bold text-text-primary">{event.going ? `${event.going} Going` : 'Be the first to go'}</p>
               <p className="text-xs text-text-secondary">Join the pack</p>
             </div>
           </div>
@@ -75,15 +98,20 @@ export function EventDetail() {
         {/* Location Section */}
         <div className="p-4 border-b border-border-light">
           <h3 className="text-sm font-bold text-text-secondary uppercase tracking-wider mb-3">Location</h3>
-          <div className="flex items-center gap-3">
+          <a
+            href={mapUrl || undefined}
+            target="_blank"
+            rel="noreferrer"
+            className={`flex items-center gap-3 ${mapUrl ? '' : 'pointer-events-none'}`}
+          >
             <div className="w-10 h-10 bg-bg-secondary rounded-full flex items-center justify-center shrink-0">
               <MapPin size={18} className="text-text-primary" />
             </div>
             <div>
               <p className="text-sm font-bold text-text-primary">{event.location}</p>
-              <p className="text-xs text-text-secondary">View on map</p>
+              {mapUrl && <p className="text-xs text-primary-main font-medium">View on map</p>}
             </div>
-          </div>
+          </a>
         </div>
 
         {/* About Section */}
