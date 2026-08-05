@@ -1,0 +1,67 @@
+# LiveKit Community Edition — TailCircle video consultations.
+#
+# ⚠ This file contains LITERAL values only. LiveKit does NOT expand `${VAR}`
+#   inside its YAML — it fails with:
+#       could not parse config: cannot unmarshal !!str `${LIVEK...` into uint32
+#
+#   Everything here is instead overridable by environment variable. LiveKit
+#   generates one env var per config field, upper-cased and underscore-joined:
+#
+#       port                  →  LIVEKIT_PORT
+#       rtc.tcp_port          →  LIVEKIT_RTC_TCP_PORT
+#       rtc.port_range_start  →  LIVEKIT_RTC_PORT_RANGE_START
+#       rtc.port_range_end    →  LIVEKIT_RTC_PORT_RANGE_END
+#       rtc.use_external_ip   →  LIVEKIT_RTC_USE_EXTERNAL_IP
+#       room.empty_timeout    →  LIVEKIT_ROOM_EMPTY_TIMEOUT
+#       keys                  →  LIVEKIT_KEYS  ("key: secret")
+#
+#   An env var only takes effect when the field is ABSENT from this file, so the
+#   ports below are commented out — set them in backend/livekit/.env instead.
+#   Values left uncommented are policy, not deployment-specific.
+#
+#   Verify what a given configuration will bind, without starting it:
+#       docker compose -f docker-compose.livekit.yml run --rm livekit ports
+
+# ── Ports (set via env — see backend/livekit/.env) ────────────────────────
+# Uncomment ONLY if you want to pin a value here and ignore the env var.
+#
+# port: 7880                    # LIVEKIT_PORT              signalling (WS+HTTP)
+# rtc:
+#   tcp_port: 7881              # LIVEKIT_RTC_TCP_PORT      WebRTC over TCP
+#   port_range_start: 50000     # LIVEKIT_RTC_PORT_RANGE_START
+#   port_range_end: 50100       # LIVEKIT_RTC_PORT_RANGE_END
+#   use_external_ip: true       # LIVEKIT_RTC_USE_EXTERNAL_IP
+
+# ── Keys ──────────────────────────────────────────────────────────────────
+# Supplied as LIVEKIT_KEYS="<key>: <secret>". Never commit real keys.
+# Must match LIVEKIT_API_KEY / LIVEKIT_API_SECRET in backend/.env, or every
+# participant token is rejected at connect with an opaque error.
+
+# ── Room policy ───────────────────────────────────────────────────────────
+room:
+  # The backend calls createRoom() explicitly, but auto-create keeps a
+  # reconnecting client from failing if the room was reaped mid-call.
+  auto_create: true
+  # Seconds an empty room lingers before LiveKit reaps it — long enough that a
+  # participant dropping off mobile data can rejoin the same room.
+  empty_timeout: 300
+  # A consultation is one vet + one pet parent.
+  max_participants: 4
+
+# ── Webhooks ──────────────────────────────────────────────────────────────
+# Authoritative join/leave timestamps for overage billing. LiveKit signs each
+# delivery with the API key; the backend verifies before trusting a timestamp,
+# so clients are never trusted for billable duration.
+#
+# The URL is deployment-specific → set LIVEKIT_WEBHOOK_URLS in .env.
+# (webhook.urls → LIVEKIT_WEBHOOK_URLS, webhook.api_key → LIVEKIT_WEBHOOK_API_KEY)
+
+# ── TURN ──────────────────────────────────────────────────────────────────
+# Served by coturn (see coturn/turnserver.conf), not LiveKit's embedded TURN,
+# so relay capacity can be scaled and monitored independently.
+turn:
+  enabled: false
+
+logging:
+  level: info
+  json: true

@@ -1,0 +1,594 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&display=swap');
+@import "tailwindcss";
+@theme {
+  --breakpoint-xs: 360px;
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+
+  --color-bg-primary: #FAF7F2;
+  --color-bg-secondary: #E9ECEF;
+  --color-bg-card: #FFFFFF;
+  
+  --color-primary-main: #F87B68;
+  --color-primary-light: #FFCCBC;
+  --color-primary-dark: #E64A19;
+  
+  --color-accent-teal: #66B4B1;
+  --color-accent-yellow: #FFD54F;
+  
+  --color-text-primary: #5A5552;
+  --color-text-secondary: #968F8A;
+  --color-text-disabled: #D1CBC7;
+  
+  --color-border-light: #F0EAE1;
+  
+  --color-success: #4CAF50;
+  --color-error: #F44336;
+  --color-warning: #FF9800;
+  
+  --font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  
+  /* Adding some useful shadow variables if needed */
+  --shadow-card: 0px 4px 16px rgba(100, 80, 60, 0.06);
+  --shadow-card-pressed: 0px 2px 6px rgba(100, 80, 60, 0.04);
+
+  --color-slate-50: #FAF7F2;
+  --color-slate-100: #E9ECEF;
+  --color-slate-200: #DEE2E6;
+  --color-slate-300: #CED4DA;
+  --color-slate-400: #8C8682;
+  --color-slate-500: #5A5552;
+  --color-slate-600: #474341;
+  --color-slate-700: #33302E;
+  --color-slate-800: #211F1E;
+  --color-slate-900: #11100F;
+  --color-gray-50: #FAF7F2;
+  --color-gray-100: #E9ECEF;
+  --color-gray-200: #DEE2E6;
+  --color-gray-300: #CED4DA;
+  --color-gray-400: #8C8682;
+  --color-gray-500: #5A5552;
+  --color-gray-600: #474341;
+  --color-gray-700: #33302E;
+  --color-gray-800: #211F1E;
+  --color-gray-900: #11100F;
+  --color-zinc-50: #FAF7F2;
+  --color-zinc-100: #E9ECEF;
+  --color-zinc-200: #DEE2E6;
+  --color-zinc-300: #CED4DA;
+  --color-zinc-400: #8C8682;
+  --color-zinc-500: #5A5552;
+  --color-zinc-600: #474341;
+  --color-zinc-700: #33302E;
+  --color-zinc-800: #211F1E;
+  --color-zinc-900: #11100F;
+  --color-neutral-50: #FAF7F2;
+  --color-neutral-100: #E9ECEF;
+  --color-neutral-200: #DEE2E6;
+  --color-neutral-300: #CED4DA;
+  --color-neutral-400: #8C8682;
+  --color-neutral-500: #5A5552;
+  --color-neutral-600: #474341;
+  --color-neutral-700: #33302E;
+  --color-neutral-800: #211F1E;
+  --color-neutral-900: #11100F;
+  --color-stone-50: #FAF7F2;
+  --color-stone-100: #E9ECEF;
+  --color-stone-200: #DEE2E6;
+  --color-stone-300: #CED4DA;
+  --color-stone-400: #8C8682;
+  --color-stone-500: #5A5552;
+  --color-stone-600: #474341;
+  --color-stone-700: #33302E;
+  --color-stone-800: #211F1E;
+  --color-stone-900: #11100F;
+  --color-red-50: #FEF4F3;
+  --color-red-100: #FCEAE7;
+  --color-red-200: #F9D5CE;
+  --color-red-300: #F6C0B6;
+  --color-red-400: #F3AB9D;
+  --color-red-500: #F87B68;
+  --color-red-600: #D96B5B;
+  --color-red-700: #BA5C4E;
+  --color-red-800: #9C4D41;
+  --color-red-900: #7D3E34;
+  --color-orange-50: #FEF4F3;
+  --color-orange-100: #FCEAE7;
+  --color-orange-200: #F9D5CE;
+  --color-orange-300: #F6C0B6;
+  --color-orange-400: #F3AB9D;
+  --color-orange-500: #F87B68;
+  --color-orange-600: #D96B5B;
+  --color-orange-700: #BA5C4E;
+  --color-orange-800: #9C4D41;
+  --color-orange-900: #7D3E34;
+  --color-amber-50: #FEF4F3;
+  --color-amber-100: #FCEAE7;
+  --color-amber-200: #F9D5CE;
+  --color-amber-300: #F6C0B6;
+  --color-amber-400: #F3AB9D;
+  --color-amber-500: #F87B68;
+  --color-amber-600: #D96B5B;
+  --color-amber-700: #BA5C4E;
+  --color-amber-800: #9C4D41;
+  --color-amber-900: #7D3E34;
+  --color-yellow-50: #FEF4F3;
+  --color-yellow-100: #FCEAE7;
+  --color-yellow-200: #F9D5CE;
+  --color-yellow-300: #F6C0B6;
+  --color-yellow-400: #F3AB9D;
+  --color-yellow-500: #F87B68;
+  --color-yellow-600: #D96B5B;
+  --color-yellow-700: #BA5C4E;
+  --color-yellow-800: #9C4D41;
+  --color-yellow-900: #7D3E34;
+  --color-rose-50: #FEF4F3;
+  --color-rose-100: #FCEAE7;
+  --color-rose-200: #F9D5CE;
+  --color-rose-300: #F6C0B6;
+  --color-rose-400: #F3AB9D;
+  --color-rose-500: #F87B68;
+  --color-rose-600: #D96B5B;
+  --color-rose-700: #BA5C4E;
+  --color-rose-800: #9C4D41;
+  --color-rose-900: #7D3E34;
+  --color-pink-50: #FEF4F3;
+  --color-pink-100: #FCEAE7;
+  --color-pink-200: #F9D5CE;
+  --color-pink-300: #F6C0B6;
+  --color-pink-400: #F3AB9D;
+  --color-pink-500: #F87B68;
+  --color-pink-600: #D96B5B;
+  --color-pink-700: #BA5C4E;
+  --color-pink-800: #9C4D41;
+  --color-pink-900: #7D3E34;
+  --color-green-50: #EFF7F7;
+  --color-green-100: #DFF0EF;
+  --color-green-200: #BFE0DF;
+  --color-green-300: #9FD1CF;
+  --color-green-400: #80C1BF;
+  --color-green-500: #66B4B1;
+  --color-green-600: #599D9A;
+  --color-green-700: #4C8684;
+  --color-green-800: #40716F;
+  --color-green-900: #335A58;
+  --color-emerald-50: #EFF7F7;
+  --color-emerald-100: #DFF0EF;
+  --color-emerald-200: #BFE0DF;
+  --color-emerald-300: #9FD1CF;
+  --color-emerald-400: #80C1BF;
+  --color-emerald-500: #66B4B1;
+  --color-emerald-600: #599D9A;
+  --color-emerald-700: #4C8684;
+  --color-emerald-800: #40716F;
+  --color-emerald-900: #335A58;
+  --color-teal-50: #EFF7F7;
+  --color-teal-100: #DFF0EF;
+  --color-teal-200: #BFE0DF;
+  --color-teal-300: #9FD1CF;
+  --color-teal-400: #80C1BF;
+  --color-teal-500: #66B4B1;
+  --color-teal-600: #599D9A;
+  --color-teal-700: #4C8684;
+  --color-teal-800: #40716F;
+  --color-teal-900: #335A58;
+  --color-cyan-50: #EFF7F7;
+  --color-cyan-100: #DFF0EF;
+  --color-cyan-200: #BFE0DF;
+  --color-cyan-300: #9FD1CF;
+  --color-cyan-400: #80C1BF;
+  --color-cyan-500: #66B4B1;
+  --color-cyan-600: #599D9A;
+  --color-cyan-700: #4C8684;
+  --color-cyan-800: #40716F;
+  --color-cyan-900: #335A58;
+  --color-sky-50: #EFF7F7;
+  --color-sky-100: #DFF0EF;
+  --color-sky-200: #BFE0DF;
+  --color-sky-300: #9FD1CF;
+  --color-sky-400: #80C1BF;
+  --color-sky-500: #66B4B1;
+  --color-sky-600: #599D9A;
+  --color-sky-700: #4C8684;
+  --color-sky-800: #40716F;
+  --color-sky-900: #335A58;
+  --color-blue-50: #EFF7F7;
+  --color-blue-100: #DFF0EF;
+  --color-blue-200: #BFE0DF;
+  --color-blue-300: #9FD1CF;
+  --color-blue-400: #80C1BF;
+  --color-blue-500: #66B4B1;
+  --color-blue-600: #599D9A;
+  --color-blue-700: #4C8684;
+  --color-blue-800: #40716F;
+  --color-blue-900: #335A58;
+  --color-indigo-50: #EFF7F7;
+  --color-indigo-100: #DFF0EF;
+  --color-indigo-200: #BFE0DF;
+  --color-indigo-300: #9FD1CF;
+  --color-indigo-400: #80C1BF;
+  --color-indigo-500: #66B4B1;
+  --color-indigo-600: #599D9A;
+  --color-indigo-700: #4C8684;
+  --color-indigo-800: #40716F;
+  --color-indigo-900: #335A58;
+  --color-violet-50: #EFF7F7;
+  --color-violet-100: #DFF0EF;
+  --color-violet-200: #BFE0DF;
+  --color-violet-300: #9FD1CF;
+  --color-violet-400: #80C1BF;
+  --color-violet-500: #66B4B1;
+  --color-violet-600: #599D9A;
+  --color-violet-700: #4C8684;
+  --color-violet-800: #40716F;
+  --color-violet-900: #335A58;
+  --color-purple-50: #EFF7F7;
+  --color-purple-100: #DFF0EF;
+  --color-purple-200: #BFE0DF;
+  --color-purple-300: #9FD1CF;
+  --color-purple-400: #80C1BF;
+  --color-purple-500: #66B4B1;
+  --color-purple-600: #599D9A;
+  --color-purple-700: #4C8684;
+  --color-purple-800: #40716F;
+  --color-purple-900: #335A58;
+}
+
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    width: 100vw;
+    position: relative;
+    overscroll-behavior-x: none;
+    touch-action: manipulation;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Global Copy-Protection: Disable text selection except in input boxes */
+  *, *::before, *::after {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none; /* Prevents long-press callout menu on iOS */
+    box-sizing: border-box;
+  }
+
+  input, textarea, select, [contenteditable="true"] {
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+  }
+
+  /* Prevent dragging and selections of images */
+  img {
+    -webkit-user-drag: none;
+    -khtml-user-drag: none;
+    -moz-user-drag: none;
+    -o-user-drag: none;
+    user-drag: none;
+  }
+
+  /* Prevents iOS Safari from auto-zooming when focusing on inputs */
+  @media screen and (max-width: 768px) {
+    input, textarea, select {
+      font-size: 16px !important;
+    }
+  }
+
+  /* ==========================================
+     PROGRESSIVE MOBILE RESPONSIVENESS OVERRIDES
+     ========================================== */
+
+  /* Tier 1: Compact Viewports <= 385px (e.g. iPhone SE, iPhone 12 Mini) */
+  @media screen and (max-width: 385px) {
+    .px-6, .p-6 {
+      padding-left: 1.25rem !important;
+      padding-right: 1.25rem !important;
+    }
+    .px-8, .p-8 {
+      padding-left: 1.5rem !important;
+      padding-right: 1.5rem !important;
+    }
+    .py-8 {
+      padding-top: 1.5rem !important;
+      padding-bottom: 1.5rem !important;
+    }
+    
+    .gap-6 {
+      gap: 1.25rem !important;
+    }
+    .gap-y-6 {
+      row-gap: 1.25rem !important;
+    }
+    .gap-x-4 {
+      column-gap: 0.75rem !important;
+    }
+
+    .text-3xl {
+      font-size: 1.75rem !important;
+    }
+    .text-2xl {
+      font-size: 1.35rem !important;
+    }
+    .text-xl {
+      font-size: 1.15rem !important;
+    }
+    .text-lg {
+      font-size: 1.05rem !important;
+    }
+    .text-\[28px\] {
+      font-size: 1.5rem !important;
+    }
+
+    .w-\[80px\] {
+      width: 40px !important;
+    }
+  }
+
+  /* Tier 2: Medium-Small Mobile Viewports <= 360px */
+  @media screen and (max-width: 360px) {
+    .p-6, .px-6 {
+      padding-left: 1rem !important;
+      padding-right: 1rem !important;
+      padding-top: 1rem !important;
+      padding-bottom: 1rem !important;
+    }
+    .p-4, .px-4 {
+      padding-left: 0.75rem !important;
+      padding-right: 0.75rem !important;
+    }
+    .p-3, .px-3 {
+      padding-left: 0.625rem !important;
+      padding-right: 0.625rem !important;
+    }
+    .py-8 {
+      padding-top: 1.25rem !important;
+      padding-bottom: 1.25rem !important;
+    }
+    .py-6 {
+      padding-top: 1rem !important;
+      padding-bottom: 1rem !important;
+    }
+    
+    .gap-8 {
+      gap: 1.25rem !important;
+    }
+    .gap-6 {
+      gap: 1rem !important;
+    }
+    .gap-4 {
+      gap: 0.625rem !important;
+    }
+    .gap-3 {
+      gap: 0.5rem !important;
+    }
+    .gap-2 {
+      gap: 0.375rem !important;
+    }
+    .gap-x-4 {
+      column-gap: 0.5rem !important;
+    }
+    .gap-y-6 {
+      row-gap: 0.875rem !important;
+    }
+    .gap-y-8 {
+      row-gap: 1.25rem !important;
+    }
+
+    .text-3xl {
+      font-size: 1.5rem !important;
+    }
+    .text-2xl {
+      font-size: 1.2rem !important;
+    }
+    .text-xl {
+      font-size: 1rem !important;
+    }
+    .text-lg {
+      font-size: 0.95rem !important;
+    }
+    .text-base {
+      font-size: 0.875rem !important;
+    }
+    .text-sm {
+      font-size: 0.8rem !important;
+    }
+    .text-xs {
+      font-size: 0.7rem !important;
+    }
+    .text-\[28px\] {
+      font-size: 1.35rem !important;
+    }
+
+    .w-16 {
+      width: 3.5rem !important;
+    }
+    
+    .h-\[52px\], .h-14 {
+      height: 46px !important;
+    }
+    .h-12 {
+      height: 42px !important;
+    }
+    
+    .w-\[80px\] {
+      width: 20px !important;
+    }
+  }
+
+  /* Tier 3: Extremely Narrow Mobile Viewports <= 325px */
+  @media screen and (max-width: 325px) {
+    .p-6, .px-6 {
+      padding-left: 0.75rem !important;
+      padding-right: 0.75rem !important;
+      padding-top: 0.75rem !important;
+      padding-bottom: 0.75rem !important;
+    }
+    .p-4, .px-4 {
+      padding-left: 0.5rem !important;
+      padding-right: 0.5rem !important;
+    }
+    .p-3, .px-3 {
+      padding-left: 0.5rem !important;
+      padding-right: 0.5rem !important;
+    }
+    .py-8 {
+      padding-top: 1rem !important;
+      padding-bottom: 1rem !important;
+    }
+    .py-6 {
+      padding-top: 0.75rem !important;
+      padding-bottom: 0.75rem !important;
+    }
+    
+    .gap-8 {
+      gap: 1rem !important;
+    }
+    .gap-6 {
+      gap: 0.75rem !important;
+    }
+    .gap-4 {
+      gap: 0.5rem !important;
+    }
+    .gap-3 {
+      gap: 0.375rem !important;
+    }
+    .gap-2 {
+      gap: 0.25rem !important;
+    }
+    .gap-x-4 {
+      column-gap: 0.375rem !important;
+    }
+    .gap-y-6 {
+      row-gap: 0.75rem !important;
+    }
+    .gap-y-8 {
+      row-gap: 1rem !important;
+    }
+
+    .text-3xl {
+      font-size: 1.35rem !important;
+    }
+    .text-2xl {
+      font-size: 1.1rem !important;
+    }
+    .text-xl {
+      font-size: 0.9rem !important;
+    }
+    .text-lg {
+      font-size: 0.85rem !important;
+    }
+    .text-base {
+      font-size: 0.8rem !important;
+    }
+    .text-sm {
+      font-size: 0.75rem !important;
+    }
+    .text-xs {
+      font-size: 0.65rem !important;
+    }
+    .text-\[28px\] {
+      font-size: 1.2rem !important;
+    }
+
+    .w-16 {
+      width: 3.25rem !important;
+    }
+    
+    .h-\[52px\], .h-14 {
+      height: 42px !important;
+    }
+    .h-12 {
+      height: 38px !important;
+    }
+    
+    .w-\[80px\] {
+      width: 0px !important;
+      display: none !important;
+    }
+  }
+  
+  :root {
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  /* Force hide scrollbars for horizontal scroll containers if needed */
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@keyframes bounce-and-fade {
+  0% { transform: scale(0); opacity: 0; }
+  15% { transform: scale(1.2); opacity: 1; }
+  30% { transform: scale(0.95); opacity: 1; }
+  45% { transform: scale(1); opacity: 1; }
+  80% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+@keyframes cat-tail-wag {
+  0%, 100% { transform: rotate(-10deg); }
+  50% { transform: rotate(15deg); }
+}
+
+@keyframes cat-head-look {
+  0%, 100% { transform: translateX(0px) rotate(0deg); }
+  25% { transform: translateX(-4px) rotate(-5deg); }
+  75% { transform: translateX(4px) rotate(5deg); }
+}
+
+@keyframes cat-walk {
+  0% { transform: translateX(0) scaleX(1); }
+  45% { transform: translateX(calc(100vw - 120px)) scaleX(1); }
+  50% { transform: translateX(calc(100vw - 120px)) scaleX(-1); }
+  95% { transform: translateX(0) scaleX(-1); }
+  100% { transform: translateX(0) scaleX(1); }
+}
+
+@keyframes progress {
+  from { width: 0%; }
+  to { width: 100%; }
+}
+
+@keyframes kenburns {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.15); }
+}
+
+/* ========================================================
+   GLOBAL COPY PROTECTION ENGINE - MAXIMUM SPECIFICITY SHIELD
+   ======================================================== */
+*, *::before, *::after, html, body, div, span, p, h1, h2, h3, h4, h5, h6, a, img, svg, button {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-drag: none !important;
+  user-drag: none !important;
+}
+
+/* Explicit exemption for inputs and editable elements to allow typing and cursor operations */
+input, textarea, select, [contenteditable="true"], 
+input *, textarea *, select *, [contenteditable="true"] * {
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default !important;
+}

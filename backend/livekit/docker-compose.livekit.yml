@@ -1,0 +1,78 @@
+# LiveKit CE + coturn — the media plane for TailCircle video consultations.
+#
+# Kept separate from the API's docker-compose.yml on purpose: media servers use
+# host networking and a wide UDP range, and they scale and restart on a
+# different cadence than the API.
+#
+#   cd backend/livekit
+#   cp .env.example .env      # keys, ports, domains
+#   docker compose -f docker-compose.livekit.yml up -d
+#
+# Every port is driven from .env — see README.md for the firewall table. Check
+# what a configuration will bind WITHOUT starting it:
+#   docker compose -f docker-compose.livekit.yml run --rm livekit ports
+
+services:
+  livekit:
+    image: livekit/livekit-server:v1.13
+    restart: unless-stopped
+    # Host networking is effectively required: the UDP media range cannot be
+    # port-mapped efficiently, and LiveKit needs the real client IP for ICE
+    # candidate selection. (This is also why a Windows/Docker Desktop host
+    # cannot serve real users.)
+    network_mode: host
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    environment:
+      # LiveKit reads its own config from these — livekit.yaml deliberately
+      # leaves the ports unset so these win. It does NOT expand ${VAR} inside
+      # the YAML, which is why they are passed as real env vars here.
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+      LIVEKIT_PORT: ${LIVEKIT_PORT:-7880}
+      LIVEKIT_RTC_TCP_PORT: ${LIVEKIT_RTC_TCP_PORT:-7881}
+      LIVEKIT_RTC_PORT_RANGE_START: ${LIVEKIT_RTC_PORT_RANGE_START:-50000}
+      LIVEKIT_RTC_PORT_RANGE_END: ${LIVEKIT_RTC_PORT_RANGE_END:-50100}
+      LIVEKIT_RTC_USE_EXTERNAL_IP: ${LIVEKIT_RTC_USE_EXTERNAL_IP:-true}
+      LIVEKIT_WEBHOOK_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_WEBHOOK_URLS: ${LIVEKIT_WEBHOOK_URLS}
+    healthcheck:
+      # Probes whatever LIVEKIT_PORT is set to, not a hardcoded 7880.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:${LIVEKIT_PORT:-7880}/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  coturn:
+    image: coturn/coturn:4.6
+    restart: unless-stopped
+    network_mode: host
+    # coturn does not read env vars, so its ports are passed as CLI flags —
+    # these override the same keys in turnserver.conf.
+    command: >
+      -c /etc/coturn/turnserver.conf
+      --listening-port=${TURN_PORT:-3478}
+      --tls-listening-port=${TURN_TLS_PORT:-5349}
+      --min-port=${TURN_MIN_PORT:-49160}
+      --max-port=${TURN_MAX_PORT:-49200}
+      --realm=${TURN_DOMAIN}
+      --server-name=${TURN_DOMAIN}
+      --external-ip=${TURN_PUBLIC_IP}
+      --static-auth-secret=${TURN_SECRET}
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+      # Reuse the LiveKit certificate for TURN over TLS.
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    healthcheck:
+      test: ["CMD-SHELL", "netstat -ln | grep -q ':${TURN_PORT:-3478}'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
