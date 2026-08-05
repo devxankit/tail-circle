@@ -113,7 +113,14 @@ export const env = {
       .map((u) => u.trim())
       .filter(Boolean),
     turnSecret: process.env.TURN_SECRET || '',
-    stunUrls: (process.env.STUN_URLS || 'stun:stun.l.google.com:19302')
+    // STUN only helps a peer discover its own public address — it never
+    // relays media, so there's no privacy/data-residency trade-off in using
+    // several public ones for redundancy (if one is slow/unreachable, the
+    // others still let the call find a direct path).
+    stunUrls: (
+      process.env.STUN_URLS ||
+      'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302,stun:global.stun.twilio.com:3478'
+    )
       .split(',')
       .map((u) => u.trim())
       .filter(Boolean),

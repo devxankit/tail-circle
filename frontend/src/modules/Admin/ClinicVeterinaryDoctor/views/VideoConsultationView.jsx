@@ -23,7 +23,7 @@ import { waiveOverage } from '../../../../services/consultApi';
 export function VideoConsultationView({ appointment, onNavigate }) {
   const { addDoctorConsultationNotes } = useVendor();
   const {
-    phase, call, incoming, error, remoteStream, localStream, micOn, camOn,
+    phase, call, incoming, error, mediaWarning, remoteStream, localStream, micOn, camOn,
     peerPresent, reconnecting, elapsed,
     startCall, acceptCall, endCall, toggleMic, toggleCam, reset,
   } = useCall();
@@ -231,6 +231,13 @@ export function VideoConsultationView({ appointment, onNavigate }) {
                 <p className="text-white/50 text-sm">
                   Waiting for {appointment.owner || 'the pet parent'} to join
                 </p>
+              </Overlay>
+            ) : phase !== 'active' ? (
+              // The other side's socket is in the call, but the actual media
+              // connection hasn't come up yet — a different problem than
+              // "nobody's here" (see CallContext.jsx).
+              <Overlay icon={<Loader2 size={32} className="text-white/50 animate-spin" />} title="Connecting video…">
+                {mediaWarning && <p className="text-amber-300 text-sm max-w-sm">{mediaWarning}</p>}
               </Overlay>
             ) : null}
 

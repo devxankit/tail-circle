@@ -133,6 +133,24 @@ export function initSocket(httpServer) {
     socket.on('webrtc:answer', relay('webrtc:answer'));
     socket.on('webrtc:ice-candidate', relay('webrtc:ice-candidate'));
 
+    /**
+     * Diagnostic-only telemetry from `RTCPeerConnection.connectionState` —
+     * the media path itself is direct browser-to-browser and invisible to
+     * this server otherwise, so this is the only way a stuck/failed call is
+     * ever debuggable from server logs instead of guesswork. `local`/`remote`
+     * on a 'connected' report say whether TURN relayed the media ('relay')
+     * or a direct path was found ('host'/'srflx') — the thing to check when
+     * diagnosing "connects but no video".
+     */
+    socket.on('call:media-state', ({ bookingId, state, local, remote, iceConnectionState, iceGatheringState } = {}) => {
+      if (!bookingId || !state) return;
+      logger.info(
+        `call media — user ${userId}, booking ${bookingId}: ${state}` +
+          (local || remote ? ` (local=${local || '?'}, remote=${remote || '?'})` : '') +
+          (iceConnectionState ? ` [ice=${iceConnectionState}/${iceGatheringState}]` : '')
+      );
+    });
+
     socket.on('disconnect', () => {
       for (const bookingId of activeCalls) {
         leaveCallRoom(bookingId).catch((err) => logger.warn(`disconnect leaveCallRoom failed: ${err.message}`));

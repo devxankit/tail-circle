@@ -18,6 +18,41 @@ const RTC_CONFIG_DEFAULTS = {
   videoCaptureDefaults: { width: 1280, height: 720 },
 };
 
+// If media hasn't connected this long after we know the peer is in the
+// room, the most likely cause is no direct path between the two networks
+// AND no usable TURN relay — a dead-silent failure otherwise, since ICE
+// just keeps "checking" indefinitely with nothing to show the user.
+const MEDIA_CONNECT_TIMEOUT_MS = 20_000;
+
+/**
+ * Inspect which kind of ICE candidate pair actually got used, once
+ * connected — 'relay' means TURN was needed and worked; 'host'/'srflx'
+ * means a direct path was found and TURN was never involved. Purely
+ * diagnostic (reported back to the server so failures are debuggable from
+ * logs instead of guesswork — see `call:media-state` in sockets/index.js).
+ */
+async function describeConnection(pc) {
+  try {
+    const stats = await pc.getStats();
+    let pairId = null;
+    stats.forEach((r) => {
+      if (r.type === 'transport' && r.selectedCandidatePairId) pairId = r.selectedCandidatePairId;
+    });
+    if (!pairId) {
+      stats.forEach((r) => {
+        if (r.type === 'candidate-pair' && r.state === 'succeeded' && (r.nominated ?? true)) pairId = r.id;
+      });
+    }
+    const pair = pairId ? stats.get(pairId) : null;
+    if (!pair) return null;
+    const local = stats.get(pair.localCandidateId);
+    const remote = stats.get(pair.remoteCandidateId);
+    return { local: local?.candidateType || null, remote: remote?.candidateType || null };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Capture local media, open a peer connection, and run the signalling
  * handshake over `socket`.
@@ -50,6 +85,26 @@ export async function createCall({
   const pc = new RTCPeerConnection({ iceServers });
   localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
 
+  // Fire-and-forget: lets the server log what actually happened to this
+  // call's media, since none of this is otherwise visible outside the
+  // browser that hit it.
+  const report = (state, extra = {}) => socket.emit('call:media-state', { bookingId, state, ...extra });
+
+  let connectTimer = null;
+  const clearConnectTimer = () => {
+    if (connectTimer) clearTimeout(connectTimer);
+    connectTimer = null;
+  };
+  const armConnectTimer = () => {
+    clearConnectTimer();
+    connectTimer = setTimeout(() => {
+      if (pc.connectionState !== 'connected') {
+        report('timeout', { iceConnectionState: pc.iceConnectionState, iceGatheringState: pc.iceGatheringState });
+        on.mediaTimeout?.();
+      }
+    }, MEDIA_CONNECT_TIMEOUT_MS);
+  };
+
   pc.ontrack = (event) => {
     on.trackSubscribed?.({ stream: event.streams[0] || null });
   };
@@ -62,8 +117,17 @@ export async function createCall({
 
   pc.onconnectionstatechange = () => {
     const state = pc.connectionState;
-    if (state === 'connected') on.connected?.();
-    else if (state === 'failed' || state === 'closed') on.disconnected?.(state);
+    if (state === 'connected') {
+      clearConnectTimer();
+      describeConnection(pc).then((info) => report('connected', info || {}));
+      on.connected?.();
+    } else if (state === 'failed' || state === 'closed') {
+      clearConnectTimer();
+      report(state);
+      on.disconnected?.(state);
+    } else {
+      report(state);
+    }
   };
 
   // Mobile networks hiccup constantly; a reconnect is not a dropped call.
@@ -105,11 +169,13 @@ export async function createCall({
   const onPeerJoined = ({ bookingId: forBooking } = {}) => {
     if (forBooking !== bookingId) return;
     on.participantConnected?.();
+    armConnectTimer();
     if (isOfferer) makeOffer().catch((err) => on.deviceError?.(err));
   };
 
   const onPeerLeft = ({ bookingId: forBooking } = {}) => {
     if (forBooking !== bookingId) return;
+    clearConnectTimer();
     on.participantDisconnected?.();
   };
 
@@ -120,6 +186,7 @@ export async function createCall({
   socket.on('webrtc:peer-left', onPeerLeft);
 
   const stopListening = () => {
+    clearConnectTimer();
     socket.off('webrtc:offer', onOffer);
     socket.off('webrtc:answer', onAnswer);
     socket.off('webrtc:ice-candidate', onIceCandidate);
@@ -154,6 +221,7 @@ export async function createCall({
   // for sockets joining *after* us, so catch up manually here.
   if (ack.peerPresent) {
     on.participantConnected?.();
+    armConnectTimer();
     if (isOfferer) makeOffer().catch((err) => on.deviceError?.(err));
   }
 

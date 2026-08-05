@@ -38,7 +38,8 @@ export function CallProvider({ children }) {
   const [phase, setPhase] = useState('idle');
   const [call, setCall] = useState(null);        // server ConsultCall payload
   const [incoming, setIncoming] = useState(null); // ring payload from socket or poll
-  const [error, setError] = useState('');
+  const [error, setError] = useState('');        // hard failure — call could not start/join at all
+  const [mediaWarning, setMediaWarning] = useState(''); // soft, non-fatal — still trying, here's why
 
   // Media state — plain WebRTC now: one local MediaStream we captured, one
   // remote MediaStream from the peer, no LiveKit Track wrapper objects.
@@ -73,6 +74,7 @@ export function CallProvider({ children }) {
     setOveragePrompt(null);
     setOverageAccepted(false);
     setError('');
+    setMediaWarning('');
     callRef.current = null;
     bookingRef.current = null;
   }, []);
@@ -96,13 +98,34 @@ export function CallProvider({ children }) {
         socket,
         on: {
           trackSubscribed: ({ stream }) => setRemoteStream(stream),
-          participantConnected: () => { setPeerPresent(true); setPhase('active'); },
+          // Two distinct signals, deliberately not conflated:
+          //  - participantConnected/Disconnected: the peer's SOCKET is in the
+          //    call's signalling room. Drives the "waiting for the other
+          //    side" UI. Does NOT mean media is flowing.
+          //  - connected: the actual RTCPeerConnection reached 'connected' —
+          //    video/audio is really working. This is the only thing allowed
+          //    to flip `phase` to 'active'. Conflating the two used to make
+          //    the UI claim "connected" the instant the peer's socket joined,
+          //    even when the underlying media never came up (see
+          //    mediaTimeout below) — a call that looked fine and showed
+          //    nothing but a black box.
+          participantConnected: () => setPeerPresent(true),
           participantDisconnected: () => setPeerPresent(false),
-          connected: () => { setPeerPresent(true); setPhase('active'); },
+          connected: () => { setMediaWarning(''); setPhase('active'); },
+          // 20s after the peer's socket joined with no media connection —
+          // almost always means no direct path between the two networks and
+          // no TURN relay able to bridge it. This is NOT a hard failure (ICE
+          // can still succeed after this fires), so it's surfaced as a
+          // dismissable warning, not the same `error` a real start/join
+          // failure uses — the in-call screen shows *why* it's stuck instead
+          // of a blank box, without claiming the call is dead.
+          mediaTimeout: () => setMediaWarning(
+            'Still trying to connect the video call. This usually means the network needs a relay server — try switching to Wi-Fi, or contact support if it keeps happening.'
+          ),
           reconnecting: () => setReconnecting(true),
           reconnected: () => setReconnecting(false),
           disconnected: () => setPhase((p) => (p === 'ended' ? p : 'ended')),
-          deviceError: (err) => setError(err?.message || 'Camera or microphone unavailable'),
+          deviceError: (err) => setMediaWarning(err?.message || 'Camera or microphone unavailable'),
         },
       });
 
@@ -343,14 +366,14 @@ export function CallProvider({ children }) {
   }, [syncActiveConsult]);
 
   const value = useMemo(() => ({
-    phase, call, incoming, error, localStream, remoteStream,
+    phase, call, incoming, error, mediaWarning, localStream, remoteStream,
     micOn, camOn, peerPresent, reconnecting, elapsed,
     overagePrompt, overageAccepted,
     startCall, acceptCall, rejectCall, endCall, acceptOverage,
     toggleMic, toggleCam, flipCamera, reset,
     isBusy: phase !== 'idle' && phase !== 'ended',
   }), [
-    phase, call, incoming, error, localStream, remoteStream, micOn, camOn,
+    phase, call, incoming, error, mediaWarning, localStream, remoteStream, micOn, camOn,
     peerPresent, reconnecting, elapsed, overagePrompt, overageAccepted,
     startCall, acceptCall, rejectCall, endCall, acceptOverage,
     toggleMic, toggleCam, flipCamera, reset,

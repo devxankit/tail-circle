@@ -19,7 +19,7 @@ export function ConsultCall() {
   const { bookingId } = useParams();
   const navigate = useNavigate();
   const {
-    phase, call, error, remoteStream, localStream, micOn, camOn, peerPresent,
+    phase, call, error, mediaWarning, remoteStream, localStream, micOn, camOn, peerPresent,
     reconnecting, elapsed, overagePrompt, acceptCall, rejectCall, endCall,
     acceptOverage, toggleMic, toggleCam, flipCamera, reset,
   } = useCall();
@@ -175,6 +175,9 @@ export function ConsultCall() {
   /* ── In call ──────────────────────────────────────────── */
   const scheduled = (call?.scheduledMinutes || 15) * 60;
   const overtime = elapsed > scheduled;
+  // The peer's socket being in the room and the media actually flowing are
+  // different things — see CallContext.jsx. Show which one we're stuck on.
+  const mediaConnecting = peerPresent && phase !== 'active';
 
   return (
     <Shell>
@@ -187,12 +190,18 @@ export function ConsultCall() {
           className="w-full h-full object-cover"
         />
 
-        {!peerPresent && (
+        {!peerPresent ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gray-900">
             <Loader2 size={32} className="text-white/50 animate-spin" />
             <p className="text-white/60 text-sm">Waiting for your vet to join…</p>
           </div>
-        )}
+        ) : mediaConnecting ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-gray-900 px-8 text-center">
+            <Loader2 size={32} className="text-white/50 animate-spin" />
+            <p className="text-white/60 text-sm">Connecting video…</p>
+            {mediaWarning && <p className="text-amber-300 text-xs max-w-xs">{mediaWarning}</p>}
+          </div>
+        ) : null}
       </div>
 
       {/* Top status bar */}
