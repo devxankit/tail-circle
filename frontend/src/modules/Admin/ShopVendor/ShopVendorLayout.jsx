@@ -6,7 +6,7 @@ import { GlobalSearch } from './components/GlobalSearch';
 import {
   LayoutDashboard, ShoppingBag, ShoppingCart,
   Package, RefreshCcw, Star, Wallet, Settings,
-  LogOut, Bell, Menu, CheckCircle, Store
+  LogOut, Bell, Menu, CheckCircle, Store, Image as ImageIcon
 } from 'lucide-react';
 import { cn } from '../../user/utils/cn';
 
@@ -74,6 +74,7 @@ export function ShopVendorLayout() {
     {
       title: 'MANAGEMENT',
       items: [
+        { name: 'Banners', path: '/vendor/shop-provider/banners', icon: ImageIcon },
         { name: 'Customer Feedback', path: '/vendor/shop-provider/feedback', icon: Star },
         { name: 'Finance Center', path: '/vendor/shop-provider/finance', icon: Wallet },
         { name: 'Business Control Center', path: '/vendor/shop-provider/settings', icon: Settings },
@@ -86,6 +87,7 @@ export function ShopVendorLayout() {
     const path = location.pathname;
     if (path === '/vendor/shop-provider') return 'Dashboard';
     if (path.includes('/products')) return 'Product Management';
+    if (path.includes('/banners')) return 'Banners';
     if (path.includes('/orders')) return 'Orders';
     if (path.includes('/inventory')) return 'Inventory & Stock';
     if (path.includes('/returns')) return 'Returns & Refunds';

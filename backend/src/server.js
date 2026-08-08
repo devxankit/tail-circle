@@ -68,3 +68,5 @@ process.on('uncaughtException', (err) => {
 });
 
 start();
+
+// Trigger nodemon restart

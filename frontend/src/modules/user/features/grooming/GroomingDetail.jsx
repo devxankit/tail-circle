@@ -30,6 +30,7 @@ export function GroomingDetail() {
   const [shop, setShop] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  const [selectedPackage, setSelectedPackage] = useState(null);
   const [selectedAddons, setSelectedAddons] = useState([]);
   const [dates, setDates] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
@@ -48,7 +49,18 @@ export function GroomingDetail() {
     setLoading(true);
     try {
       const data = await getGroomingShopById(id);
+      
+      // Fallback: if backend didn't return grouped offerings, guess from legacy servicesList
+      if (!data.packages?.length && !data.addons?.length && data.servicesList?.length > 0) {
+        const packageNames = ['Basic Bath', 'Full Grooming', 'Spa Grooming'];
+        data.packages = data.servicesList.filter(s => packageNames.includes(s.name)).map(s => ({...s, price: s.startsAt}));
+        data.addons = data.servicesList.filter(s => !packageNames.includes(s.name)).map(s => ({...s, price: s.startsAt}));
+      }
+
       setShop(data);
+      if (data.packages?.length > 0) {
+        setSelectedPackage(data.packages[0]); // Select first package by default
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -85,8 +97,10 @@ export function GroomingDetail() {
     return <div className="p-8 text-center text-gray-500">Shop not found</div>;
   }
 
-  const totalPrice = selectedAddons.reduce((sum, item) => sum + item.startsAt, 0);
-  const isReadyToBook = selectedAddons.length > 0 && selectedDate && selectedSlot;
+  const packagePrice = selectedPackage?.price || 0;
+  const addonsPrice = selectedAddons.reduce((sum, item) => sum + (item.price || item.startsAt || 0), 0);
+  const totalPrice = packagePrice + addonsPrice;
+  const isReadyToBook = selectedPackage && selectedDate && selectedSlot;
 
   return (
     <div className="h-full bg-[#FAF7F2] absolute inset-0 z-50 flex flex-col text-text-primary animate-in slide-in-from-right">
@@ -136,6 +150,41 @@ export function GroomingDetail() {
         {/* Separator */}
         <div className="w-full h-px bg-border-light my-2 px-4"><div className="w-full h-full bg-border-light"></div></div>
 
+        {/* Select Package */}
+        {shop.packages?.length > 0 && (
+          <div className="px-4 py-4">
+            <h2 className="text-[17px] font-black text-gray-900 mb-4">Main package</h2>
+            <div className="flex flex-wrap gap-3">
+              {shop.packages.map((pkg, idx) => {
+                const isSelected = selectedPackage?.name === pkg.name;
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => setSelectedPackage(pkg)}
+                    className={`flex flex-col items-center justify-center border rounded-2xl py-2 px-4 transition-all active:scale-95 ${
+                      isSelected 
+                        ? 'border-accent-teal bg-[#FAF7F2]' 
+                        : 'border-border-light bg-white hover:border-gray-300'
+                    }`}
+                  >
+                    <span className={`text-[13px] font-bold mb-0.5 ${isSelected ? 'text-accent-teal' : 'text-gray-800'}`}>
+                      {pkg.name}
+                    </span>
+                    <span className={`text-[11px] ${isSelected ? 'text-accent-teal/80' : 'text-gray-400'}`}>
+                      ₹{pkg.price}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Separator */}
+        {shop.packages?.length > 0 && (
+          <div className="w-full h-px bg-border-light my-2 px-4"><div className="w-full h-full bg-border-light"></div></div>
+        )}
+
         {/* Select Add-ons */}
         <div className="px-4 py-4">
           <div className="flex justify-between items-end mb-4">
@@ -143,12 +192,12 @@ export function GroomingDetail() {
             <span className="text-[11px] text-gray-400 font-medium">Tap to add • prices per service</span>
           </div>
           <div className="flex flex-wrap gap-3">
-            {shop.servicesList?.map((svc, idx) => {
-              const isSelected = selectedAddons.find(a => a.name === svc.name);
+            {(shop.addons || shop.servicesList || []).map((addon, idx) => {
+              const isSelected = selectedAddons.find(a => a.name === addon.name);
               return (
                 <button
                   key={idx}
-                  onClick={() => toggleAddon(svc)}
+                  onClick={() => toggleAddon(addon)}
                   className={`flex flex-col items-center justify-center border rounded-2xl py-2 px-4 transition-all active:scale-95 ${
                     isSelected 
                       ? 'border-accent-teal bg-[#FAF7F2]' 
@@ -156,10 +205,10 @@ export function GroomingDetail() {
                   }`}
                 >
                   <span className={`text-[13px] font-bold mb-0.5 ${isSelected ? 'text-accent-teal' : 'text-gray-800'}`}>
-                    {svc.name}
+                    {addon.name}
                   </span>
                   <span className={`text-[11px] ${isSelected ? 'text-accent-teal/80' : 'text-gray-400'}`}>
-                    ₹{svc.startsAt}
+                    ₹{addon.price || addon.startsAt}
                   </span>
                 </button>
               );
@@ -230,11 +279,11 @@ export function GroomingDetail() {
 
       {/* Sticky Bottom CTA */}
       <div className="fixed bottom-0 left-0 right-0 bg-[#FAF7F2] border-t border-border-light p-4 z-20">
-        {selectedAddons.length === 0 && (
+        {!selectedPackage && selectedAddons.length === 0 && (
           <div className="bg-[#FAF7F2] border border-[#FAF7F2] rounded-[16px] p-3 mb-3 flex items-start gap-2">
             <Info size={16} className="text-accent-teal shrink-0 mt-0.5" />
             <p className="text-[12px] text-gray-600 font-medium leading-relaxed">
-              Services start from <span className="font-bold text-accent-teal">₹{shop.startingPrice}</span>. Select add-ons above to see your exact total.
+              Services start from <span className="font-bold text-accent-teal">₹{shop.startingPrice}</span>. Select a package above to continue.
             </p>
           </div>
         )}
@@ -281,8 +330,13 @@ export function GroomingDetail() {
               </div>
               <div className="flex justify-between py-3 px-4">
                 <span className="text-[12px] text-gray-400 shrink-0 mr-4">Services</span>
-                <span className="text-[12px] font-bold text-gray-900 text-right leading-tight">
-                  {selectedAddons.map(a => a.name).join(', ')}
+                <span className="text-[12px] font-bold text-gray-900 text-right leading-tight flex flex-col gap-1 items-end">
+                  <span>{selectedPackage?.name}</span>
+                  {selectedAddons.length > 0 && (
+                    <span className="text-[10px] text-gray-500 font-medium leading-tight">
+                      + {selectedAddons.map(a => a.name).join(', ')}
+                    </span>
+                  )}
                 </span>
               </div>
             </div>

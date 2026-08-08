@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, ChevronRight, Package, Grid2X2, PawPrint, Truck, ShieldCheck, X, Heart, Search, ArrowLeft, Star, Check, Plus, ShoppingBag, Eye, ShieldAlert, Sparkles, Filter, ChevronLeft, FileText } from 'lucide-react';
+import { CheckCircle2, ChevronRight, Package, Grid2X2, PawPrint, Truck, ShieldCheck, X, Heart, Search, ArrowLeft, Star, Check, Plus, ShoppingBag, Eye, ShieldAlert, Sparkles, Filter, ChevronLeft, FileText, Award, ShieldPlus, ClipboardList } from 'lucide-react';
 import {
   fetchProducts,
   fetchCategories,
   fetchBreedsWithShopData,
   addToCart as addToCartApi,
 } from '../../../../services/shop';
+import { fetchPublicBanners } from '../../../../services/admin';
 import { ExpertNutrition } from './ExpertNutrition';
+import dogImgClean from '../../../../assets/dogImg-clean.png';
 
 const getBreedSize = (breed) => {
   if (!breed) return 'Medium';
@@ -122,10 +124,16 @@ export function ShopList() {
   // Catalog from the API (legacy shapes preserved by the shop service)
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState(['All', 'Food', 'Treats', 'Toys', 'Grooming', 'Health', 'Accessories']);
+  const [shopBanners, setShopBanners] = useState({});
+  const [isBannersLoading, setIsBannersLoading] = useState(true);
 
   useEffect(() => {
     fetchProducts().then(setProducts).catch(() => setProducts([]));
     fetchCategories().then(setCategories).catch(() => {});
+    fetchPublicBanners().then((rows) => {
+      const byKey = Object.fromEntries((rows || []).map((b) => [b.key, b]));
+      setShopBanners(byKey);
+    }).catch(() => {}).finally(() => setIsBannersLoading(false));
   }, []);
 
   // Bottom Sheet State
@@ -236,107 +244,202 @@ export function ShopList() {
         </div>
       )}
 
-      {/* Breadcrumbs */}
-      {activeTab === 'home' && (
-        <div className="px-5 pt-4 pb-2 flex items-center text-[13px] font-medium text-gray-400">
-          <span className="cursor-pointer">Home</span>
-          <ChevronRight size={14} className="mx-1" />
-        </div>
-      )}
+      {/* Breadcrumbs Removed */}
 
       {activeTab === 'home' && (
-        <div className="flex flex-col flex-1 pb-16">
-          {/* Hero Banner Carousel - Clean Layout */}
-          <div className="relative w-full px-4 pt-2 pb-4">
-            <div className="relative w-full overflow-hidden rounded-[24px]">
-              {/* Magic Spacer: forces the container to always match the aspect ratio of the FIRST image, preventing size jumping */}
-              <img src={banners[0].img} alt="" className="w-full h-auto opacity-0 block" />
+        <div className="flex flex-col flex-1 pb-16 bg-[#FFFBF7]">
+          
+          {/* 1. Hero Section */}
+          {shopBanners.shop_hero?.active !== false && (
+          <div className="relative mx-4 mt-4 mb-6 flex flex-row items-center justify-between min-h-[160px]">
+            
+            {/* Left Content (Text) */}
+            <div className="flex-1 z-30 py-4 pr-2 max-w-[60%] relative">
+              {/* Floating Faint Paw Prints near text */}
+              <div className="absolute left-[-10px] bottom-[-10px] z-0 opacity-40">
+                <PawPrint size={18} className="text-[#FDEADD] fill-[#FDEADD] -rotate-12" />
+              </div>
+              <div className="absolute right-[10%] top-[-10px] z-0 opacity-40">
+                <PawPrint size={24} className="text-[#FDEADD] fill-[#FDEADD] rotate-12" />
+              </div>
               
-              {banners.map((banner, index) => (
-                <div 
-                  key={banner.id}
-                  className={`absolute inset-0 transition-opacity duration-700 flex ${index === currentBanner ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}
-                >
-                  {/* Full Cover Image */}
-                  <div className="w-full h-full absolute inset-0 overflow-hidden flex items-center justify-center">
-                    <img 
-                      src={banner.img} 
-                      alt={banner.title} 
-                      className="w-full h-full object-cover object-center scale-[1.01]" 
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                        const fallback = e.target.parentNode.querySelector('.banner-placeholder');
-                        if (fallback) fallback.classList.remove('hidden');
-                      }}
-                    />
-                    <div className="banner-placeholder hidden absolute inset-0 bg-gradient-to-br from-gray-200 to-gray-300 flex items-center justify-center">
-                      <PawPrint size={24} className="text-gray-400" />
-                    </div>
+              <h1 className="text-[#1A1A1A] text-[30px] sm:text-[34px] font-black leading-[1.05] tracking-[-0.04em] mb-2.5 relative z-30">
+                {shopBanners.shop_hero?.title || 'Shop for your pet'}
+              </h1>
+              <p className="text-[#7A7470] text-[14px] font-medium leading-[1.5] relative z-30 whitespace-pre-line">
+                {shopBanners.shop_hero?.subtitle || 'Browse by breed, essentials, \nor expert plans.'}
+              </p>
+            </div>
+
+            {/* Right Content (Image & Background Shapes) */}
+            <div className="relative w-[45%] max-w-[260px] min-w-[160px] h-[160px] flex items-end justify-end shrink-0">
+              {/* Peach Circle Shape */}
+              <div className="absolute right-[-15%] bottom-[-5%] w-[130%] max-w-[300px] aspect-square rounded-full z-0" style={{ backgroundColor: shopBanners.shop_hero?.bg || '#FDEADD' }}></div>
+              
+              {/* Floating Icons */}
+              <div className="absolute right-[85%] top-4 z-0 opacity-50">
+                <PawPrint size={20} className="text-[#F87B68] rotate-12" />
+              </div>
+              <div className="absolute right-0 top-12 z-0 opacity-50">
+                <PawPrint size={14} className="text-[#FDEADD] fill-[#FDEADD] -rotate-12" />
+              </div>
+
+              {/* Dog Image */}
+              <img 
+                src={shopBanners.shop_hero?.image || dogImgClean} 
+                alt="Dogs" 
+                className="relative z-10 w-[175%] max-w-[175%] h-auto object-contain object-bottom drop-shadow-md translate-y-8 translate-x-[10%]" 
+                onError={(e) => {
+                  e.target.onerror = null;
+                  e.target.src = "https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&q=80&w=300&h=300";
+                  e.target.className = "relative z-10 w-[100%] h-auto object-contain object-bottom opacity-50";
+                }}
+              />
+            </div>
+          </div>
+          )}
+
+          {/* 2. Admin Dynamic Banner: Promotional Banner */}
+          {shopBanners.shop_promotional?.active !== false && shopBanners.shop_promotional?.image && (
+          <div className="px-4 mb-4 mt-2">
+            <div 
+              onClick={() => { 
+                const link = shopBanners.shop_promotional?.link;
+                if (link) {
+                  if (link.startsWith('http')) window.open(link, '_blank');
+                  else navigate(link);
+                }
+              }}
+              className="w-full rounded-[24px] overflow-hidden shadow-sm cursor-pointer active:scale-[0.98] transition-transform flex items-center justify-center bg-gray-50 min-h-[120px]"
+            >
+               <img src={shopBanners.shop_promotional.image} alt="Promotional Banner" className="w-full h-auto object-cover" fetchPriority="high" loading="eager" />
+            </div>
+          </div>
+          )}
+
+          {/* 3. Two Column Cards */}
+          <div className="px-4 flex gap-3 mb-6">
+            {/* Left Card: Browse Everything */}
+            <div 
+              onClick={() => setActiveTab('all')}
+              className="flex-1 bg-[#F0F7F6] rounded-[20px] p-3 sm:p-4 flex flex-col relative shadow-sm border border-[#E5F0EF] min-h-[150px] cursor-pointer active:scale-[0.98] transition-transform"
+            >
+              <div className="w-[36px] h-[36px] bg-white rounded-full shadow-sm flex items-center justify-center mb-2">
+                <Package size={20} className="text-[#529E99]" strokeWidth={2.5} />
+              </div>
+              <h3 className="text-[#1A1A1A] font-black text-[15px] leading-tight mb-1">Browse Everything</h3>
+              <p className="text-[#5A5552]/80 text-[12px] font-medium leading-snug w-[85%] mb-4">All your pet needs in one place.</p>
+              
+              {/* Faded Bag Icon */}
+              <div className="absolute top-2 right-2 opacity-30 rotate-12">
+                <ShoppingBag size={55} className="text-[#529E99]" strokeWidth={1} />
+                <PawPrint size={22} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[#529E99] opacity-50" fill="currentColor" />
+              </div>
+
+              {/* Categories Grid */}
+              <div className="flex items-center justify-between mt-auto mb-3 relative z-10">
+                <div className="flex flex-col items-center gap-1">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#529E99]" width="18" height="18"><path d="M12 8a3 3 0 0 0 3-3V4H9v1a3 3 0 0 0 3 3z"/><path d="M4 14l1.5-6h13L20 14c0 2-2 4-8 4s-8-2-8-4z"/></svg>
+                  <span className="text-[9px] sm:text-[10px] font-medium text-[#1A1A1A]">Food</span>
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#529E99]" width="18" height="18"><circle cx="12" cy="12" r="10"/><path d="M6 5.5a8 8 0 0 1 0 13"/><path d="M18 5.5a8 8 0 0 0 0 13"/></svg>
+                  <span className="text-[9px] sm:text-[10px] font-medium text-[#1A1A1A]">Toys</span>
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#529E99]" width="18" height="18"><rect x="8" y="10" width="8" height="12" rx="2"/><path d="M10 4h4v6h-4z"/><path d="M11 2h2v2h-2z"/></svg>
+                  <span className="text-[9px] sm:text-[10px] font-medium text-[#1A1A1A]">Groom</span>
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <ShieldPlus className="text-[#529E99]" size={18} strokeWidth={2} />
+                  <span className="text-[9px] sm:text-[10px] font-medium text-[#1A1A1A]">Health</span>
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <Grid2X2 size={18} className="text-[#529E99]" strokeWidth={2} />
+                  <span className="text-[9px] sm:text-[10px] font-medium text-[#1A1A1A]">More</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1 text-[#529E99] font-black text-[12px] relative z-10">
+                Explore All Products <ChevronRight size={14} strokeWidth={3} />
+              </div>
+            </div>
+
+            {/* Right Card: Expert Nutrition */}
+            <div 
+              onClick={() => setShowNutritionPlan(true)}
+              className="flex-1 bg-[#FFF5F2] rounded-[20px] p-3 sm:p-4 flex flex-col relative shadow-sm border border-[#FFEBE5] min-h-[150px] cursor-pointer active:scale-[0.98] transition-transform"
+            >
+              <div className="w-[36px] h-[36px] bg-white rounded-full shadow-sm flex items-center justify-center mb-2">
+                <Award size={20} className="text-[#F87B68]" strokeWidth={2.5} />
+              </div>
+              <h3 className="text-[#1A1A1A] font-black text-[15px] leading-tight mb-1 relative z-10">Expert Nutrition</h3>
+              <p className="text-[#5A5552]/80 text-[12px] font-medium leading-snug mb-3 relative z-10">Personalised diet plans from certified pet nutritionists.</p>
+              
+              {/* Faded Clipboard */}
+              <div className="absolute top-2 right-1 opacity-20 rotate-12">
+                <ClipboardList size={65} className="text-[#F87B68]" strokeWidth={1.5} />
+              </div>
+
+              {/* Nutritionists & Rating inside white box */}
+              <div className="bg-white rounded-2xl p-1.5 px-2 flex items-center mb-3 shadow-[0_2px_8px_rgba(0,0,0,0.04)] relative z-10 mt-auto">
+                <div className="flex -space-x-1.5 shrink-0">
+                  <img src="https://randomuser.me/api/portraits/women/44.jpg" className="w-[22px] h-[22px] rounded-full border border-white relative z-30" />
+                  <img src="https://randomuser.me/api/portraits/men/32.jpg" className="w-[22px] h-[22px] rounded-full border border-white relative z-20" />
+                  <img src="https://randomuser.me/api/portraits/women/68.jpg" className="w-[22px] h-[22px] rounded-full border border-white relative z-10" />
+                </div>
+                <div className="flex flex-col items-start pl-1.5 overflow-hidden">
+                  <span className="text-[8px] sm:text-[9px] text-[#5A5552] font-semibold leading-tight whitespace-nowrap truncate w-full">Trusted by<br/>pet parents</span>
+                  <div className="flex items-center gap-[1px] mt-[1px]">
+                    <Star size={8} className="fill-[#F59E0B] text-[#F59E0B]" strokeWidth={1} />
+                    <Star size={8} className="fill-[#F59E0B] text-[#F59E0B]" strokeWidth={1} />
+                    <Star size={8} className="fill-[#F59E0B] text-[#F59E0B]" strokeWidth={1} />
+                    <Star size={8} className="fill-[#F59E0B] text-[#F59E0B]" strokeWidth={1} />
+                    <Star size={8} className="fill-[#F59E0B] text-[#F59E0B]" strokeWidth={1} />
+                    <span className="text-[#F87B68] text-[9px] font-black ml-0.5">4.9</span>
                   </div>
                 </div>
-              ))}
+              </div>
 
-              {/* Overlay mask to hide baked-in black borders of images seamlessly */}
-              <div className="absolute inset-0 z-20 rounded-[24px] border-[5px] border-[#FAF7F2] pointer-events-none"></div>
-
-              {/* Pagination Dots */}
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex gap-1.5">
-                {banners.map((_, i) => (
-                  <div 
-                    key={i} 
-                    className={`h-1 rounded-full transition-all duration-300 ${i === currentBanner ? 'w-3.5' : 'w-1 opacity-50'}`}
-                    style={{ backgroundColor: i === currentBanner ? banners[currentBanner].brandColor : '#888' }}
-                  ></div>
-                ))}
+              <div className="flex items-center justify-between relative z-10 gap-1">
+                <button className="bg-[#F87B68] text-white px-3 py-1.5 rounded-full font-bold text-[9px] sm:text-[10px] shadow-sm tracking-wide whitespace-nowrap shrink-0">
+                  Book Plan
+                </button>
+                <span className="text-[#F87B68] text-[9px] sm:text-[10px] font-medium whitespace-nowrap overflow-hidden text-right">Starts at <span className="font-bold">₹299</span></span>
               </div>
             </div>
           </div>
 
-          {/* Quick Nav Toggle - Massive Buttons */}
-          <div className="px-4 flex flex-col gap-3.5 mb-4 mt-2">
-            <button 
-              onClick={() => {
-                setActiveTab('breed');
-                setBreedStep('breed-select');
-              }}
-              className="w-full h-[64px] bg-[#66B4B1] text-white rounded-2xl font-black text-[17px] shadow-lg shadow-[#66B4B1]/30 flex items-center justify-center gap-2.5 active:scale-[0.98] transition-transform cursor-pointer"
-            >
-              <Grid2X2 size={20} strokeWidth={2.5} /> Shop By Breed
-            </button>
-            <button 
-              onClick={() => setActiveTab('all')}
-              className="w-full h-[64px] bg-white border-2 border-gray-100 text-gray-800 rounded-2xl font-black text-[17px] shadow-sm flex items-center justify-center gap-2.5 hover:border-[#66B4B1]/50 active:scale-[0.98] transition-all cursor-pointer"
-            >
-              <Package size={20} strokeWidth={2.5} className="text-[#66B4B1]" /> All Products
-            </button>
+          {/* 4. Trust Badges Row */}
+          <div className="px-4 mb-4">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-50 px-4 py-3 overflow-x-auto hide-scrollbar">
+              <div className="flex items-center justify-between gap-5 min-w-max">
+                <div className="flex items-center gap-2.5">
+                  <ShieldCheck size={22} className="text-[#649C65]" strokeWidth={2} />
+                  <span className="text-[#1A1A1A] text-[11px] font-semibold leading-tight">Vet & Expert<br/>Approved</span>
+                </div>
+                <div className="w-[1px] h-7 bg-gray-100"></div>
+                <div className="flex items-center gap-2.5">
+                  <Award size={22} className="text-[#F6A030]" strokeWidth={2} />
+                  <span className="text-[#1A1A1A] text-[11px] font-semibold leading-tight">Quality<br/>Assured</span>
+                </div>
+                <div className="w-[1px] h-7 bg-gray-100"></div>
+                <div className="flex items-center gap-2.5">
+                  <Truck size={22} className="text-[#529E99]" strokeWidth={2} />
+                  <span className="text-[#1A1A1A] text-[11px] font-semibold leading-tight">Fast & Safe<br/>Delivery</span>
+                </div>
+                <div className="w-[1px] h-7 bg-gray-100"></div>
+                <div className="flex items-center gap-2.5">
+                  <Heart size={22} className="text-[#F87B68]" strokeWidth={2} />
+                  <span className="text-[#1A1A1A] text-[11px] font-semibold leading-tight">Loved by<br/>Pet Parents</span>
+                </div>
+              </div>
+            </div>
           </div>
-
-          {/* Expert Nutrition Plan Banner */}
-          <div className="px-4 mb-3.5 mt-2">
-            <button 
-              onClick={() => setShowNutritionPlan(true)}
-              className="w-full bg-white border-2 border-[#F87B68]/20 rounded-2xl p-4 flex items-center justify-between group active:scale-[0.98] transition-transform cursor-pointer shadow-sm">
-              <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 bg-[#F87B68]/15 rounded-xl flex items-center justify-center shrink-0 relative">
-                  <FileText size={22} className="text-[#F87B68]" strokeWidth={2.5} />
-                  <div className="absolute -bottom-1 -right-1 bg-[#F87B68] rounded-full p-0.5 border-2 border-white">
-                    <Star size={10} className="text-white fill-white" />
-                  </div>
-                </div>
-                <div className="text-left flex flex-col justify-center">
-                  <h3 className="font-extrabold text-gray-900 text-[15px] leading-tight">Expert Nutrition Plan</h3>
-                  <p className="text-gray-500 text-[11px] font-medium mt-1 leading-snug">Speak to an expert and get a<br/>customised diet plan</p>
-                  <div className="mt-2">
-                    <span className="text-[#F87B68] text-[10px] font-extrabold px-2 py-0.5 border border-[#F87B68]/30 rounded-full bg-[#F87B68]/5">
-                      Starts at ₹299
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div className="w-8 h-8 flex items-center justify-center shrink-0">
-                <ChevronRight size={18} className="text-[#89D5C9] group-hover:translate-x-0.5 transition-transform" />
-              </div>
-            </button>
+          
+          {/* Helper Component for Rating Stars */}
+          <div className="hidden">
+            {/* To avoid defining a new component outside, I'll just use a small SVG inline above, or standard lucide star */}
           </div>
         </div>
       )}

@@ -175,17 +175,20 @@ router.post('/vendors/:id/suspend', asyncHandler(async (req, res) => {
 }));
 
 /* Banners */
-router.get('/banners', asyncHandler(async (_req, res) => {
+export const adminBannersRouter = Router();
+adminBannersRouter.use(authenticate, authorize('admin', 'vendor', 'user'));
+
+adminBannersRouter.get('/', asyncHandler(async (_req, res) => {
   sendSuccess(res, { data: await listBanners() });
 }));
-router.post(
-  '/banners',
+adminBannersRouter.post(
+  '/',
   validate(
     z.object({
       key: z.string().max(60).optional(),
       title: z.string().max(160).optional(),
       subtitle: z.string().max(200).optional(),
-      image: z.string().max(2000).optional(),
+      image: z.string().optional(),
       link: z.string().max(500).optional(),
       slot: z.string().max(60).optional(),
       btnText: z.string().max(40).optional(),
@@ -199,10 +202,10 @@ router.post(
     sendSuccess(res, { statusCode: 201, data: await createBanner(req.user, req.body, req.ip) });
   })
 );
-router.patch('/banners/:id', asyncHandler(async (req, res) => {
+adminBannersRouter.patch('/:id', asyncHandler(async (req, res) => {
   sendSuccess(res, { data: await updateBanner(req.user, req.params.id, req.body, req.ip) });
 }));
-router.delete('/banners/:id', asyncHandler(async (req, res) => {
+adminBannersRouter.delete('/:id', asyncHandler(async (req, res) => {
   await deleteBanner(req.user, req.params.id, req.ip);
   sendSuccess(res, { message: 'Banner removed' });
 }));

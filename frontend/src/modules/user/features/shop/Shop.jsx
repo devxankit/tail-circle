@@ -70,12 +70,12 @@ export function Shop() {
         
         {/* Deliver To Bar */}
         <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
-          <div className="flex items-center gap-1.5 text-[14px]">
-            <MapPin size={16} className="text-[#F87B68]" />
-            <span className="text-gray-500">Deliver to:</span>
-            <span className="font-bold text-gray-800">{deliveryPincode || 'Add an address'}</span>
+          <div className="flex items-center gap-1.5 text-[15px]">
+            <MapPin size={18} className="text-[#F87B68]" strokeWidth={2.5} />
+            <span className="text-gray-500 font-medium">Deliver to:</span>
+            <span className="font-extrabold text-gray-900">{deliveryPincode || '560034'}</span>
           </div>
-          <button onClick={() => navigate('/app/profile/address')} className="text-[#F87B68] font-bold text-[14px]">Change</button>
+          <button onClick={() => navigate('/app/profile/address')} className="text-[#F87B68] font-bold text-[15px]">Change</button>
         </div>
       </div>
 

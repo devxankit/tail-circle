@@ -24,7 +24,7 @@ import walletRoutes from '../modules/wallet/wallet.routes.js';
 import notificationRoutes from '../modules/notification/notification.routes.js';
 import vendorRoutes from '../modules/vendor/vendor.routes.js';
 import { providerVendorRouter } from '../modules/vendor/vendor.provider.routes.js';
-import adminRoutes, { bannersRouter } from '../modules/admin/admin.routes.js';
+import adminRoutes, { bannersRouter, adminBannersRouter } from '../modules/admin/admin.routes.js';
 
 const router = Router();
 
@@ -67,6 +67,7 @@ router.use('/notifications', notificationRoutes);
 router.use('/vendor/grooming', providerVendorRouter('grooming'));
 router.use('/vendor/daycare', providerVendorRouter('daycare'));
 router.use('/vendor', vendorRoutes);
+router.use('/admin/banners', adminBannersRouter);
 router.use('/admin', adminRoutes);
 router.use('/banners', bannersRouter);
 

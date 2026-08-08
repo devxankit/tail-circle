@@ -120,10 +120,6 @@ import { ClinicVendorProvider } from './modules/Admin/ClinicVeterinaryDoctor/con
 
 
 
-
-
-
-
 import { MealProviderProvider } from './modules/Admin/MealSubscriptionProvider/context/MealProviderContext';
 
 
@@ -320,6 +316,7 @@ const ProviderVendorPortal = lazy(() => import('./modules/Admin/ProviderVendor/P
 const ShopVendorLayout = lazy(() => import('./modules/Admin/ShopVendor/ShopVendorLayout').then(m => ({ default: m.ShopVendorLayout || m.default })));
 const ShopDashboard = lazy(() => import('./modules/Admin/ShopVendor/views/DashboardOverview').then(m => ({ default: m.DashboardOverview || m.default })));
 const ShopProductsView = lazy(() => import('./modules/Admin/ShopVendor/views/ProductsView').then(m => ({ default: m.ProductsView || m.default })));
+const ShopBannersView = lazy(() => import('./modules/Admin/ShopVendor/views/ShopBannersView').then(m => ({ default: m.ShopBannersView || m.default })));
 const ShopOrdersView = lazy(() => import('./modules/Admin/ShopVendor/views/OrdersView').then(m => ({ default: m.OrdersView || m.default })));
 const ShopInventoryView = lazy(() => import('./modules/Admin/ShopVendor/views/InventoryView').then(m => ({ default: m.InventoryView || m.default })));
 const ShopReturnsView = lazy(() => import('./modules/Admin/ShopVendor/views/ReturnsRefundsView').then(m => ({ default: m.ReturnsRefundsView || m.default })));
@@ -707,6 +704,7 @@ function App() {
             <Route path="/vendor/shop-provider" element={<ProtectedVendorRoute allow="shop"><ShopVendorProvider><ShopVendorLayout /></ShopVendorProvider></ProtectedVendorRoute>}>
               <Route index element={<ShopDashboard />} />
               <Route path="products" element={<ShopProductsView />} />
+              <Route path="banners" element={<ShopBannersView />} />
               <Route path="orders" element={<ShopOrdersView />} />
               <Route path="inventory" element={<ShopInventoryView />} />
               <Route path="returns" element={<ShopReturnsView />} />

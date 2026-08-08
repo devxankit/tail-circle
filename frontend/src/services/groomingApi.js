@@ -34,7 +34,10 @@ export async function getGroomingShops() {
 
 export async function getGroomingShopById(id) {
   const { data } = await api.get(`/providers/${id}`);
-  return toLegacyShop(data.provider);
+  const shop = toLegacyShop(data.provider);
+  shop.packages = data.offerings?.packages || [];
+  shop.addons = data.offerings?.addons || [];
+  return shop;
 }
 
 export async function getGroomingPackages(shopId) {

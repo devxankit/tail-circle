@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Check, Save, Image as ImageIcon, Trash2, Info } from 'lucide-react';
 import { fetchAdminBanners, updateBannerApi, createBannerApi } from '../../../../../services/admin';
+import { ShopBannersView } from '../../../ShopVendor/views/ShopBannersView';
 
 export function BannersContent() {
   const [toastMessage, setToastMessage] = useState(null);
@@ -356,6 +357,11 @@ export function BannersContent() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Dynamic Shop Banners View */}
+      <div className="mt-8 border-t border-gray-200 pt-8">
+        <ShopBannersView />
       </div>
     </div>
   );
