@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -55,6 +55,8 @@ const normalize = (id) => id.replace(/\\/g, '/');
 export function offlinePWA({ modules = OFFLINE_MODULES, publicFiles = PUBLIC_PRECACHE } = {}) {
   let base = '/';
   let apiBase = '';
+  let outDir = 'dist';
+  let precacheUrls = [];
 
   return {
     name: 'tailcircle-offline-pwa',
@@ -64,6 +66,7 @@ export function offlinePWA({ modules = OFFLINE_MODULES, publicFiles = PUBLIC_PRE
       base = config.base || '/';
       // Baked in at build time so the worker knows which origin is the API.
       apiBase = config.env?.VITE_API_URL || process.env.VITE_API_URL || '';
+      outDir = resolve(config.root, config.build.outDir);
     },
 
     generateBundle(_options, bundle) {
@@ -119,18 +122,53 @@ export function offlinePWA({ modules = OFFLINE_MODULES, publicFiles = PUBLIC_PRE
         ...publicFiles.map((f) => base + f),
       ];
 
-      const version = createHash('sha256').update(urls.join('\n')).digest('hex').slice(0, 12);
+      precacheUrls = urls;
+    },
+
+    /**
+     * Written here rather than emitted from generateBundle so the version can
+     * hash the precached files' *contents*, once they and the copied public/
+     * assets are all on disk.
+     *
+     * Content hashing is what makes updates reliable: most entries carry a hash
+     * in their name, but index.html, the manifest and the icons do not. Keying
+     * the version off the file list alone would leave an edit to any of those
+     * producing a byte-identical worker, which the browser never reinstalls —
+     * so the stale copies would be served forever.
+     */
+    closeBundle() {
+      const shell = `${base}index.html`;
+      const hash = createHash('sha256');
+      const missingOnDisk = [];
+
+      for (const url of precacheUrls) {
+        const file = join(outDir, url.slice(base.length));
+        hash.update(url);
+        try {
+          hash.update(readFileSync(file));
+        } catch {
+          missingOnDisk.push(url);
+        }
+      }
+
+      if (missingOnDisk.length) {
+        this.warn(
+          `offline precache: ${missingOnDisk.join(', ')} not found in the build output — ` +
+            'the service worker will skip them at install time.',
+        );
+      }
+
+      const version = hash.digest('hex').slice(0, 12);
 
       const template = readFileSync(resolve(HERE, 'service-worker.js'), 'utf8');
       const source = template
         .replace('__CACHE_VERSION__', version)
         .replace('__API_BASE__', apiBase)
         .replace('__SHELL_URL__', shell)
-        .replace('__PRECACHE_MANIFEST__', JSON.stringify(urls, null, 2));
+        .replace('__PRECACHE_MANIFEST__', JSON.stringify(precacheUrls, null, 2));
 
-      this.emitFile({ type: 'asset', fileName: 'sw.js', source });
-
-      this.info?.(`offline precache: ${urls.length} files (build ${version})`);
+      writeFileSync(join(outDir, 'sw.js'), source);
+      this.info?.(`offline precache: ${precacheUrls.length} files (build ${version})`);
     },
   };
 }
