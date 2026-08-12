@@ -18,4 +18,16 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
+  {
+    // Service worker template — `__PRECACHE_MANIFEST__` is substituted at build time.
+    files: ['pwa/service-worker.js'],
+    languageOptions: {
+      globals: { ...globals.serviceworker, __PRECACHE_MANIFEST__: 'readonly' },
+    },
+  },
+  {
+    // Build-time plugin, runs in Node.
+    files: ['pwa/vite-plugin-offline.js', 'vite.config.js'],
+    languageOptions: { globals: globals.node },
+  },
 ])

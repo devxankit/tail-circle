@@ -9,6 +9,8 @@
  * 401 → refresh → retry-once. Throws ApiClientError on failure.
  */
 
+import { clearOfflineApiCache, reportConnectivity } from './offline';
+
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const ACCESS_KEY = 'tc_access_token';
@@ -37,6 +39,8 @@ export function clearTokens() {
   accessToken = null;
   localStorage.removeItem(ACCESS_KEY);
   localStorage.removeItem(REFRESH_KEY);
+  // Offline copies of this session's API responses must not outlive the session.
+  clearOfflineApiCache();
 }
 
 export function getAccessToken() {
@@ -94,8 +98,13 @@ async function request(method, path, { params, body, headers = {}, _retried = fa
     },
     body: isForm ? body : body !== undefined ? JSON.stringify(body) : undefined,
   }).catch(() => {
+    reportConnectivity(false);
     throw new ApiClientError('Network error — check your connection', { status: 0 });
   });
+
+  // The service worker stamps this on a response it replayed from cache because
+  // the network was unreachable — a 200 that did NOT come from the backend.
+  reportConnectivity(res.headers.get('X-TC-Offline-Cache') !== '1');
 
   // Expired access token → refresh once and replay the request.
   if (res.status === 401 && !_retried && localStorage.getItem(REFRESH_KEY)) {

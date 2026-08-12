@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
+import { registerServiceWorker } from './services/offline'
 
 // ==========================================
 // GLOBAL COPY-PROTECTION EVENT LISTENERS
@@ -67,6 +68,9 @@ if (typeof window !== 'undefined') {
     }
   });
 }
+
+// Offline support: precached shell + user pages, cached GET responses.
+registerServiceWorker();
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

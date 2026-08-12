@@ -1,9 +1,10 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { MapPin, Calendar, ArrowRight, ChevronDown, ChevronUp, Bookmark, Percent, Plus, Heart, MessageCircle, ShoppingCart, Star, Search, Mic } from 'lucide-react';
+import { MapPin, Calendar, ArrowRight, ChevronDown, ChevronUp, Bookmark, Percent, Plus, Heart, MessageCircle, ShoppingCart, Star, Search, Mic, X, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardHeader } from './DashboardHeader';
 import { Card } from '../../components/ui/Card';
 import { fetchPublicBanners } from '../../../../services/admin';
+import { useVoiceSearch } from '../../../../hooks/useVoiceSearch';
 
 // Cosmetic style presets, cycled by index over real API content — kept out
 // of the component so effects that use them don't need them as a dep.
@@ -262,15 +263,28 @@ export function Home() {
     { name: 'Adopt', tag: 'ADOPT', desc: 'Find a companion', image: '/assets/quick_links/adopt_pet.png', bg: 'bg-[#599D9A]', path: '/app/adopt' }
   ];
 
+  const {
+    isListening,
+    transcript,
+    error: voiceError,
+    toggleListening,
+    setError: setVoiceError
+  } = useVoiceSearch({
+    onResult: (text) => {
+      setSearchValue(text);
+      setIsSearchFocused(true);
+    }
+  });
+
   const searchKeywords = {
-    'Grooming': ['gr', 'grooming', 'spa', 'salon', 'haircut', 'bath', 'wash'],
-    'Daycare': ['da', 'dc', 'daycare', 'stay', 'boarding', 'play', 'sit'],
-    'Shop': ['sh', 'shop', 'toys', 'treats', 'buy', 'store', 'food'],
-    'Find Vets': ['ve', 'vets', 'doctor', 'clinic', 'health', 'sick', 'medical', 'dr'],
-    'Events': ['ev', 'events', 'party', 'shows', 'meetup', 'gathering'],
-    'Meals': ['me', 'meals', 'food', 'diet', 'fresh', 'nutrition'],
-    'Community': ['co', 'com', 'community', 'social', 'connect', 'share', 'friends', 'playdate'],
-    'Adopt': ['ad', 'adopt', 'pet', 'companion', 'rescue', 'dog', 'puppy']
+    'Grooming': ['gr', 'grooming', 'spa', 'salon', 'haircut', 'bath', 'wash', 'trim'],
+    'Daycare': ['da', 'dc', 'daycare', 'stay', 'boarding', 'play', 'sit', 'hotel', 'hostel'],
+    'Shop': ['sh', 'shop', 'toys', 'treats', 'buy', 'store', 'food', 'pedigree', 'collar', 'chews', 'leash', 'shampoo'],
+    'Find Vets': ['ve', 'vets', 'doctor', 'doctors', 'clinic', 'health', 'sick', 'medical', 'dr', 'consultation', 'surgeon', 'hospital', 'checkup'],
+    'Events': ['ev', 'events', 'party', 'shows', 'meetup', 'gathering', 'celebration', 'ticket', 'pass'],
+    'Meals': ['me', 'meals', 'food', 'diet', 'fresh', 'nutrition', 'recipe', 'raw'],
+    'Community': ['co', 'com', 'community', 'social', 'connect', 'share', 'friends', 'playdate', 'posts', 'chat'],
+    'Adopt': ['ad', 'adopt', 'pet', 'companion', 'rescue', 'dog', 'puppy', 'cat', 'kitten']
   };
 
   const searchResults = React.useMemo(() => {
@@ -282,6 +296,39 @@ export function Home() {
       return keywords.some(kw => kw.includes(query) || query.includes(kw));
     });
   }, [searchValue]);
+
+  const handleSearchSubmit = (e) => {
+    if (e) e.preventDefault();
+    const query = searchValue.trim().toLowerCase();
+    if (!query) return;
+
+    if (searchResults.length > 0) {
+      navigate(searchResults[0].path);
+      setSearchValue('');
+      setIsSearchFocused(false);
+      return;
+    }
+
+    if (/\b(vet|vets|doctor|doctors|dr|clinic|hospital|health|sick|medical|consult|consultation|surgeon)\b/i.test(query)) {
+      navigate(`/app/services/doctors?search=${encodeURIComponent(searchValue.trim())}`);
+    } else if (/\b(groom|grooming|spa|salon|bath|wash|haircut|trim)\b/i.test(query)) {
+      navigate(`/app/services/grooming?search=${encodeURIComponent(searchValue.trim())}`);
+    } else if (/\b(daycare|day care|stay|boarding|sit|sitting|hotel)\b/i.test(query)) {
+      navigate(`/app/services/daycare?search=${encodeURIComponent(searchValue.trim())}`);
+    } else if (/\b(event|events|party|show|shows|meetup|gathering|celebration|pass|ticket)\b/i.test(query)) {
+      navigate(`/app/services/events?search=${encodeURIComponent(searchValue.trim())}`);
+    } else if (/\b(adopt|adoption|companion|rescue|puppy|kitten)\b/i.test(query)) {
+      navigate(`/app/adopt?search=${encodeURIComponent(searchValue.trim())}`);
+    } else if (/\b(meal|meals|diet|food|fresh|nutrition|raw)\b/i.test(query)) {
+      navigate(`/app/meals?search=${encodeURIComponent(searchValue.trim())}`);
+    } else if (/\b(community|social|post|posts|friends|playdate)\b/i.test(query)) {
+      navigate(`/app/community?search=${encodeURIComponent(searchValue.trim())}`);
+    } else {
+      navigate(`/app/shop?search=${encodeURIComponent(searchValue.trim())}`);
+    }
+    setSearchValue('');
+    setIsSearchFocused(false);
+  };
 
   return (
     <div className="flex flex-col min-h-full pb-6 animate-in fade-in duration-500 bg-[#FAF7F2]">
@@ -322,14 +369,23 @@ export function Home() {
               Trusted care, services, products<br/>and companions.
             </p>
           </div>
-          {/* Search Bar */}
+          {/* Search Bar Form */}
           <div className="relative mt-2 mb-0 pointer-events-auto z-10 w-[95%]">
-            <div className="bg-white/80 backdrop-blur-2xl border-[1.5px] border-white shadow-[0_12px_40px_rgba(0,0,0,0.06)] rounded-full p-1.5 pl-5 flex items-center gap-3 w-full relative overflow-hidden">
-              <Search className="text-[#427C76] opacity-60 w-4 h-4 shrink-0" strokeWidth={2.5} />
+            <form 
+              onSubmit={handleSearchSubmit}
+              className={`bg-white/80 backdrop-blur-2xl border-[1.5px] ${isListening ? 'border-[#5EA49E] ring-2 ring-[#5EA49E]/30' : 'border-white'} shadow-[0_12px_40px_rgba(0,0,0,0.06)] rounded-full p-1.5 pl-4 flex items-center gap-2.5 w-full relative overflow-hidden transition-all`}
+            >
+              <button 
+                type="submit" 
+                className="text-[#427C76] opacity-70 hover:opacity-100 transition-opacity p-1 cursor-pointer shrink-0"
+                title="Search"
+              >
+                <Search className="w-4 h-4" strokeWidth={2.5} />
+              </button>
               
               {/* Animated Placeholder Overlay */}
               {!isSearchFocused && !searchValue && (
-                <div className="absolute left-[44px] right-[44px] h-[18px] pointer-events-none flex items-center overflow-hidden text-[13px] font-black text-[#427C76]/50" style={{ fontFamily: "'Outfit', sans-serif" }}>
+                <div className="absolute left-[44px] right-[76px] h-[18px] pointer-events-none flex items-center overflow-hidden text-[13px] font-black text-[#427C76]/50" style={{ fontFamily: "'Outfit', sans-serif" }}>
                   <span className="whitespace-pre">Search for </span>
                   <div className="flex flex-col h-[18px] overflow-hidden">
                     <div 
@@ -351,14 +407,75 @@ export function Home() {
                 value={searchValue}
                 onChange={(e) => setSearchValue(e.target.value)}
                 onFocus={() => setIsSearchFocused(true)}
-                onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
+                onBlur={() => setTimeout(() => setIsSearchFocused(false), 250)}
                 className="bg-transparent border-none outline-none text-[13px] font-black text-[#2C5753] flex-1 w-full relative z-10"
                 style={{ fontFamily: "'Outfit', sans-serif" }}
               />
-              <button className="bg-[#5EA49E] hover:bg-[#4C8684] active:scale-95 transition-all text-white p-2.5 rounded-full shrink-0 shadow-[0_4px_12px_rgba(94,164,158,0.4)]">
-                <Mic className="w-[14px] h-[14px]" strokeWidth={2.5} />
+
+              {searchValue && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchValue('');
+                    setIsSearchFocused(false);
+                  }}
+                  className="text-gray-400 hover:text-gray-600 p-1 rounded-full cursor-pointer transition-colors relative z-10 shrink-0"
+                >
+                  <X className="w-3.5 h-3.5" strokeWidth={2.5} />
+                </button>
+              )}
+
+              <button 
+                type="button"
+                onClick={toggleListening}
+                className={`p-2.5 rounded-full shrink-0 transition-all cursor-pointer relative z-10 ${
+                  isListening 
+                    ? 'bg-red-500 text-white animate-pulse shadow-[0_0_15px_rgba(239,68,68,0.6)] scale-105' 
+                    : 'bg-[#5EA49E] hover:bg-[#4C8684] active:scale-95 text-white shadow-[0_4px_12px_rgba(94,164,158,0.4)]'
+                }`}
+                title={isListening ? "Listening... Click to stop" : "Voice Search"}
+              >
+                {isListening ? (
+                  <Loader2 className="w-[14px] h-[14px] animate-spin" strokeWidth={2.5} />
+                ) : (
+                  <Mic className="w-[14px] h-[14px]" strokeWidth={2.5} />
+                )}
               </button>
-            </div>
+            </form>
+
+            {/* Listening Indicator Toast */}
+            {isListening && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-[#2C5753] text-white rounded-[18px] p-3 shadow-lg z-50 flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-400 animate-ping shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[12px] font-bold text-emerald-200 leading-none">Listening...</p>
+                    <p className="text-[11.5px] font-medium text-white/90 truncate mt-0.5">
+                      {transcript || 'Say "Vets", "Grooming", "Dog food"...'}
+                    </p>
+                  </div>
+                </div>
+                <button 
+                  onClick={toggleListening}
+                  className="px-2.5 py-1 bg-white/20 hover:bg-white/30 rounded-full text-[11px] font-bold text-white transition-colors shrink-0 cursor-pointer"
+                >
+                  Stop
+                </button>
+              </div>
+            )}
+
+            {/* Voice Error Notification */}
+            {voiceError && !isListening && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-amber-500 text-white text-[12px] font-bold rounded-[16px] px-3.5 py-2 shadow-md z-50 flex items-center justify-between gap-2 animate-in fade-in">
+                <span>{voiceError}</span>
+                <button 
+                  onClick={() => setVoiceError(null)} 
+                  className="hover:opacity-80 p-0.5 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
             {/* Search Dropdown Results */}
             {searchValue.trim() && isSearchFocused && searchResults.length > 0 && (
@@ -387,12 +504,21 @@ export function Home() {
             )}
             
             {searchValue.trim() && isSearchFocused && searchResults.length === 0 && (
-               <div className="absolute top-full left-0 right-0 mt-2 bg-white/95 backdrop-blur-xl rounded-[20px] shadow-[0_12px_40px_rgba(0,0,0,0.12)] border border-white/60 overflow-hidden z-50 p-6 flex flex-col items-center justify-center text-center">
-                  <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-3">
-                     <Search className="text-[#5B9D98] opacity-50 w-5 h-5" />
+               <div className="absolute top-full left-0 right-0 mt-2 bg-white/95 backdrop-blur-xl rounded-[20px] shadow-[0_12px_40px_rgba(0,0,0,0.12)] border border-white/60 overflow-hidden z-50 p-5 flex flex-col items-center justify-center text-center">
+                  <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center mb-2">
+                     <Search className="text-[#5B9D98] opacity-50 w-4 h-4" />
                   </div>
-                  <h4 className="text-[14px] font-black text-[#2C5753] mb-1">No results found</h4>
-                  <p className="text-[12px] font-bold text-[#5B9D98]">Try searching for 'grooming', 'vet', or 'shop'</p>
+                  <h4 className="text-[13.5px] font-black text-[#2C5753] mb-1">No direct category match</h4>
+                  <p className="text-[11.5px] font-bold text-[#5B9D98] mb-3">Press Enter or click below to search across services</p>
+                  <button
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      handleSearchSubmit();
+                    }}
+                    className="px-4 py-2 bg-[#5EA49E] text-white rounded-full text-[12px] font-bold hover:bg-[#4C8684] transition-colors cursor-pointer"
+                  >
+                    Search for "{searchValue}"
+                  </button>
                </div>
             )}
           </div>

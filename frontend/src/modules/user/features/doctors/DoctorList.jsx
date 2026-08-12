@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Star, MapPin, Video, ArrowLeft, CheckCircle2, AlertCircle, Calendar, X, Zap } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Search, Star, MapPin, Video, ArrowLeft, CheckCircle2, AlertCircle, Calendar, X, Zap, Mic, Loader2 } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { getDoctorSlots, toYMD } from '../../../../services/doctorsApi';
+import { useVoiceSearch } from '../../../../hooks/useVoiceSearch';
 
 // Helper to generate dates
 const generateDates = () => {
@@ -22,8 +23,19 @@ const generateDates = () => {
 
 export function DoctorList() {
   const navigate = useNavigate();
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchParams] = useSearchParams();
+  const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
   const [activeCategory, setActiveCategory] = useState('All');
+
+  const {
+    isListening,
+    transcript,
+    error: voiceError,
+    toggleListening,
+    setError: setVoiceError
+  } = useVoiceSearch({
+    onResult: (text) => setSearchQuery(text)
+  });
   
   // Booking Modal State
   const [selectedDoctor, setSelectedDoctor] = useState(null);
@@ -247,11 +259,38 @@ export function DoctorList() {
           <Search className="absolute left-4 top-3.5 text-gray-400" size={20} />
           <input 
             type="text" 
-            placeholder="Search vet name or clinic..." 
+            placeholder="Search vet name, clinic or specialty..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white h-12 rounded-[16px] pl-12 pr-4 outline-none border border-border-light focus:border-accent-teal transition-colors text-[14px] font-medium shadow-sm" 
+            className="w-full bg-white h-12 rounded-[16px] pl-12 pr-11 outline-none border border-border-light focus:border-accent-teal transition-colors text-[14px] font-medium shadow-sm" 
           />
+          {searchQuery ? (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-12 top-3.5 text-gray-400 hover:text-gray-600 p-0.5"
+            >
+              <X size={16} />
+            </button>
+          ) : null}
+          <button
+            onClick={toggleListening}
+            className={`absolute right-3 top-2.5 p-2 rounded-full transition-all cursor-pointer ${
+              isListening ? 'bg-red-500 text-white animate-pulse' : 'text-[#66B4B1] hover:bg-teal-50'
+            }`}
+            title={isListening ? "Listening..." : "Voice search"}
+          >
+            {isListening ? <Loader2 size={16} className="animate-spin" /> : <Mic size={16} />}
+          </button>
+
+          {isListening && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-[#2C5753] text-white rounded-[16px] p-3 shadow-lg z-50 flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-red-400 animate-ping shrink-0" />
+                <span className="truncate font-semibold">{transcript || 'Listening for doctor name or clinic...'}</span>
+              </div>
+              <button onClick={toggleListening} className="px-2 py-0.5 bg-white/20 rounded-full font-bold">Stop</button>
+            </div>
+          )}
         </div>
 
         <div className="flex overflow-x-auto hide-scrollbar gap-2.5 pb-2 -mx-4 px-4">
