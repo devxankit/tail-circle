@@ -1,7 +1,67 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Star, MapPin, Scissors, Info } from 'lucide-react';
+import { ArrowLeft, Star, MapPin, Scissors, Info, ShowerHead, Flower2, Droplets, SprayCan, Wind, Brush, Sparkles, Check, Plus, Heart, Smile, Shield, Palette, X } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getGroomingShopById } from '../../../../services/groomingApi';
+
+const ALL_SERVICES = [
+  'Bath', 'Shampoo', 'Blow Dry', 'Brush', 'Nail Trim', 'Ear Clean', 
+  'Sanitary Trim', 'Pad Trim', 'De-shedding', 'Coat Spa / Conditioner', 'Perfume'
+];
+
+const getPackageDef = (name) => {
+  const n = name.toLowerCase();
+  if (n.includes('basic')) {
+    return {
+      subtitle: 'Clean + Freshen Up',
+      includes: [
+        { name: 'Bath', desc: 'Gentle bath with lukewarm water.', icon: ShowerHead },
+        { name: 'Shampoo', desc: 'Premium pet-safe shampoo wash.', icon: SprayCan },
+        { name: 'Blow Dry', desc: 'Thorough blow dry for a soft coat.', icon: Wind },
+        { name: 'Brush', desc: 'Brushing to remove tangles & dirt.', icon: Brush }
+      ],
+      Icon: ShowerHead,
+      iconBg: 'bg-[#EAF3F1]',
+      iconColor: 'text-[#66B4B1]'
+    };
+  } else if (n.includes('standard') || n.includes('full')) {
+    return {
+      subtitle: 'Complete Grooming',
+      includes: [
+        { name: 'Bath', desc: 'Gentle bath with lukewarm water.', icon: ShowerHead },
+        { name: 'Shampoo', desc: 'Premium pet-safe shampoo wash.', icon: SprayCan },
+        { name: 'Blow Dry', desc: 'Thorough blow dry for a soft coat.', icon: Wind },
+        { name: 'Brush', desc: 'Brushing to remove tangles & dirt.', icon: Brush },
+        { name: 'Nail Trim', desc: 'Safe nail clipping and filing.', icon: Scissors },
+        { name: 'Ear Clean', desc: 'Gentle ear cleaning solution.', icon: Sparkles },
+        { name: 'Sanitary Trim', desc: 'Trimming of sensitive areas.', icon: Scissors },
+        { name: 'Pad Trim', desc: 'Hair removal from paw pads.', icon: Scissors }
+      ],
+      Icon: Scissors,
+      iconBg: 'bg-[#FFF3E3]',
+      iconColor: 'text-[#D9A05B]'
+    };
+  } else {
+    return {
+      subtitle: 'Deep Clean + Fur Care',
+      includes: [
+        { name: 'Bath', desc: 'Gentle bath with lukewarm water.', icon: ShowerHead },
+        { name: 'Shampoo', desc: 'Premium pet-safe shampoo wash.', icon: SprayCan },
+        { name: 'Blow Dry', desc: 'Thorough blow dry for a soft coat.', icon: Wind },
+        { name: 'Brush', desc: 'Brushing to remove tangles & dirt.', icon: Brush },
+        { name: 'Nail Trim', desc: 'Safe nail clipping and filing.', icon: Scissors },
+        { name: 'Ear Clean', desc: 'Gentle ear cleaning solution.', icon: Sparkles },
+        { name: 'Sanitary Trim', desc: 'Trimming of sensitive areas.', icon: Scissors },
+        { name: 'Pad Trim', desc: 'Hair removal from paw pads.', icon: Scissors },
+        { name: 'De-shedding', desc: 'Specialized de-shedding tool.', icon: Wind },
+        { name: 'Coat Spa / Conditioner', desc: 'Deep conditioning treatment.', icon: Sparkles },
+        { name: 'Perfume', desc: 'Pet-safe finishing fragrance.', icon: SprayCan }
+      ],
+      Icon: Flower2,
+      iconBg: 'bg-[#F2E8FB]',
+      iconColor: 'text-[#A874D4]'
+    };
+  }
+};
 
 // Helper to generate dates
 const generateDates = () => {
@@ -37,6 +97,7 @@ export function GroomingDetail() {
   const [selectedSlot, setSelectedSlot] = useState(null);
   
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showCompareModal, setShowCompareModal] = useState(false);
 
   useEffect(() => {
     loadShop();
@@ -148,66 +209,138 @@ export function GroomingDetail() {
         </div>
 
         {/* Separator */}
-        <div className="w-full h-px bg-border-light my-2 px-4"><div className="w-full h-full bg-border-light"></div></div>
+        <div className="mx-4 h-px bg-gray-100 my-3"></div>
 
         {/* Select Package */}
         {shop.packages?.length > 0 && (
           <div className="px-4 py-4">
-            <h2 className="text-[17px] font-black text-gray-900 mb-4">Main package</h2>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h2 className="text-[17px] font-black text-gray-900">1. Choose a Package</h2>
+                <p className="text-[13px] text-gray-500">All packages include premium shampoos & gentle care.</p>
+              </div>
+              <button 
+                onClick={() => setShowCompareModal(true)}
+                className="text-[11px] font-bold text-accent-teal bg-[#EAF3F1] px-2.5 py-1 rounded-full shrink-0 active:scale-95 transition-transform mt-0.5"
+              >
+                Know more
+              </button>
+            </div>
+            <div className="flex flex-col gap-4">
               {shop.packages.map((pkg, idx) => {
                 const isSelected = selectedPackage?.name === pkg.name;
+                
+                const def = getPackageDef(pkg.name);
+                const subtitle = def.subtitle;
+                const includes = def.includes;
+                const Icon = def.Icon;
+                const iconBg = def.iconBg;
+                const iconColor = def.iconColor;
+
                 return (
                   <button
                     key={idx}
                     onClick={() => setSelectedPackage(pkg)}
-                    className={`flex flex-col items-center justify-center border rounded-2xl py-2 px-4 transition-all active:scale-95 ${
+                    className={`relative flex flex-col text-left border rounded-[20px] p-4 transition-all active:scale-[0.98] ${
                       isSelected 
-                        ? 'border-accent-teal bg-[#FAF7F2]' 
+                        ? 'border-accent-teal bg-white ring-1 ring-accent-teal shadow-sm' 
                         : 'border-border-light bg-white hover:border-gray-300'
                     }`}
                   >
-                    <span className={`text-[13px] font-bold mb-0.5 ${isSelected ? 'text-accent-teal' : 'text-gray-800'}`}>
-                      {pkg.name}
-                    </span>
-                    <span className={`text-[11px] ${isSelected ? 'text-accent-teal/80' : 'text-gray-400'}`}>
-                      ₹{pkg.price}
-                    </span>
+                    {isSelected && (
+                      <div className="absolute -top-2 -right-2 bg-accent-teal text-white rounded-full p-0.5 z-10 shadow-sm">
+                        <Check size={16} strokeWidth={3} />
+                      </div>
+                    )}
+                    
+                    <div className="flex items-start gap-4 mb-4">
+                      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${iconBg} ${iconColor}`}>
+                        <Icon size={28} strokeWidth={1.5} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h3 className="text-[15px] font-black text-gray-900 leading-tight mb-0.5">{pkg.name}</h3>
+                            <p className={`text-[12px] font-bold ${iconColor}`}>{subtitle}</p>
+                          </div>
+                          <span className="text-[15px] font-black text-gray-900">₹{pkg.price}</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2 pt-3 border-t border-gray-100">
+                      {includes.map((inc, i) => {
+                        const IncIcon = inc.icon;
+                        return (
+                          <div key={i} className="flex items-center gap-1.5 text-[11px] font-medium text-gray-600">
+                            <IncIcon size={13} className="text-gray-400" />
+                            <span>{inc.name}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </button>
                 );
               })}
             </div>
+            
+            <div className="mt-4 bg-[#EAF3F1] text-[#599D9A] p-3 rounded-[12px] flex gap-3 items-start">
+              <Sparkles size={18} className="shrink-0 mt-0.5" />
+              <p className="text-[12px] font-medium leading-relaxed">
+                Every package is performed by trained professionals using safe & pet-friendly products.
+              </p>
+            </div>
           </div>
-        )}
-
-        {/* Separator */}
-        {shop.packages?.length > 0 && (
-          <div className="w-full h-px bg-border-light my-2 px-4"><div className="w-full h-full bg-border-light"></div></div>
         )}
 
         {/* Select Add-ons */}
         <div className="px-4 py-4">
-          <div className="flex justify-between items-end mb-4">
-            <h2 className="text-[17px] font-black text-gray-900">Select Add-ons</h2>
-            <span className="text-[11px] text-gray-400 font-medium">Tap to add • prices per service</span>
+          <h2 className="text-[17px] font-black text-gray-900">2. Add Extra Services</h2>
+          <div className="flex items-center gap-1 mb-4 text-[13px] text-gray-500">
+            <span>Not included in your package</span>
+            <Info size={14} className="text-gray-400" />
           </div>
-          <div className="flex flex-wrap gap-3">
+          
+          <div className="grid grid-cols-3 gap-3">
             {(shop.addons || shop.servicesList || []).map((addon, idx) => {
               const isSelected = selectedAddons.find(a => a.name === addon.name);
+              
+              // Map icon based on addon name
+              let AddonIcon = Sparkles;
+              const nameLower = addon.name.toLowerCase();
+              if (nameLower.includes('perfume')) AddonIcon = SprayCan;
+              else if (nameLower.includes('paw')) AddonIcon = Heart;
+              else if (nameLower.includes('teeth') || nameLower.includes('dental')) AddonIcon = Smile;
+              else if (nameLower.includes('tick')) AddonIcon = Shield;
+              else if (nameLower.includes('de-shed')) AddonIcon = Brush;
+              else if (nameLower.includes('color') || nameLower.includes('dye')) AddonIcon = Palette;
+              else if (nameLower.includes('nail')) AddonIcon = Scissors;
+              else if (nameLower.includes('blueberry') || nameLower.includes('facial')) AddonIcon = Flower2;
+              else if (nameLower.includes('gland')) AddonIcon = Droplets;
+
               return (
                 <button
                   key={idx}
                   onClick={() => toggleAddon(addon)}
-                  className={`flex flex-col items-center justify-center border rounded-2xl py-2 px-4 transition-all active:scale-95 ${
+                  className={`relative flex flex-col items-center justify-center border rounded-[20px] p-3 transition-all active:scale-[0.98] ${
                     isSelected 
-                      ? 'border-accent-teal bg-[#FAF7F2]' 
+                      ? 'border-accent-teal bg-[#FAF7F2] ring-1 ring-accent-teal' 
                       : 'border-border-light bg-white hover:border-gray-300'
                   }`}
                 >
-                  <span className={`text-[13px] font-bold mb-0.5 ${isSelected ? 'text-accent-teal' : 'text-gray-800'}`}>
+                  <div className={`absolute top-2 right-2 w-4 h-4 rounded-full flex items-center justify-center ${
+                    isSelected ? 'bg-accent-teal text-white' : 'bg-[#EAF3F1] text-[#66B4B1]'
+                  }`}>
+                    {isSelected ? <Check size={10} strokeWidth={3} /> : <Plus size={12} strokeWidth={2.5} />}
+                  </div>
+                  
+                  <div className="h-10 flex items-center justify-center mb-1 text-gray-700">
+                    <AddonIcon size={24} strokeWidth={1.5} />
+                  </div>
+                  <span className="text-[12px] font-bold text-center leading-tight mb-1 text-gray-900">
                     {addon.name}
                   </span>
-                  <span className={`text-[11px] ${isSelected ? 'text-accent-teal/80' : 'text-gray-400'}`}>
+                  <span className="text-[11px] font-bold text-[#66B4B1]">
                     ₹{addon.price || addon.startsAt}
                   </span>
                 </button>
@@ -299,6 +432,88 @@ export function GroomingDetail() {
           {isReadyToBook ? `Confirm Booking • ₹${totalPrice}` : 'Select a Slot to Continue'}
         </button>
       </div>
+
+      {/* Compare Modal */}
+      {showCompareModal && (
+        <div className="fixed inset-0 z-[100] flex flex-col justify-end">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowCompareModal(false)} />
+          <div className="bg-white w-full rounded-t-[32px] p-6 relative z-10 animate-in slide-in-from-bottom duration-300 shadow-2xl flex flex-col max-h-[90vh]">
+            
+            <button onClick={() => setShowCompareModal(false)} className="absolute top-6 right-6 w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center transition-colors">
+               <X size={16} className="text-gray-600" />
+            </button>
+
+            <div className="overflow-y-auto hide-scrollbar pb-6 flex-1 -mx-6 px-6">
+               {/* What's included section */}
+               <h3 className="text-[13px] font-bold text-gray-900 mb-0.5">What's included in</h3>
+               <h3 className="text-[17px] font-black text-accent-teal mb-6 leading-tight">{selectedPackage?.name || 'this Package'}?</h3>
+               
+               <div className="flex flex-col gap-5 mb-8">
+                  {selectedPackage && getPackageDef(selectedPackage.name).includes.map((inc, i) => {
+                     const IncIcon = inc.icon;
+                     return (
+                       <div key={i} className="flex gap-4">
+                         <div className="w-10 h-10 rounded-xl bg-[#EAF3F1] text-[#66B4B1] flex items-center justify-center shrink-0">
+                           <IncIcon size={20} strokeWidth={1.5} />
+                         </div>
+                         <div>
+                           <h4 className="text-[13px] font-bold text-gray-900 mb-0.5">{inc.name}</h4>
+                           <p className="text-[11px] text-gray-500 leading-tight">{inc.desc}</p>
+                         </div>
+                       </div>
+                     );
+                  })}
+               </div>
+               
+               <h3 className="text-[15px] font-black text-gray-900 mb-4">Package Comparison</h3>
+               <div className="border border-gray-100 rounded-2xl overflow-hidden text-[11px] mb-2">
+                  <table className="w-full text-left">
+                     <thead>
+                       <tr className="bg-[#FAF7F2]">
+                         <th className="py-3 px-3 font-bold text-gray-900 w-1/3">Services</th>
+                         {shop.packages.map(p => (
+                            <th key={p.name} className="py-3 px-1 text-center border-l border-gray-100">
+                              <div className="font-bold text-gray-900 text-[10px] truncate max-w-[50px] mx-auto">{p.name.split(' ')[0]}</div>
+                              <div className="text-gray-500 font-medium text-[9px]">₹{p.price}</div>
+                            </th>
+                         ))}
+                       </tr>
+                     </thead>
+                     <tbody className="divide-y divide-gray-100 bg-white">
+                        {ALL_SERVICES.map((service, i) => (
+                           <tr key={i}>
+                             <td className="py-2.5 px-3 text-gray-700 font-medium">{service}</td>
+                             {shop.packages.map(p => {
+                               const def = getPackageDef(p.name);
+                               const hasService = def.includes.some(inc => inc.name === service);
+                               return (
+                                 <td key={p.name} className="py-2.5 px-1 text-center border-l border-gray-100">
+                                   {hasService ? (
+                                      <div className="w-4 h-4 rounded-full bg-accent-teal text-white flex items-center justify-center mx-auto">
+                                        <Check size={10} strokeWidth={3} />
+                                      </div>
+                                   ) : (
+                                      <span className="text-gray-300 font-bold">—</span>
+                                   )}
+                                 </td>
+                               );
+                             })}
+                           </tr>
+                        ))}
+                     </tbody>
+                  </table>
+               </div>
+            </div>
+
+            <button 
+              onClick={() => setShowCompareModal(false)}
+              className="w-full mt-4 bg-[#80C1BF] hover:bg-[#66B4B1] text-white h-[48px] rounded-full text-[15px] font-bold transition-all shrink-0 shadow-sm"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Success Modal */}
       {showSuccessModal && (
