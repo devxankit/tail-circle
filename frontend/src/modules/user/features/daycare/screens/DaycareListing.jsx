@@ -1,5 +1,5 @@
-﻿import React, { useState, useEffect } from 'react';
-import { ChevronLeft, SlidersHorizontal, MapPin, Star, Heart, Search, Calendar, Headphones, ArrowRight, X, Check, Plus, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ChevronLeft, SlidersHorizontal, MapPin, Star, Heart, Search, Calendar, Headphones, ArrowRight, X, Check, Plus, Loader2, Mic } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getDaycares, createBooking } from '../../../../../services/daycareApi';
 import { fetchPublicBanners } from '../../../../../services/admin';
@@ -7,6 +7,7 @@ import { fetchMyPets, petAgeText } from '../../../../../services/pets';
 import { api } from '../../../../../services/api';
 import { DaycareFilters } from '../components/DaycareFilters';
 import { useDaycareStore } from '../../../../../store/useDaycareStore';
+import { useVoiceSearch } from '../../../../../hooks/useVoiceSearch';
 
 const formatDateDisplay = (dateStr) => {
   if (!dateStr) return '';
@@ -392,6 +393,48 @@ export function DaycareListing() {
               />
             </div>
           )}
+        </div>
+
+        {/* Search Bar Input with Voice Search */}
+        <div className="px-4 mb-4">
+          <div className="relative">
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#599D9A]" />
+            <input 
+              type="text"
+              placeholder="Search daycare center or location..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-white h-11 rounded-[16px] pl-11 pr-20 outline-none border border-gray-200/80 focus:border-[#599D9A] transition-colors text-[13px] font-medium shadow-sm text-gray-800"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-11 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5"
+              >
+                <X size={15} />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={toggleListening}
+              className={`absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full transition-all cursor-pointer ${
+                isListening ? 'bg-red-500 text-white animate-pulse' : 'text-[#599D9A] hover:bg-teal-50'
+              }`}
+              title={isListening ? "Listening..." : "Voice search"}
+            >
+              {isListening ? <Loader2 size={15} className="animate-spin" /> : <Mic size={15} />}
+            </button>
+
+            {isListening && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-[#2C5753] text-white rounded-[16px] p-3 shadow-lg z-50 flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-2 h-2 rounded-full bg-red-400 animate-ping shrink-0" />
+                  <span className="truncate font-semibold">{transcript || 'Listening for daycare center...'}</span>
+                </div>
+                <button onClick={toggleListening} className="px-2 py-0.5 bg-white/20 rounded-full font-bold">Stop</button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Top Badges (Horizontal scroll) */}

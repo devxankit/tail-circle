@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { CheckCircle2, ChevronRight, Package, Grid2X2, PawPrint, Truck, ShieldCheck, X, Heart, Search, ArrowLeft, Star, Check, Plus, ShoppingBag, Eye, ShieldAlert, Sparkles, Filter, ChevronLeft, FileText, Award, ShieldPlus, ClipboardList } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { CheckCircle2, ChevronRight, Package, Grid2X2, PawPrint, Truck, ShieldCheck, X, Heart, Search, ArrowLeft, Star, Check, Plus, ShoppingBag, Eye, ShieldAlert, Sparkles, Filter, ChevronLeft, FileText, Award, ShieldPlus, ClipboardList, Mic, Loader2 } from 'lucide-react';
 import {
   fetchProducts,
   fetchCategories,
@@ -10,6 +10,7 @@ import {
 import { fetchPublicBanners } from '../../../../services/admin';
 import { ExpertNutrition } from './ExpertNutrition';
 import dogImgClean from '../../../../assets/dogImg-clean.png';
+import { useVoiceSearch } from '../../../../hooks/useVoiceSearch';
 
 const getBreedSize = (breed) => {
   if (!breed) return 'Medium';
@@ -119,6 +120,8 @@ const monthlyPacks = [
 
 export function ShopList() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialSearch = searchParams.get('search') || '';
   const [currentBanner, setCurrentBanner] = useState(0);
 
   // Catalog from the API (legacy shapes preserved by the shop service)
@@ -144,7 +147,7 @@ export function ShopList() {
 
   // --- BREED FIRST SHOPPING EXPERIENCE STATE ---
   const [breeds, setBreeds] = useState([]);
-  const [activeTab, setActiveTab] = useState('home'); // 'home', 'breed' or 'all'
+  const [activeTab, setActiveTab] = useState(initialSearch ? 'all' : 'home'); // 'home', 'breed' or 'all'
   const [breedStep, setBreedStep] = useState('breed-select'); // default to breed-select to open instantly
   const [selectedPetType, setSelectedPetType] = useState('Dog');
   const [selectedBreed, setSelectedBreed] = useState(null);
@@ -157,8 +160,21 @@ export function ShopList() {
   const [weightFilter, setWeightFilter] = useState('Medium'); // 'Small', 'Medium', 'Large'
   const [healthFilters, setHealthFilters] = useState([]); // Array of health options
   const [guidanceFilter, setGuidanceFilter] = useState('All'); // 'All', 'Must Have', 'Good To Have', 'Optional'
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [allProductsCategory, setAllProductsCategory] = useState('All');
+
+  const {
+    isListening,
+    transcript,
+    error: voiceError,
+    toggleListening,
+    setError: setVoiceError
+  } = useVoiceSearch({
+    onResult: (text) => {
+      setSearchQuery(text);
+      setActiveTab('all');
+    }
+  });
 
   // Breeds catalog (incl. shop recommendation data) from the API
   useEffect(() => {
@@ -987,8 +1003,36 @@ export function ShopList() {
                 placeholder="Search products, brands, categories..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-11 pr-4 py-3.5 bg-white shadow-sm border-none rounded-2xl text-[14px] font-medium text-[#5A5552] placeholder:text-[#5A5552]/40 focus:outline-none focus:ring-2 focus:ring-[#66B4B1]/40"
+                className="w-full pl-11 pr-20 py-3.5 bg-white shadow-sm border-none rounded-2xl text-[14px] font-medium text-[#5A5552] placeholder:text-[#5A5552]/40 focus:outline-none focus:ring-2 focus:ring-[#66B4B1]/40"
               />
+              {searchQuery ? (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-11 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+                >
+                  <X size={15} />
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={toggleListening}
+                className={`absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full transition-all cursor-pointer ${
+                  isListening ? 'bg-red-500 text-white animate-pulse' : 'text-[#66B4B1] hover:bg-teal-50'
+                }`}
+                title={isListening ? "Listening..." : "Voice search"}
+              >
+                {isListening ? <Loader2 size={16} className="animate-spin" /> : <Mic size={16} />}
+              </button>
+
+              {isListening && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-[#2C5753] text-white rounded-[16px] p-3 shadow-lg z-50 flex items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-2 h-2 rounded-full bg-red-400 animate-ping shrink-0" />
+                    <span className="truncate font-semibold">{transcript || 'Listening for products or brand...'}</span>
+                  </div>
+                  <button onClick={toggleListening} className="px-2 py-0.5 bg-white/20 rounded-full font-bold">Stop</button>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-1.5 overflow-x-auto hide-scrollbar pb-3.5 -mx-1 px-1">

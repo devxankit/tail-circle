@@ -1,5 +1,6 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
+import { OfflineBanner } from '../components/OfflineBanner';
 
 export function MobileWrapper({ children }) {
   const location = useLocation();
@@ -94,6 +95,9 @@ export function MobileWrapper({ children }) {
             scrollbar-width: none !important;
           }
         `}</style>
+        {/* Outside the keyed content, so it does not replay the page transition
+            on every navigation. */}
+        <OfflineBanner />
         <div key={location.pathname} className="flex-1 flex flex-col w-full min-h-full animate-[pageTransition_0.28s_cubic-bezier(0.16,1,0.3,1)_forwards]">
           {children}
         </div>
