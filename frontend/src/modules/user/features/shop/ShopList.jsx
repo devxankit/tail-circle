@@ -127,8 +127,15 @@ export function ShopList() {
   // Catalog from the API (legacy shapes preserved by the shop service)
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState(['All', 'Food', 'Treats', 'Toys', 'Grooming', 'Health', 'Accessories']);
-  const [shopBanners, setShopBanners] = useState({});
-  const [isBannersLoading, setIsBannersLoading] = useState(true);
+  const [shopBanners, setShopBanners] = useState(() => {
+    try {
+      const cached = localStorage.getItem('shop_banners_cache');
+      return cached ? JSON.parse(cached) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [isBannersLoading, setIsBannersLoading] = useState(!Object.keys(shopBanners).length);
 
   useEffect(() => {
     fetchProducts().then(setProducts).catch(() => setProducts([]));
@@ -136,6 +143,7 @@ export function ShopList() {
     fetchPublicBanners().then((rows) => {
       const byKey = Object.fromEntries((rows || []).map((b) => [b.key, b]));
       setShopBanners(byKey);
+      localStorage.setItem('shop_banners_cache', JSON.stringify(byKey));
     }).catch(() => {}).finally(() => setIsBannersLoading(false));
   }, []);
 
@@ -147,13 +155,20 @@ export function ShopList() {
 
   // --- BREED FIRST SHOPPING EXPERIENCE STATE ---
   const [breeds, setBreeds] = useState([]);
-  const [activeTab, setActiveTab] = useState(initialSearch ? 'all' : 'home'); // 'home', 'breed' or 'all'
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || (initialSearch ? 'all' : 'home')); // 'home', 'breed' or 'all'
   const [breedStep, setBreedStep] = useState('breed-select'); // default to breed-select to open instantly
   const [selectedPetType, setSelectedPetType] = useState('Dog');
   const [selectedBreed, setSelectedBreed] = useState(null);
   const [breedCategoryFilter, setBreedCategoryFilter] = useState('All');
   const [showBreedDetails, setShowBreedDetails] = useState(false);
   const [showNutritionPlan, setShowNutritionPlan] = useState(false);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && ['home', 'breed', 'all'].includes(tab)) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
   
   // Filters
   const [ageFilter, setAgeFilter] = useState('Adult'); // 'Puppy', 'Adult', 'Senior'
@@ -702,8 +717,33 @@ export function ShopList() {
                     
                     if (!matchesFilter) return null;
 
-                    const mappedIds = selectedBreed.recommendations[sec.key] || [];
-                    let filteredProducts = products.filter(p => mappedIds.includes(p.id));
+                    const mappedIds = selectedBreed.recommendations?.[sec.key] || [];
+                    let filteredProducts = products.filter(p => {
+                      if (mappedIds.length > 0) return mappedIds.includes(p.id);
+
+                      // Dynamic fallback
+                      if (p.petType?.toLowerCase() !== selectedBreed.species?.toLowerCase()) return false;
+
+                      if (sec.key === 'food') return p.category === 'Food';
+                      if (sec.key === 'treats') return p.category === 'Treats';
+                      if (sec.key === 'toys') return p.category === 'Toys';
+                      if (sec.key === 'health') return p.category === 'Health';
+                      if (sec.key === 'grooming') return p.category === 'Grooming';
+                      
+                      const name = p.name?.toLowerCase() || '';
+                      const sub = p.subCategory?.toLowerCase() || '';
+                      
+                      if (sec.key === 'comfort') {
+                        return p.category === 'Accessories' && (name.includes('bed') || name.includes('mat') || sub === 'comfort');
+                      }
+                      if (sec.key === 'travel') {
+                        return p.category === 'Accessories' && (name.includes('car') || name.includes('travel') || name.includes('carrier') || sub === 'travel');
+                      }
+                      if (sec.key === 'accessories') {
+                        return p.category === 'Accessories' && !name.includes('bed') && !name.includes('mat') && !name.includes('car') && !name.includes('travel') && !name.includes('carrier');
+                      }
+                      return false;
+                    });
                     
                     filteredProducts = filteredProducts.filter(p => {
                       if (p.lifeStage) {

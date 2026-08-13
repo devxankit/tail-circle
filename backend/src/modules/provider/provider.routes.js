@@ -58,6 +58,55 @@ router.get(
       else if (o.kind === 'addon') grouped.addons.push(o);
       else grouped.menu.push(o);
     }
+
+    // Standardize Grooming Packages across all shops
+    if (provider.type === 'grooming') {
+      const basePrice = provider.startingPrice || 499;
+      
+      const getPrice = (name, defPrice) => {
+        // Try exact name match
+        const exact = grouped.packages.find(p => p.name === name);
+        if (exact) return exact.price;
+        
+        // Try fallback based on keywords if exact match fails
+        const lowerName = name.toLowerCase();
+        if (lowerName.includes('basic')) {
+          const fallback = grouped.packages.find(p => p.name.toLowerCase().includes('basic'));
+          if (fallback) return fallback.price;
+        } else if (lowerName.includes('standard') || lowerName.includes('full')) {
+          const fallback = grouped.packages.find(p => p.name.toLowerCase().includes('full'));
+          if (fallback) return fallback.price;
+        } else if (lowerName.includes('premium') || lowerName.includes('spa')) {
+          const fallback = grouped.packages.find(p => p.name.toLowerCase().includes('spa'));
+          if (fallback) return fallback.price;
+        }
+        
+        return defPrice;
+      };
+
+      grouped.packages = [
+        {
+          id: grouped.packages.find(p => p.name === 'Basic Bath & Brush')?.id || 'standard_1',
+          name: 'Basic Bath & Brush',
+          price: getPrice('Basic Bath & Brush', basePrice),
+          includes: ['Organic Bath', 'Blow Dry', 'Nail Trim', 'Ear Cleaning']
+        },
+        {
+          id: grouped.packages.find(p => p.name === 'Standard Full Grooming')?.id || 'standard_2',
+          name: 'Standard Full Grooming',
+          price: getPrice('Standard Full Grooming', basePrice + 500),
+          includes: ['Organic Bath', 'Breed Specific Haircut', 'Nail Trim', 'Ear Cleaning', 'Paw Balm'],
+          isPopular: true
+        },
+        {
+          id: grouped.packages.find(p => p.name === 'Premium De-shedding Spa')?.id || 'standard_3',
+          name: 'Premium De-shedding Spa',
+          price: getPrice('Premium De-shedding Spa', basePrice + 1000),
+          includes: ['Deshedding Shampoo', 'Deep Brushing', 'Haircut', 'Paw Massage', 'Teeth Brushing', 'Perfume']
+        }
+      ];
+    }
+
     sendSuccess(res, { data: { provider, offerings: grouped } });
   })
 );

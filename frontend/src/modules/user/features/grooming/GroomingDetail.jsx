@@ -427,7 +427,7 @@ export function GroomingDetail() {
           className={`w-full h-[52px] rounded-full text-[15px] font-black transition-all flex items-center justify-center shadow-sm
             ${isReadyToBook 
               ? 'bg-[#F87B68] text-white hover:bg-[#F87B68] active:scale-[0.98]' 
-              : 'bg-[#FAF7F2] text-white cursor-not-allowed'}`}
+              : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
         >
           {isReadyToBook ? `Confirm Booking • ₹${totalPrice}` : 'Select a Slot to Continue'}
         </button>
