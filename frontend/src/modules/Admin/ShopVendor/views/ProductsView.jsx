@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useShopVendor } from '../context/ShopVendorContext';
-import { createShopProduct, updateShopProduct, deleteShopProduct } from '../../../../services/vendor';
+import { useToast } from '../components/Toast';
+import { createShopProduct, updateShopProduct, deleteShopProduct, uploadVendorFile } from '../../../../services/vendor';
 import {
   Search, Plus, Filter, MoreVertical, Edit2, Copy, Trash2,
   CheckCircle, AlertCircle, Image as ImageIcon, X, Loader2
@@ -11,10 +12,12 @@ import { cn } from '../../../user/utils/cn';
 export function ProductsView() {
   const location = useLocation();
   const { products, refresh } = useShopVendor();
+  const { addToast } = useToast();
   const [search, setSearch] = useState('');
   const [viewState, setViewState] = useState(location.state?.openAdd ? 'add' : 'list'); // 'list' | 'add' | 'edit'
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
     if (location.state?.openAdd) {
@@ -67,7 +70,7 @@ export function ProductsView() {
 
   const handleSave = async () => {
     if (!formData.name || !formData.price || !formData.stock) {
-      alert('Please fill in required fields (Name, Price, Stock).');
+      addToast({ message: 'Please fill in required fields (Name, Price, Stock).', type: 'warning' });
       return;
     }
 
@@ -86,13 +89,15 @@ export function ProductsView() {
     try {
       if (viewState === 'add') {
         await createShopProduct(payload);
+        addToast({ message: 'Product created successfully!', type: 'success' });
       } else {
         await updateShopProduct(selectedProduct._id || selectedProduct.id, payload);
+        addToast({ message: 'Product updated successfully!', type: 'success' });
       }
       await refresh();
       setViewState('list');
     } catch (err) {
-      alert(err?.response?.data?.message || 'Could not save the product');
+      addToast({ message: err?.response?.data?.message || 'Could not save the product', type: 'error' });
     } finally {
       setSaving(false);
     }
@@ -108,8 +113,9 @@ export function ProductsView() {
     try {
       await deleteShopProduct(product._id || product.id);
       await refresh();
+      addToast({ message: 'Product deleted.', type: 'info' });
     } catch (err) {
-      alert(err?.response?.data?.message || 'Could not delete the product');
+      addToast({ message: err?.response?.data?.message || 'Could not delete the product', type: 'error' });
     }
   };
 
@@ -178,14 +184,19 @@ export function ProductsView() {
                 id="imageUpload" 
                 className="hidden" 
                 accept="image/*"
-                onChange={(e) => {
+                onChange={async (e) => {
                   const file = e.target.files[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onloadend = () => {
-                      setFormData({...formData, image: reader.result});
-                    };
-                    reader.readAsDataURL(file);
+                  e.target.value = null;
+                  if (!file) return;
+                  setUploadingImage(true);
+                  try {
+                    const url = await uploadVendorFile(file, 'shop-products');
+                    setFormData(prev => ({ ...prev, image: url }));
+                    addToast({ message: 'Image uploaded successfully.', type: 'info' });
+                  } catch (err) {
+                    addToast({ message: err?.response?.data?.message || 'Could not upload image', type: 'error' });
+                  } finally {
+                    setUploadingImage(false);
                   }
                 }}
               />
@@ -193,7 +204,12 @@ export function ProductsView() {
                 onClick={() => document.getElementById('imageUpload').click()}
                 className="border-2 border-dashed border-slate-200 rounded-2xl p-8 flex flex-col items-center justify-center bg-slate-50 hover:bg-slate-100 transition cursor-pointer"
               >
-                {formData.image ? (
+                {uploadingImage ? (
+                  <div className="flex flex-col items-center gap-2 py-4">
+                    <Loader2 size={24} className="animate-spin text-slate-500" />
+                    <p className="text-xs font-bold text-slate-600">Uploading image...</p>
+                  </div>
+                ) : formData.image ? (
                   <div className="relative w-32 h-32 rounded-xl overflow-hidden mb-4 border border-slate-200 group">
                     <img src={formData.image} alt="Preview" className="w-full h-full object-cover" />
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition">
@@ -205,8 +221,12 @@ export function ProductsView() {
                     <ImageIcon size={24} className="text-slate-400" />
                   </div>
                 )}
-                <p className="text-sm font-bold text-slate-700">Click to upload image</p>
-                <p className="text-xs font-semibold text-slate-400 mt-1">PNG, JPG up to 5MB</p>
+                {!uploadingImage && (
+                  <>
+                    <p className="text-sm font-bold text-slate-700">Click to upload image</p>
+                    <p className="text-xs font-semibold text-slate-400 mt-1">PNG, JPG up to 5MB</p>
+                  </>
+                )}
               </div>
             </div>
           </div>

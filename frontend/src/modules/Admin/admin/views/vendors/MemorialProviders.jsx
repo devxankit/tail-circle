@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Search, MapPin, Phone, Mail, MoreVertical, Heart, FileHeart, CalendarHeart, X, Edit, Trash2, Ban, CheckCircle, Eye } from 'lucide-react';
 import { StatusBadge, ActionMenu, Pagination } from '../../components/VendorShared';
-import { fetchAdminVendors, approveVendorApi, suspendVendorApi } from '../../../../../services/admin';
+import { fetchAdminVendors, approveVendorGuarded, suspendVendorApi } from '../../../../../services/admin';
 
 export function MemorialProviders() {
   const [providers, setProviders] = useState([]);
@@ -53,9 +53,15 @@ export function MemorialProviders() {
 
   const cities = [...new Set(providers.map(v => v.city))].sort();
 
-  const handleStatusChange = (id, newStatus) => {
-    if (newStatus === 'Active') approveVendorApi(id).catch((err) => console.error(err));
-    else if (newStatus === 'Suspended') suspendVendorApi(id).catch((err) => console.error(err));
+  // Only reflect the new status once the server accepted it — approval can be
+  // refused while the vendor's KYC documents are unverified.
+  const handleStatusChange = async (id, newStatus) => {
+    if (newStatus === 'Active') {
+      const name = providers.find(v => v.id === id)?.name;
+      if (!(await approveVendorGuarded(id, name))) return;
+    } else if (newStatus === 'Suspended') {
+      try { await suspendVendorApi(id); } catch (err) { window.alert(err?.message || 'Suspend failed'); return; }
+    }
     setProviders(prev => prev.map(v => v.id === id ? { ...v, status: newStatus } : v));
   };
 

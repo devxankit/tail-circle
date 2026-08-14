@@ -30,9 +30,9 @@ export function DashboardOverview() {
       { label: 'Low Stock Alerts', value: lowStock, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', path: '/vendor/shop-provider/inventory' },
       { label: 'Return Requests', value: pendingReturns, icon: RefreshCcw, color: 'text-rose-600', bg: 'bg-rose-50', path: '/vendor/shop-provider/returns' },
       { label: 'Lifetime Earnings', value: `₹${rupees(dashboard?.lifetimeEarnings).toLocaleString('en-IN')}`, icon: Wallet, color: 'text-indigo-600', bg: 'bg-indigo-50', path: '/vendor/shop-provider/finance' },
-      { label: 'Customer Rating', value: profile?.rating ? `${profile.rating.toFixed(1)}/5` : 'No ratings yet', icon: Star, color: 'text-yellow-600', bg: 'bg-yellow-50', path: '/vendor/shop-provider/feedback' },
+      { label: 'Customer Rating', value: (dashboard?.avgRating || profile?.rating) ? `${(dashboard?.avgRating || profile?.rating).toFixed(1)}/5` : (feedback.length > 0 ? `${(feedback.reduce((a, f) => a + (f.rating || 0), 0) / feedback.length).toFixed(1)}/5` : 'No ratings yet'), icon: Star, color: 'text-yellow-600', bg: 'bg-yellow-50', path: '/vendor/shop-provider/feedback' },
     ];
-  }, [orders, products, returns, dashboard, profile]);
+  }, [orders, products, returns, feedback, dashboard, profile]);
 
   const recentOrders = useMemo(() => [...orders].slice(0, 6), [orders]);
 

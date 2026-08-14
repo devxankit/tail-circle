@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useMealProvider } from '../context/MealProviderContext';
-import { Search, Plus, MoreVertical, Utensils, Tag, Edit, Copy, Archive, Check } from 'lucide-react';
+import { uploadVendorFile } from '../../../../services/vendor';
+import { Search, Plus, MoreVertical, Utensils, Tag, Edit, Copy, Archive, Check, Upload, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { cn } from '../../../user/utils/cn';
 import { Modal } from '../../components/Modal';
 
@@ -11,11 +12,26 @@ export function MealPlansView() {
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState(null);
-  const [activeDropdown, setActiveDropdown] = useState(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [newPlan, setNewPlan] = useState({
     name: '', petType: 'Dog', mealType: 'Fresh Cooked', qty: '', calories: '', 
-    protein: '', duration: 'Weekly', price: '', status: 'Active'
+    protein: '', duration: 'Weekly', price: '', status: 'Active', image: ''
   });
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = null;
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const url = await uploadVendorFile(file, 'meal-plans');
+      setNewPlan(prev => ({ ...prev, image: url }));
+    } catch (err) {
+      alert(err?.response?.data?.message || 'Could not upload image');
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   const filteredPlans = mealPlans.filter(p => {
     if (filterType !== 'All' && p.petType !== filterType) return false;
@@ -238,6 +254,30 @@ export function MealPlansView() {
                 <option value="Bi-Weekly">Bi-Weekly</option>
                 <option value="Monthly">Monthly</option>
               </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1.5">Plan Image</label>
+            <input type="file" id="mealImageUpload" className="hidden" accept="image/*" onChange={handleImageUpload} />
+            <div 
+              onClick={() => document.getElementById('mealImageUpload').click()}
+              className="border-2 border-dashed border-gray-200 rounded-2xl p-4 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 transition cursor-pointer"
+            >
+              {uploadingImage ? (
+                <div className="flex items-center gap-2 py-2 text-xs font-bold text-gray-500">
+                  <Loader2 size={16} className="animate-spin" /> Uploading image...
+                </div>
+              ) : newPlan.image ? (
+                <div className="flex items-center gap-3">
+                  <img src={newPlan.image} alt="Preview" className="w-12 h-12 rounded-lg object-cover border border-gray-200" />
+                  <span className="text-xs font-bold text-gray-700">Click to change image</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs font-bold text-gray-500">
+                  <ImageIcon size={16} /> Click to upload plan image
+                </div>
+              )}
             </div>
           </div>
           

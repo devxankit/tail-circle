@@ -164,9 +164,15 @@ router.post(
 router.get('/vendors/:id/documents', asyncHandler(async (req, res) => {
   sendSuccess(res, { data: await getVendorDocuments(req.params.id) });
 }));
-router.post('/vendors/:id/approve', asyncHandler(async (req, res) => {
-  sendSuccess(res, { data: await approveVendor(req.user, req.params.id, req.ip) });
-}));
+/* `force` waves a pending vendor through with unverified KYC documents — a
+   deliberate override, recorded in the audit trail. */
+router.post(
+  '/vendors/:id/approve',
+  validate(z.object({ force: z.boolean().optional() })),
+  asyncHandler(async (req, res) => {
+    sendSuccess(res, { data: await approveVendor(req.user, req.params.id, req.ip, { force: req.body.force }) });
+  })
+);
 router.post('/vendors/:id/reject', asyncHandler(async (req, res) => {
   sendSuccess(res, { data: await rejectVendor(req.user, req.params.id, req.ip) });
 }));

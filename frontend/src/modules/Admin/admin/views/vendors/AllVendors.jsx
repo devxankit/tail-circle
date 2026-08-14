@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Download, Filter, Eye, Edit, Trash2, Ban, X, CheckCircle, FileText, MapPin, Phone, Mail } from 'lucide-react';
 import { StatusBadge, ActionMenu, Pagination, PageHeader, StatCard } from '../../components/VendorShared';
-import { fetchAdminVendors, approveVendorApi, suspendVendorApi } from '../../../../../services/admin';
+import { fetchAdminVendors, approveVendorGuarded, suspendVendorApi } from '../../../../../services/admin';
 
 const TYPE_LABEL = { shop: 'Shop Vendor', meal_subscription: 'Meal Provider', events: 'Event Organizer', clinic: 'Doctor / Clinic', memorial: 'Memorial Provider' };
 const STATUS_LABEL = { approved: 'Active', pending: 'Pending', suspended: 'Suspended', rejected: 'Suspended' };
@@ -43,13 +43,15 @@ export function AllVendors() {
   };
 
   const handleStatusChange = async (id, newStatus) => {
-    try {
-      if (newStatus === 'Active') await approveVendorApi(id);
-      else if (newStatus === 'Suspended') await suspendVendorApi(id);
-      setVendorsList(prev => prev.map(v => v.id === id ? { ...v, status: newStatus, stage: newStatus === 'Active' ? 'Active' : 'Docs Submitted' } : v));
-    } catch (err) {
-      console.error('Vendor status change failed', err);
+    // Approval can be refused while the vendor's KYC documents are unverified,
+    // so the row only changes once the server actually accepted it.
+    if (newStatus === 'Active') {
+      const name = vendorsList.find(v => v.id === id)?.name;
+      if (!(await approveVendorGuarded(id, name))) return;
+    } else if (newStatus === 'Suspended') {
+      try { await suspendVendorApi(id); } catch (err) { window.alert(err?.message || 'Suspend failed'); return; }
     }
+    setVendorsList(prev => prev.map(v => v.id === id ? { ...v, status: newStatus, stage: newStatus === 'Active' ? 'Active' : 'Docs Submitted' } : v));
   };
 
   const getOptions = (vendor) => {

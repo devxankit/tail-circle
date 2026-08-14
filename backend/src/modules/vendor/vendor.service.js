@@ -34,6 +34,11 @@ export function serializeProfile(profile) {
     documents: (profile.documents || []).map((d) => ({
       kind: d.kind, url: d.url, status: d.status, verifiedAt: d.verifiedAt,
     })),
+    policies: {
+      codEnabled: profile.policies?.codEnabled ?? true,
+      returnsEnabled: profile.policies?.returnsEnabled ?? true,
+      minOrderValue: profile.policies?.minOrderValue ?? 0,
+    },
     bank: {
       bankName: profile.bank?.bankName || '',
       accountHolder: profile.bank?.accountHolder || '',
@@ -50,6 +55,13 @@ export async function updateVendorProfile(userId, patch) {
   const profile = await getVendorProfile(userId);
   for (const key of EDITABLE) if (key in patch) profile[key] = patch[key];
   if (patch.gst) profile.gst = { hasGst: Boolean(patch.gst.hasGst), number: patch.gst.number || '' };
+  if (patch.policies) {
+    profile.policies = {
+      codEnabled: patch.policies.codEnabled !== undefined ? Boolean(patch.policies.codEnabled) : (profile.policies?.codEnabled ?? true),
+      returnsEnabled: patch.policies.returnsEnabled !== undefined ? Boolean(patch.policies.returnsEnabled) : (profile.policies?.returnsEnabled ?? true),
+      minOrderValue: patch.policies.minOrderValue !== undefined ? Number(patch.policies.minOrderValue) : (profile.policies?.minOrderValue ?? 0),
+    };
+  }
   await profile.save();
   return serializeProfile(profile);
 }
@@ -162,19 +174,29 @@ export async function getDashboard(vendorId, vendorType) {
   };
 
   if (vendorType === 'shop') {
-    const [productCount, lowStock, orderAgg] = await Promise.all([
+    const [productCount, lowStock, orderAgg, reviewAgg] = await Promise.all([
       Product.countDocuments({ vendorId, deletedAt: null }),
       Product.countDocuments({ vendorId, deletedAt: null, 'packSizes.stock': { $lte: 5 } }),
       Order.aggregate([
         { $match: { vendorId: oid(vendorId) } },
         { $group: { _id: '$status', count: { $sum: 1 } } },
       ]),
+      (async () => {
+        const productIds = await Product.find({ vendorId }).distinct('_id');
+        if (!productIds.length) return null;
+        const res = await Review.aggregate([
+          { $match: { targetType: 'product', targetId: { $in: productIds }, status: 'visible' } },
+          { $group: { _id: null, avgRating: { $avg: '$rating' } } },
+        ]);
+        return res[0]?.avgRating || null;
+      })(),
     ]);
     const byStatus = Object.fromEntries(orderAgg.map((o) => [o._id, o.count]));
     stats.products = productCount;
     stats.lowStock = lowStock;
     stats.newOrders = byStatus.placed || 0;
     stats.totalOrders = orderAgg.reduce((s, o) => s + o.count, 0);
+    stats.avgRating = reviewAgg;
   }
 
   return stats;

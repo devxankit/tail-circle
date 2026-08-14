@@ -84,7 +84,7 @@ export function VendorAuth() {
   };
 
   const handleSendOtp = async () => {
-    if (!formData.loginRegisterNo) return showToast('Enter registration number');
+    if (!formData.loginRegisterNo) return showToast('Enter registered mobile number or registration number');
     try {
       await requestVendorOtp(formData.loginRegisterNo);
       setOtpSent(true); setOtpCountdown(30); showToast('OTP sent!', 'success');
@@ -98,7 +98,7 @@ export function VendorAuth() {
     if (loginMethod === 'password') {
       if (!formData.loginEmail || !formData.loginPassword) return showToast('Enter email and password');
     } else {
-      if (!formData.loginRegisterNo || !formData.loginOtp) return showToast('Enter reg no and OTP');
+      if (!formData.loginRegisterNo || !formData.loginOtp) return showToast('Enter mobile/reg number and OTP');
     }
     try {
       const { profile } = loginMethod === 'password'
@@ -356,7 +356,14 @@ export function VendorAuth() {
                   ) : (
                     <div className="space-y-4 animate-in fade-in duration-300">
                       <div className="relative flex items-center">
-                        <input type="text" placeholder="Register number" required value={formData.loginRegisterNo} onChange={e => handleInputChange('loginRegisterNo', e.target.value.toUpperCase())} className={inputClass} />
+                        <input
+                          type="text"
+                          placeholder="Registered mobile number / Reg no"
+                          required
+                          value={formData.loginRegisterNo}
+                          onChange={e => handleInputChange('loginRegisterNo', e.target.value)}
+                          className={inputClass}
+                        />
                         <button type="button" onClick={handleSendOtp} disabled={otpCountdown > 0} className="absolute right-4 text-xs text-[#40716F] font-bold uppercase tracking-wider disabled:opacity-50 cursor-pointer transition">
                           {otpCountdown > 0 ? `Wait ${otpCountdown}s` : 'Send OTP'}
                         </button>

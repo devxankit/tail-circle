@@ -6,8 +6,10 @@ import { Payment } from '../payment/payment.model.js';
 import { Booking } from '../booking/booking.model.js';
 import { Order } from '../order/order.model.js';
 import { Product } from '../shop/product.model.js';
+import { Provider } from '../provider/provider.model.js';
 import { VendorProfile, VendorLedgerEntry } from '../vendor/vendor.models.js';
 import { serializeProfile } from '../vendor/vendor.service.js';
+import { invalidate } from '../../services/cache.service.js';
 import { AuditLog, Banner, PlatformSetting } from './admin.models.js';
 
 const oid = (id) => new mongoose.Types.ObjectId(String(id));
@@ -150,6 +152,55 @@ export async function listPets({ search } = {}) {
 /* ── Vendors & approvals ──────────────────────────────────────────── */
 const DOC_LABEL = { license: 'Business License', owner_id: 'ID Proof', gst: 'GST' };
 
+/** KYC documents every vendor must have verified before a first approval. */
+const REQUIRED_DOC_KINDS = ['license', 'owner_id'];
+
+/**
+ * What still stands between a pending application and approval.
+ *
+ * Mirrors the vet reviewer's `completeness()` check: a document that exists but
+ * has never been through the VendorDocuments screen is *not* verified, and
+ * approving on it would put an unchecked vendor in front of customers.
+ *
+ * Needs a profile loaded with `+bank.accountNumberEnc`.
+ */
+export function vendorKycMissing(profile) {
+  const missing = [];
+  const byKind = new Map((profile.documents || []).map((d) => [d.kind, d]));
+  const required = [...REQUIRED_DOC_KINDS, ...(profile.gst?.hasGst ? ['gst'] : [])];
+
+  for (const kind of required) {
+    const label = DOC_LABEL[kind] || kind;
+    const doc = byKind.get(kind);
+    if (!doc || !doc.url) missing.push(`${label} (not uploaded)`);
+    else if (doc.status !== 'Verified') missing.push(`${label} (${doc.status || 'Pending'})`);
+  }
+
+  if (!profile.bank?.accountNumberEnc) missing.push('bank account number');
+  if (!profile.bank?.ifsc) missing.push('bank IFSC');
+  return missing;
+}
+
+/** Per-document review state for the admin screens (real status, not assumed). */
+function documentStatuses(profile) {
+  const byKind = new Map((profile.documents || []).map((d) => [d.kind, d]));
+  const kinds = [...REQUIRED_DOC_KINDS, ...(profile.gst?.hasGst ? ['gst'] : [])];
+  for (const d of profile.documents || []) if (!kinds.includes(d.kind)) kinds.push(d.kind);
+
+  return kinds.map((kind) => {
+    const doc = byKind.get(kind);
+    return {
+      kind,
+      label: DOC_LABEL[kind] || kind,
+      url: doc?.url || '',
+      status: !doc || !doc.url ? 'Missing' : doc.status || 'Pending',
+      verifiedBy: doc?.verifiedBy || '',
+      verifiedAt: doc?.verifiedAt || null,
+      required: REQUIRED_DOC_KINDS.includes(kind) || (kind === 'gst' && Boolean(profile.gst?.hasGst)),
+    };
+  });
+}
+
 export async function listVendors({ type, status } = {}) {
   const filter = {};
   if (type) filter.vendorType = type;
@@ -177,6 +228,8 @@ export async function listVendors({ type, status } = {}) {
     return {
       ...serializeProfile(p),
       documents: (p.documents || []).map((d) => DOC_LABEL[d.kind] || d.kind),
+      documentStatuses: documentStatuses(p),
+      missing: vendorKycMissing(p),
       owner: p.bank?.accountHolder || p.businessName,
       orders: l.orders,
       revenue: Math.round(l.gross / 100),
@@ -190,20 +243,43 @@ export async function listPendingVendors() {
   return listVendors({ status: 'pending' });
 }
 
-async function setVendorStatus(actor, vendorProfileId, status, ip) {
+async function setVendorStatus(actor, vendorProfileId, status, ip, { force = false } = {}) {
   if (!mongoose.isValidObjectId(vendorProfileId)) throw ApiError.badRequest('Invalid vendor id');
-  const profile = await VendorProfile.findById(vendorProfileId);
+  const profile = await VendorProfile.findById(vendorProfileId).select('+bank.accountNumberEnc');
   if (!profile) throw ApiError.notFound('Vendor not found');
   const before = { approvalStatus: profile.approvalStatus };
+
+  // A *first* approval is the KYC decision, so it refuses while documents are
+  // unverified unless the reviewer explicitly forces it. Reinstating a
+  // suspended/rejected vendor is not re-litigating KYC, so it stays ungated.
+  if (status === 'approved' && profile.approvalStatus === 'pending' && !force) {
+    const missing = vendorKycMissing(profile);
+    if (missing.length) {
+      throw ApiError.badRequest(`Cannot approve — KYC incomplete: ${missing.join(', ')}`);
+    }
+  }
+
   profile.approvalStatus = status;
   await profile.save();
   // Keep the underlying User in sync (blocked when suspended/rejected).
   await User.updateOne({ _id: profile.userId }, { $set: { isBlocked: status === 'suspended' } });
-  await writeAudit(actor, { action: `vendor.${status}`, targetType: 'vendor', targetId: vendorProfileId, before, after: { approvalStatus: status }, ip });
+
+  // Grooming / daycare / memorial vendors are fronted by a Provider record, and
+  // `GET /providers` filters on its own approvalStatus. Without this sync the
+  // Provider stays `pending` after approval and the vendor is never listed.
+  const synced = await Provider.updateMany(
+    { vendorUserId: profile.userId },
+    { $set: { approvalStatus: status } }
+  );
+  if (synced.modifiedCount) {
+    try { await invalidate('providers:resp:*'); } catch { /* best-effort */ }
+  }
+
+  await writeAudit(actor, { action: `vendor.${status}`, targetType: 'vendor', targetId: vendorProfileId, before, after: { approvalStatus: status, forced: force || undefined }, ip });
   return serializeProfile(profile);
 }
 
-export const approveVendor = (actor, id, ip) => setVendorStatus(actor, id, 'approved', ip);
+export const approveVendor = (actor, id, ip, opts) => setVendorStatus(actor, id, 'approved', ip, opts);
 export const rejectVendor = (actor, id, ip) => setVendorStatus(actor, id, 'rejected', ip);
 export const suspendVendor = (actor, id, ip) => setVendorStatus(actor, id, 'suspended', ip);
 
@@ -211,7 +287,12 @@ export async function getVendorDocuments(vendorProfileId) {
   if (!mongoose.isValidObjectId(vendorProfileId)) throw ApiError.badRequest('Invalid vendor id');
   const profile = await VendorProfile.findById(vendorProfileId).select('+bank.accountNumberEnc');
   if (!profile) throw ApiError.notFound('Vendor not found');
-  return { vendor: serializeProfile(profile), documents: profile.documents || [] };
+  return {
+    vendor: serializeProfile(profile),
+    documents: profile.documents || [],
+    documentStatuses: documentStatuses(profile),
+    missing: vendorKycMissing(profile),
+  };
 }
 
 /* ── Cross-vendor KYC document feed + verification workflow ────────── */

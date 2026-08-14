@@ -23,6 +23,7 @@ function toPortalProfile(p) {
     verification: verificationMap[p.approvalStatus] || 'Pending',
     status: p.online ? 'Online' : 'Offline',
     rating: p.rating || 0,
+    policies: p.policies || { codEnabled: true, returnsEnabled: true, minOrderValue: 0 },
     logo: p.logo || 'https://images.unsplash.com/photo-1583337130417-3346a1be7dee?w=200&auto=format&fit=crop&q=60',
   };
 }

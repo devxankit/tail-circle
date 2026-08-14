@@ -224,9 +224,17 @@ export function OrdersView() {
                     <div className="flex items-center justify-end gap-2">
                       <button 
                         onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); }}
+                        title="View Details"
                         className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 flex items-center justify-center transition cursor-pointer"
                       >
                         <Eye size={16} />
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDownloadInvoice(order); }}
+                        title="Download Invoice"
+                        className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 flex items-center justify-center transition cursor-pointer"
+                      >
+                        <Download size={16} />
                       </button>
                     </div>
                   </td>

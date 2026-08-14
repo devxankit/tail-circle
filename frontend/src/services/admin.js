@@ -77,9 +77,46 @@ export async function verifyAdminDocument(vendorId, kind, action) {
   const { data } = await api.post(`/admin/documents/${vendorId}/${kind}/verify`, { action });
   return data;
 }
-export async function approveVendorApi(id) {
-  const { data } = await api.post(`/admin/vendors/${id}/approve`);
+/**
+ * Approve a vendor. A *pending* vendor is refused (400) while its KYC documents
+ * are unverified — pass `{ force: true }` to override deliberately.
+ */
+export async function approveVendorApi(id, { force = false } = {}) {
+  const { data } = await api.post(`/admin/vendors/${id}/approve`, force ? { force: true } : {});
   return data;
+}
+/**
+ * Approve a vendor and surface the KYC gate instead of failing silently.
+ *
+ * On a refusal the reviewer is shown exactly what is unverified and can
+ * override; the override is recorded as a forced approval in the audit trail.
+ * Resolves true only when the vendor really ended up approved, so callers must
+ * not update their list optimistically.
+ */
+export async function approveVendorGuarded(id, name = 'this vendor') {
+  try {
+    await approveVendorApi(id);
+    return true;
+  } catch (err) {
+    const message = err?.message || 'Approve failed';
+    if (!/KYC incomplete/i.test(message)) {
+      window.alert(message);
+      return false;
+    }
+    const items = message.replace(/^.*KYC incomplete:\s*/i, '').split(', ');
+    const ok = window.confirm(
+      `KYC is incomplete for ${name}:\n\n• ${items.join('\n• ')}\n\n` +
+      `Verify these on the Vendor Documents screen first.\n\nApprove anyway?`
+    );
+    if (!ok) return false;
+    try {
+      await approveVendorApi(id, { force: true });
+      return true;
+    } catch (retryErr) {
+      window.alert(retryErr?.message || 'Approve failed');
+      return false;
+    }
+  }
 }
 export async function rejectVendorApi(id) {
   const { data } = await api.post(`/admin/vendors/${id}/reject`);

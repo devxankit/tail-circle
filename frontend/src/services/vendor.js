@@ -23,6 +23,11 @@ function storeSession({ accessToken, refreshToken, user, profile }) {
   return { user, profile };
 }
 
+export function updateStoredVendor(updatedProfile) {
+  const current = getStoredVendor() || {};
+  localStorage.setItem(VENDOR_KEY, JSON.stringify({ ...current, profile: { ...current.profile, ...updatedProfile } }));
+}
+
 export function vendorLogout() {
   clearTokens();
   localStorage.removeItem(VENDOR_KEY);
@@ -57,13 +62,13 @@ export async function loginVendorPassword(email, password) {
   return storeSession(data);
 }
 
-export async function requestVendorOtp(registrationNo) {
-  const { data } = await api.post('/vendor/request-otp', { registrationNo });
+export async function requestVendorOtp(identifier) {
+  const { data } = await api.post('/vendor/request-otp', { registrationNo: identifier, identifier });
   return data;
 }
 
-export async function loginVendorOtp(registrationNo, code) {
-  const { data } = await api.post('/vendor/verify-otp', { registrationNo, code });
+export async function loginVendorOtp(identifier, code) {
+  const { data } = await api.post('/vendor/verify-otp', { registrationNo: identifier, identifier, code });
   return storeSession(data);
 }
 
@@ -76,6 +81,7 @@ export async function fetchVendorProfile() {
 
 export async function updateVendorProfile(patch) {
   const { data } = await api.patch('/vendor/profile', patch);
+  if (data) updateStoredVendor(data);
   return data;
 }
 

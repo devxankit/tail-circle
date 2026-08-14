@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import {
   getStoredVendor,
+  fetchVendorProfile,
   fetchMealPlans,
   createMealPlan,
   updateMealPlan as apiUpdateMealPlan,
@@ -19,7 +20,7 @@ const MealProviderContext = createContext();
 
 /** Map the API vendor profile to the portal's profile shape. */
 function toPortalProfile(p) {
-  if (!p) return { businessName: 'Meal Provider', email: '', phone: '', address: '', status: 'Online', verification: 'Pending', logo: null };
+  if (!p) return { businessName: 'Meal Provider', email: '', phone: '', address: '', status: 'Online', verification: 'Pending', logo: null, policies: { codEnabled: true, returnsEnabled: true, minOrderValue: 0 } };
   const vmap = { approved: 'Verified Premium', pending: 'Pending', rejected: 'Rejected', suspended: 'Suspended' };
   return {
     businessName: p.businessName,
@@ -29,6 +30,7 @@ function toPortalProfile(p) {
     status: p.online ? 'Online' : 'Offline',
     verification: vmap[p.approvalStatus] || 'Pending',
     logo: p.logo || null,
+    policies: p.policies || { codEnabled: true, returnsEnabled: true, minOrderValue: 0 },
   };
 }
 
@@ -51,7 +53,8 @@ export const MealProviderProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   const refresh = async () => {
-    const [plans, subs, trs, dels, kq, dash] = await Promise.all([
+    const [prof, plans, subs, trs, dels, kq, dash] = await Promise.all([
+      fetchVendorProfile().catch(() => null),
       fetchMealPlans().catch(() => []),
       fetchMealSubscriptions().catch(() => []),
       fetchMealTrials().catch(() => []),
@@ -59,6 +62,7 @@ export const MealProviderProvider = ({ children }) => {
       fetchKitchenQueue().catch(() => []),
       fetchVendorDashboard().catch(() => null),
     ]);
+    if (prof) setProfile(toPortalProfile(prof));
     setMealPlans(plans);
     setSubscriptions(subs);
     setTrials(trs);

@@ -200,9 +200,18 @@ router.post(
 router.post(
   '/request-otp',
   authLimiter,
-  validate(z.object({ registrationNo: z.string().trim().min(3).max(20) })),
+  validate(
+    z.object({
+      registrationNo: z.string().trim().min(3).max(30).optional(),
+      phone: z.string().trim().min(3).max(30).optional(),
+      identifier: z.string().trim().min(3).max(30).optional(),
+    }).refine((data) => data.registrationNo || data.phone || data.identifier, {
+      message: 'Registration number or mobile number is required',
+    })
+  ),
   asyncHandler(async (req, res) => {
-    const data = await vendorRequestOtp(req.body.registrationNo);
+    const identifier = req.body.registrationNo || req.body.phone || req.body.identifier;
+    const data = await vendorRequestOtp(identifier);
     sendSuccess(res, { message: 'OTP sent', data });
   })
 );
@@ -210,9 +219,19 @@ router.post(
 router.post(
   '/verify-otp',
   authLimiter,
-  validate(z.object({ registrationNo: z.string().trim().min(3).max(20), code: z.string().trim().min(4).max(8) })),
+  validate(
+    z.object({
+      registrationNo: z.string().trim().min(3).max(30).optional(),
+      phone: z.string().trim().min(3).max(30).optional(),
+      identifier: z.string().trim().min(3).max(30).optional(),
+      code: z.string().trim().min(4).max(8),
+    }).refine((data) => data.registrationNo || data.phone || data.identifier, {
+      message: 'Registration number or mobile number is required',
+    })
+  ),
   asyncHandler(async (req, res) => {
-    const { user, profile, tokens } = await vendorVerifyOtp(req.body.registrationNo, req.body.code);
+    const identifier = req.body.registrationNo || req.body.phone || req.body.identifier;
+    const { user, profile, tokens } = await vendorVerifyOtp(identifier, req.body.code);
     sendSuccess(res, { data: { user, profile: serializeProfile(profile), ...tokens } });
   })
 );
@@ -240,6 +259,11 @@ router.patch(
       logo: z.string().max(1000).optional(),
       online: z.boolean().optional(),
       gst: z.object({ hasGst: z.boolean(), number: z.string().max(20).optional() }).optional(),
+      policies: z.object({
+        codEnabled: z.boolean().optional(),
+        returnsEnabled: z.boolean().optional(),
+        minOrderValue: z.number().min(0).optional(),
+      }).optional(),
     })
   ),
   asyncHandler(async (req, res) => {

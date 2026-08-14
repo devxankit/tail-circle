@@ -5,8 +5,25 @@ import { fetchPendingVendors, approveVendorApi, rejectVendorApi } from '../../..
 
 const TYPE_LABEL = { shop: 'Shop', meal_subscription: 'Meal', events: 'Event', clinic: 'Doctor', memorial: 'Memorial' };
 
+/** Chip styling per real document review state — never assume "verified". */
+const DOC_STYLES = {
+  Verified: { chip: 'text-[#599D9A] bg-[#FAF7F2]', row: 'bg-[#FAF7F2] border-[#66B4B1]/20', text: 'text-[#599D9A]', note: 'Verified' },
+  Pending: { chip: 'text-amber-700 bg-amber-50', row: 'bg-amber-50/50 border-amber-200/50', text: 'text-amber-700', note: 'Awaiting review' },
+  'Re-upload': { chip: 'text-amber-700 bg-amber-50', row: 'bg-amber-50/50 border-amber-200/50', text: 'text-amber-700', note: 'Re-upload asked' },
+  Rejected: { chip: 'text-red-600 bg-red-50', row: 'bg-red-50/50 border-red-200/50', text: 'text-red-600', note: 'Rejected' },
+  Missing: { chip: 'text-gray-500 bg-gray-100', row: 'bg-gray-50 border-gray-200', text: 'text-gray-500', note: 'Not uploaded' },
+};
+const docStyle = (status) => DOC_STYLES[status] || DOC_STYLES.Pending;
+
 /** Map an API pending vendor profile to this view's row shape. */
 function toRow(v) {
+  const docs = (v.documentStatuses || []).map((d) => ({
+    name: d.label,
+    status: d.status,
+    required: d.required,
+  }));
+  // `missing` is the server's own approval gate — same list it refuses on.
+  const missing = v.missing || [];
   return {
     id: v.id,
     name: v.businessName,
@@ -16,8 +33,11 @@ function toRow(v) {
     city: v.city || '—',
     mobile: v.phone,
     email: v.email,
-    stage: 'Docs Submitted',
-    docs: (v.documents || []).map((name) => ({ name, status: 'verified' })),
+    stage: !missing.length
+      ? 'Verified'
+      : docs.some((d) => d.status !== 'Missing') ? 'Under Review' : 'Docs Submitted',
+    docs,
+    missing,
     bank: v.bank?.accountMasked ? 'Verified' : 'Pending',
     date: 'Pending review',
     timestamp: Date.now(),
@@ -26,6 +46,12 @@ function toRow(v) {
 
 export function PendingApprovals() {
   const [approvals, setApprovals] = useState([]);
+  const [toast, setToast] = useState(null);
+
+  const showToast = (message, type = 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 5000);
+  };
 
   useEffect(() => {
     fetchPendingVendors().then((rows) => setApprovals(rows.map(toRow))).catch((err) => console.error('Failed to load pending vendors', err));
@@ -50,24 +76,63 @@ export function PendingApprovals() {
     ];
   };
 
-  const handleApprove = async (id) => {
-    try { await approveVendorApi(id); } catch (err) { console.error('Approve failed', err); return; }
+  const drop = (id) => {
     setApprovals(prev => prev.filter(v => v.id !== id));
     setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+  };
+
+  /**
+   * The server refuses a pending vendor whose KYC documents are not verified.
+   * Rather than swallow that 400, name what is missing and make the override an
+   * explicit decision — it is recorded in the audit trail as a forced approval.
+   */
+  const handleApprove = async (id) => {
+    const vendor = approvals.find(v => v.id === id);
+    let force = false;
+    if (vendor?.missing?.length) {
+      const ok = window.confirm(
+        `KYC is incomplete for ${vendor.name}:\n\n• ${vendor.missing.join('\n• ')}\n\n` +
+        `Verify these on the Vendor Documents screen first.\n\nApprove anyway?`
+      );
+      if (!ok) return;
+      force = true;
+    }
+    try {
+      await approveVendorApi(id, { force });
+    } catch (err) {
+      showToast(err.message || 'Approve failed');
+      return;
+    }
+    drop(id);
+    showToast(`${vendor?.name || 'Vendor'} approved${force ? ' (KYC overridden)' : ''}.`, 'success');
   };
 
   const handleReject = async (id) => {
-    try { await rejectVendorApi(id); } catch (err) { console.error('Reject failed', err); return; }
-    setApprovals(prev => prev.filter(v => v.id !== id));
-    setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
+    try { await rejectVendorApi(id); } catch (err) { showToast(err.message || 'Reject failed'); return; }
+    drop(id);
   };
 
+  /** Bulk approve never forces — waving through unverified KYC stays deliberate. */
   const handleApproveSelected = async () => {
     if (selectedIds.size === 0) return;
-    const ids = [...selectedIds];
-    await Promise.allSettled(ids.map((id) => approveVendorApi(id)));
-    setApprovals(prev => prev.filter(v => !selectedIds.has(v.id)));
-    setSelectedIds(new Set());
+    const chosen = approvals.filter(v => selectedIds.has(v.id));
+    const ready = chosen.filter(v => !v.missing.length);
+    const blocked = chosen.filter(v => v.missing.length);
+
+    const results = await Promise.allSettled(ready.map(v => approveVendorApi(v.id)));
+    const approvedIds = new Set(ready.filter((_, i) => results[i].status === 'fulfilled').map(v => v.id));
+
+    setApprovals(prev => prev.filter(v => !approvedIds.has(v.id)));
+    setSelectedIds(prev => { const n = new Set(prev); approvedIds.forEach(id => n.delete(id)); return n; });
+
+    if (blocked.length) {
+      showToast(
+        `${approvedIds.size} approved — ${blocked.length} skipped with incomplete KYC. Approve those individually to override.`,
+        approvedIds.size ? 'success' : 'error'
+      );
+    } else if (approvedIds.size) {
+      showToast(`${approvedIds.size} vendor${approvedIds.size > 1 ? 's' : ''} approved.`, 'success');
+    }
   };
 
   const handleRejectSelected = async () => {
@@ -167,6 +232,11 @@ export function PendingApprovals() {
 
   return (
     <div className="p-3 sm:px-10 sm:py-8 w-full max-w-[1600px] mx-auto min-w-0 overflow-x-hidden transition-all duration-300">
+      {toast && (
+        <div className={`fixed bottom-5 right-5 z-[60] max-w-sm px-5 py-3 rounded-xl text-white text-[13px] font-medium shadow-xl ${toast.type === 'success' ? 'bg-[#66B4B1]' : 'bg-red-600'}`}>
+          {toast.message}
+        </div>
+      )}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4 sm:mb-6">
         <div>
           <h1 className="text-xl sm:text-[22px] font-semibold text-gray-900 tracking-tight">Pending Approvals</h1>
@@ -371,17 +441,14 @@ export function PendingApprovals() {
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap">
                     <div className="flex flex-col gap-1.5">
-                      {vendor.docs.map(doc => (
-                        doc.status === 'verified' ? (
-                          <span key={doc.name} className="flex items-center gap-1.5 text-[#599D9A] bg-[#FAF7F2] px-2 py-0.5 rounded text-[11px] font-medium w-max cursor-pointer hover:opacity-80 whitespace-nowrap">
-                            <FileText size={11} /> {doc.name}
-                          </span>
-                        ) : (
-                          <span key={doc.name} className="flex items-center gap-1.5 text-amber-600 px-1 py-0.5 text-[11px] font-medium w-max whitespace-nowrap">
-                            {doc.name} <span className="text-amber-500">⚠ Not uploaded</span>
-                          </span>
-                        )
-                      ))}
+                      {vendor.docs.length > 0 ? vendor.docs.map(doc => (
+                        <span key={doc.name} title={docStyle(doc.status).note} className={`flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium w-max whitespace-nowrap ${docStyle(doc.status).chip}`}>
+                          <FileText size={11} /> {doc.name}
+                          <span className="opacity-70">· {doc.status}</span>
+                        </span>
+                      )) : (
+                        <span className="text-[11px] font-medium text-gray-400">No documents</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap">
@@ -502,20 +569,38 @@ export function PendingApprovals() {
               <div>
                 <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-3">Submitted Documents</h4>
                 <div className="space-y-2">
-                  {selectedVendorForView.docs.map(doc => (
-                    <div key={doc.name} className={`flex items-center justify-between p-3 border rounded-2xl ${doc.status === 'verified' ? 'bg-[#FAF7F2] border-[#66B4B1]/20' : 'bg-amber-50/50 border-amber-200/50'}`}>
-                      <span className={`text-xs font-bold flex items-center gap-2 ${doc.status === 'verified' ? 'text-[#599D9A]' : 'text-amber-700'}`}>
-                        <FileText size={14} className={doc.status === 'verified' ? 'text-[#66B4B1]' : 'text-amber-500'} /> {doc.name}
-                      </span>
-                      {doc.status === 'verified' ? (
-                        <span className="text-[10px] font-black uppercase text-[#66B4B1] flex items-center gap-0.5"><CheckCircle size={10} /> Verified</span>
-                      ) : (
-                        <span className="text-[10px] font-black uppercase text-amber-600 flex items-center gap-0.5">Missing</span>
-                      )}
-                    </div>
-                  ))}
+                  {selectedVendorForView.docs.length > 0 ? selectedVendorForView.docs.map(doc => {
+                    const s = docStyle(doc.status);
+                    return (
+                      <div key={doc.name} className={`flex items-center justify-between p-3 border rounded-2xl ${s.row}`}>
+                        <span className={`text-xs font-bold flex items-center gap-2 ${s.text}`}>
+                          <FileText size={14} className={s.text} /> {doc.name}
+                          {doc.required && <span className="text-[9px] font-black uppercase text-gray-400">Required</span>}
+                        </span>
+                        <span className={`text-[10px] font-black uppercase flex items-center gap-0.5 ${s.text}`}>
+                          {doc.status === 'Verified' && <CheckCircle size={10} />} {s.note}
+                        </span>
+                      </div>
+                    );
+                  }) : (
+                    <p className="text-xs text-gray-400 font-medium">No documents submitted.</p>
+                  )}
                 </div>
               </div>
+
+              {selectedVendorForView.missing.length > 0 && (
+                <div className="p-4 rounded-2xl border border-amber-200/60 bg-amber-50/50">
+                  <h4 className="text-[11px] font-bold text-amber-700 uppercase tracking-wider mb-2">Blocking approval</h4>
+                  <ul className="space-y-1">
+                    {selectedVendorForView.missing.map(m => (
+                      <li key={m} className="text-xs font-medium text-amber-800">• {m}</li>
+                    ))}
+                  </ul>
+                  <p className="text-[11px] text-amber-700/80 mt-2 leading-relaxed">
+                    Verify these on the Vendor Documents screen. Approving now records a forced approval.
+                  </p>
+                </div>
+              )}
             </div>
             
             <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex gap-3 shadow-inner">

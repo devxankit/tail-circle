@@ -10,6 +10,7 @@ import { env } from '../src/config/env.js';
 import { redis, connectRedis, disconnectRedis } from '../src/config/redis.js';
 import { User } from '../src/modules/user/user.model.js';
 import { VendorProfile } from '../src/modules/vendor/vendor.models.js';
+import { Provider } from '../src/modules/provider/provider.model.js';
 import { AuditLog, Banner, PlatformSetting } from '../src/modules/admin/admin.models.js';
 import { registerVendor } from '../src/modules/vendor/vendor.auth.service.js';
 import { adminPasswordLogin } from '../src/modules/admin/admin.auth.service.js';
@@ -84,12 +85,29 @@ async function main() {
     role: 'shop',
     city: 'Indore',
     accountNumber: '123456789012',
+    ifscCode: 'HDFC0001234',
+    licenseUrl: 'https://example.com/license.pdf',
+    ownerIdUrl: 'https://example.com/owner-id.pdf',
   });
   ok(reg.approvalStatus === 'pending', 'KYC register → pending vendor');
 
   const pending = await admin.listPendingVendors();
   const target = pending.find((v) => v.email === 'pendingvendor@test.com');
   ok(!!target, 'pending vendor appears in the approval queue');
+  ok(target.missing.length > 0, 'queue reports uploaded-but-unverified docs as missing');
+  ok(
+    target.documentStatuses.every((d) => d.status !== 'Verified'),
+    'queue reports real document status, never an assumed "verified"'
+  );
+
+  // A first approval is the KYC decision: it refuses while documents are unverified.
+  let gate = null;
+  try { await admin.approveVendor(actor, target.id, '127.0.0.1'); } catch (err) { gate = err; }
+  ok(gate?.statusCode === 400, 'approve refused while KYC documents are unverified');
+
+  await admin.verifyDocument(actor, target.id, 'license', 'verify', '127.0.0.1');
+  await admin.verifyDocument(actor, target.id, 'owner_id', 'verify', '127.0.0.1');
+  ok((await admin.getVendorDocuments(target.id)).missing.length === 0, 'verifying both docs clears the gate');
 
   const approved = await admin.approveVendor(actor, target.id, '127.0.0.1');
   ok(approved.approvalStatus === 'approved', 'approve vendor → approved (drives Phase 9/10)');
@@ -104,6 +122,37 @@ async function main() {
 
   const docs = await admin.getVendorDocuments(target.id);
   ok(Array.isArray(docs.documents), 'vendor documents endpoint returns docs');
+
+  // Provider-backed verticals: the salon/centre customers browse is a separate
+  // Provider record, and `GET /providers` filters on its own approvalStatus —
+  // so approving the vendor has to carry over or the vendor is never listed.
+  await User.deleteOne({ email: 'pendinggroomer@test.com' });
+  await VendorProfile.deleteMany({ email: 'pendinggroomer@test.com' });
+  await Provider.deleteMany({ name: 'Test Pending Salon' });
+  await registerVendor({
+    businessName: 'Test Pending Salon',
+    email: 'pendinggroomer@test.com',
+    phone: '+919000009998',
+    role: 'grooming',
+    city: 'Indore',
+    accountNumber: '123456789013',
+    ifscCode: 'HDFC0001234',
+  });
+  const groomProfile = await VendorProfile.findOne({ email: 'pendinggroomer@test.com' });
+  const groomProvider = await Provider.findOne({ vendorUserId: groomProfile.userId });
+  ok(groomProvider?.approvalStatus === 'pending', 'grooming signup creates an unlisted Provider');
+
+  // `force` is the deliberate override for a vendor whose KYC is incomplete.
+  await admin.approveVendor(actor, String(groomProfile._id), '127.0.0.1', { force: true });
+  ok(
+    (await Provider.findById(groomProvider._id)).approvalStatus === 'approved',
+    'approving the vendor lists its Provider'
+  );
+  await admin.suspendVendor(actor, String(groomProfile._id), '127.0.0.1');
+  ok(
+    (await Provider.findById(groomProvider._id)).approvalStatus === 'suspended',
+    'suspending the vendor unlists its Provider'
+  );
 
   const perf = await admin.vendorPerformance();
   ok(Array.isArray(perf) && perf.length >= 5, 'vendor performance aggregation returns rows');

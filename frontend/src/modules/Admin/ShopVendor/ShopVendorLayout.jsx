@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import { cn } from '../../user/utils/cn';
 
+import { updateVendorProfile } from '../../../services/vendor';
+
 export function ShopVendorLayout() {
   const { profile, setProfile, notifications, setNotifications } = useShopVendor();
   const navigate = useNavigate();
@@ -18,6 +20,7 @@ export function ShopVendorLayout() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
+  const [togglingStore, setTogglingStore] = useState(false);
 
   // Refs for outside-click detection
   const notifRef = useRef(null);
@@ -36,12 +39,22 @@ export function ShopVendorLayout() {
   }, []);
 
   const storeOpen = profile.status === 'Online';
-  const toggleStoreOpen = () => {
-    setProfile(prev => ({ ...prev, status: storeOpen ? 'Offline' : 'Online' }));
+  const toggleStoreOpen = async () => {
+    if (togglingStore) return;
+    const nextOnline = !storeOpen;
+    setTogglingStore(true);
+    setProfile(prev => ({ ...prev, status: nextOnline ? 'Online' : 'Offline' }));
+    try {
+      await updateVendorProfile({ online: nextOnline });
+    } catch (err) {
+      setProfile(prev => ({ ...prev, status: storeOpen ? 'Online' : 'Offline' }));
+    } finally {
+      setTogglingStore(false);
+    }
   };
 
   const isVerified = profile.verification === 'Approved';
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = (notifications || []).filter(n => !n.read).length;
 
   const handleMarkAllRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
@@ -74,7 +87,6 @@ export function ShopVendorLayout() {
     {
       title: 'MANAGEMENT',
       items: [
-        { name: 'Banners', path: '/vendor/shop-provider/banners', icon: ImageIcon },
         { name: 'Customer Feedback', path: '/vendor/shop-provider/feedback', icon: Star },
         { name: 'Finance Center', path: '/vendor/shop-provider/finance', icon: Wallet },
         { name: 'Business Control Center', path: '/vendor/shop-provider/settings', icon: Settings },
@@ -87,7 +99,6 @@ export function ShopVendorLayout() {
     const path = location.pathname;
     if (path === '/vendor/shop-provider') return 'Dashboard';
     if (path.includes('/products')) return 'Product Management';
-    if (path.includes('/banners')) return 'Banners';
     if (path.includes('/orders')) return 'Orders';
     if (path.includes('/inventory')) return 'Inventory & Stock';
     if (path.includes('/returns')) return 'Returns & Refunds';

@@ -175,7 +175,35 @@ export function FinanceCenterView() {
                       {p.status === 'paid' ? <CheckCircle size={10} /> : <Clock size={10} />} {p.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm font-mono text-gray-500">{p.utr || '—'}</td>
+                  <td className="px-6 py-4 text-sm font-mono text-gray-500 flex items-center justify-between">
+                    <span>{p.utr || '—'}</span>
+                    <button
+                      onClick={() => {
+                        const lines = [
+                          `TAILCIRCLE MEAL PROVIDER PAYOUT STATEMENT`,
+                          `-----------------------------------------`,
+                          `Payout ID: ${p._id}`,
+                          `Period: ${p.period}`,
+                          `Status: ${p.status.toUpperCase()}`,
+                          `UTR Reference: ${p.utr || 'N/A'}`,
+                          `Net Amount Settled: ₹${rupees(p.netAmount).toLocaleString('en-IN')}`,
+                          `Date Issued: ${new Date(p.createdAt || Date.now()).toLocaleDateString('en-IN')}`,
+                        ].join('\n');
+                        const blob = new Blob([lines], { type: 'text/plain;charset=utf-8;' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `meal_payout_statement_${p._id.slice(-6)}.txt`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                      }}
+                      title="Download Payout Statement"
+                      className="p-1 text-gray-400 hover:text-gray-900 rounded hover:bg-gray-100 transition cursor-pointer"
+                    >
+                      <Download size={14} />
+                    </button>
+                  </td>
                 </tr>
               ))}
               {!payouts.length && (

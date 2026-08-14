@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Utensils, FileText, CalendarCheck, Truck, ListChecks, HeartPulse, Package, Tag, Settings, LogOut, Bell, Search, Map, Wallet, Menu, Users, Star, MessageSquare, CreditCard, Shield, Activity, Receipt, Bookmark, MapPin } from 'lucide-react';
 import { useMealProvider } from './context/MealProviderContext';
-import { vendorLogout } from '../../../services/vendor';
+import { vendorLogout, updateVendorProfile } from '../../../services/vendor';
 import { cn } from '../../user/utils/cn';
 
 export function MealProviderLayout() {
@@ -102,6 +102,19 @@ export function MealProviderLayout() {
                 <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-wider truncate">Meal Provider</p>
               </div>
             </div>
+
+            <div className="flex items-center justify-between bg-neutral-800/80 hover:bg-neutral-800 px-3 py-2 rounded-xl cursor-pointer transition mb-3" onClick={async () => {
+              const nextOnline = profile.status !== 'Online';
+              updateProfile({ status: nextOnline ? 'Online' : 'Offline' });
+              try { await updateVendorProfile({ online: nextOnline }); }
+              catch { updateProfile({ status: profile.status === 'Online' ? 'Online' : 'Offline' }); }
+            }}>
+              <span className="text-xs font-bold text-slate-300">{profile.status === 'Online' ? 'Kitchen is Open' : 'Kitchen Closed'}</span>
+              <div className={cn("w-9 h-5 rounded-full relative transition-colors duration-200", profile.status === 'Online' ? "bg-emerald-500" : "bg-slate-600")}>
+                <div className={cn("absolute top-0.5 w-4 h-4 bg-white rounded-full shadow-sm transition-all duration-200", profile.status === 'Online' ? "right-0.5" : "left-0.5")} />
+              </div>
+            </div>
+
             <button
               onClick={() => {
                 vendorLogout();

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Check, Save, Image as ImageIcon, Trash2, Info, Plus } from 'lucide-react';
 import { fetchAdminBanners, updateBannerApi, createBannerApi, deleteBannerApi } from '../../../../services/admin';
+import { uploadVendorFile } from '../../../../services/vendor';
 
 export function ShopBannersView() {
   const [toastMessage, setToastMessage] = useState(null);
@@ -21,6 +22,8 @@ export function ShopBannersView() {
   const [bannerIds, setBannerIds] = useState({});
   const [isSavingHero, setIsSavingHero] = useState(false);
   const [isSavingPromo, setIsSavingPromo] = useState(false);
+  const [uploadingHero, setUploadingHero] = useState(false);
+  const [uploadingPromo, setUploadingPromo] = useState(false);
 
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -74,12 +77,19 @@ export function ShopBannersView() {
     finally { setIsSavingHero(false); }
   };
 
-  const handleHeroUpload = (e) => {
+  const handleHeroUpload = async (e) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = (event) => setHeroImage(event.target.result);
-      reader.readAsDataURL(file);
+      e.target.value = null;
+      setUploadingHero(true);
+      try {
+        const url = await uploadVendorFile(file, 'shop-banners');
+        setHeroImage(url);
+      } catch (err) {
+        showToast(err?.response?.data?.message || 'Could not upload hero image');
+      } finally {
+        setUploadingHero(false);
+      }
     }
   };
 
@@ -98,12 +108,19 @@ export function ShopBannersView() {
     finally { setIsSavingPromo(false); }
   };
 
-  const handlePromoUpload = (e) => {
+  const handlePromoUpload = async (e) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = (event) => setPromoImage(event.target.result);
-      reader.readAsDataURL(file);
+      e.target.value = null;
+      setUploadingPromo(true);
+      try {
+        const url = await uploadVendorFile(file, 'shop-banners');
+        setPromoImage(url);
+      } catch (err) {
+        showToast(err?.response?.data?.message || 'Could not upload promo image');
+      } finally {
+        setUploadingPromo(false);
+      }
     }
   };
 

@@ -221,22 +221,100 @@ export async function vendorPasswordLogin(email, password) {
   return { user, profile, tokens };
 }
 
-/** Registration-no → send OTP to the vendor's registered phone. */
-export async function vendorRequestOtp(registrationNo) {
-  const profile = await VendorProfile.findOne({ registrationNo: registrationNo.trim().toUpperCase() });
-  if (!profile) throw ApiError.notFound('No vendor with that registration number');
-  await requestOtp(profile.phone);
+/** Registration-no OR registered Mobile Number → send OTP to the vendor's registered phone. */
+export async function vendorRequestOtp(identifier) {
+  const trimmed = identifier.trim();
+  const rawDigits = trimmed.replace(/\D/g, '');
+  
+  let profile = await VendorProfile.findOne({ registrationNo: trimmed.toUpperCase() });
+  
+  if (!profile && rawDigits.length >= 7) {
+    const normalized = normalizePhone(trimmed);
+    const last10 = rawDigits.slice(-10);
+    const phoneRegex = new RegExp(last10 + '$');
+    
+    profile = await VendorProfile.findOne({
+      $or: [
+        { phone: normalized },
+        { phone: trimmed },
+        { phone: phoneRegex }
+      ]
+    });
+    
+    if (!profile) {
+      const user = await User.findOne({
+        role: 'vendor',
+        $or: [
+          { phone: normalized },
+          { phone: trimmed },
+          { phone: phoneRegex }
+        ]
+      });
+      if (user) {
+        profile = await VendorProfile.findOne({ userId: user._id });
+      }
+    }
+  }
+  
+  if (!profile) throw ApiError.notFound('No vendor found with that registration number or mobile number');
+  
+  const vendorUser = await User.findById(profile.userId);
+  const phoneToUse = (rawDigits.length >= 7 ? normalizePhone(trimmed) : (profile.phone || vendorUser?.phone));
+  await requestOtp(phoneToUse);
   return { expiresInMinutes: 5 };
 }
 
-/** Registration-no + OTP login. */
-export async function vendorVerifyOtp(registrationNo, code) {
-  const profile = await VendorProfile.findOne({ registrationNo: registrationNo.trim().toUpperCase() }).select('+bank.accountNumberEnc');
-  if (!profile) throw ApiError.notFound('No vendor with that registration number');
+/** Registration-no OR registered Mobile Number + OTP login. */
+export async function vendorVerifyOtp(identifier, code) {
+  const trimmed = identifier.trim();
+  const rawDigits = trimmed.replace(/\D/g, '');
+
+  let profile = await VendorProfile.findOne({ registrationNo: trimmed.toUpperCase() }).select('+bank.accountNumberEnc');
+
+  if (!profile && rawDigits.length >= 7) {
+    const normalized = normalizePhone(trimmed);
+    const last10 = rawDigits.slice(-10);
+    const phoneRegex = new RegExp(last10 + '$');
+
+    profile = await VendorProfile.findOne({
+      $or: [
+        { phone: normalized },
+        { phone: trimmed },
+        { phone: phoneRegex }
+      ]
+    }).select('+bank.accountNumberEnc');
+
+    if (!profile) {
+      const user = await User.findOne({
+        role: 'vendor',
+        $or: [
+          { phone: normalized },
+          { phone: trimmed },
+          { phone: phoneRegex }
+        ]
+      });
+      if (user) {
+        profile = await VendorProfile.findOne({ userId: user._id }).select('+bank.accountNumberEnc');
+      }
+    }
+  }
+
+  if (!profile) throw ApiError.notFound('No vendor found with that registration number or mobile number');
   assertApproved(profile);
-  // Reuse the phone-OTP verifier; it logs in the user that owns this phone.
-  const { user, tokens } = await verifyOtp(profile.phone, code);
-  if (user.role !== 'vendor') throw ApiError.forbidden('Not a vendor account');
+
+  // Find the exact User owning this vendor profile
+  let vendorUser = await User.findById(profile.userId);
+  const phoneToUse = (rawDigits.length >= 7 ? normalizePhone(trimmed) : (profile.phone || vendorUser?.phone));
+
+  const { user, tokens } = await verifyOtp(phoneToUse, code);
+
+  // If user account wasn't set to vendor, set it now
+  if (user.role !== 'vendor') {
+    user.role = 'vendor';
+    if (profile.vendorType) user.vendorType = profile.vendorType;
+    await user.save();
+  }
+
   return { user, profile, tokens };
 }
 

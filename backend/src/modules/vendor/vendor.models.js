@@ -65,6 +65,12 @@ const vendorProfileSchema = new mongoose.Schema(
     rejectionReason: { type: String, default: null },
     commissionRate: { type: Number, default: 0.15 }, // platform commission fraction
     rating: { type: Number, default: 0 },
+
+    policies: {
+      codEnabled: { type: Boolean, default: true },
+      returnsEnabled: { type: Boolean, default: true },
+      minOrderValue: { type: Number, default: 0 },
+    },
   },
   { timestamps: true }
 );

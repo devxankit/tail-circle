@@ -704,7 +704,6 @@ function App() {
             <Route path="/vendor/shop-provider" element={<ProtectedVendorRoute allow="shop"><ShopVendorProvider><ShopVendorLayout /></ShopVendorProvider></ProtectedVendorRoute>}>
               <Route index element={<ShopDashboard />} />
               <Route path="products" element={<ShopProductsView />} />
-              <Route path="banners" element={<ShopBannersView />} />
               <Route path="orders" element={<ShopOrdersView />} />
               <Route path="inventory" element={<ShopInventoryView />} />
               <Route path="returns" element={<ShopReturnsView />} />

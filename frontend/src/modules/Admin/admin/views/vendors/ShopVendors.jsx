@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Search, MapPin, Phone, Mail, MoreVertical, X, Edit, Trash2, Ban, Filter, Eye, CheckCircle, FileText, ShoppingBag, Star, AlertTriangle } from 'lucide-react';
 import { StatusBadge, ActionMenu, Pagination } from '../../components/VendorShared';
-import { fetchAdminVendors, approveVendorApi, suspendVendorApi, fetchAdminProducts, fetchVendorDocuments } from '../../../../../services/admin';
+import { fetchAdminVendors, approveVendorApi, approveVendorGuarded, suspendVendorApi, fetchAdminProducts, fetchVendorDocuments } from '../../../../../services/admin';
 
 const STATUS_LABEL = { approved: 'Active', pending: 'Pending', suspended: 'Suspended', rejected: 'Suspended' };
 const DOC_LABEL = { license: 'Business Tax License', owner_id: 'ID Proof', gst: 'GST Certificate' };
@@ -104,9 +104,15 @@ export function ShopVendors() {
 
   const cities = useMemo(() => [...new Set(vendors.map(v => v.city))].sort(), [vendors]);
 
-  const handleStatusChange = (id, newStatus) => {
-    if (newStatus === 'Active') approveVendorApi(id).catch((err) => console.error(err));
-    else if (newStatus === 'Suspended') suspendVendorApi(id).catch((err) => console.error(err));
+  // Only reflect the new status once the server accepted it — approval can be
+  // refused while the vendor's KYC documents are unverified.
+  const handleStatusChange = async (id, newStatus) => {
+    if (newStatus === 'Active') {
+      const name = vendors.find(v => v.id === id)?.shopName;
+      if (!(await approveVendorGuarded(id, name))) return;
+    } else if (newStatus === 'Suspended') {
+      try { await suspendVendorApi(id); } catch (err) { window.alert(err?.message || 'Suspend failed'); return; }
+    }
     setVendors(prev => prev.map(v => v.id === id ? { ...v, status: newStatus } : v));
   };
 
@@ -133,10 +139,18 @@ export function ShopVendors() {
     });
   };
 
-  const handleBulkActivate = () => {
-    [...selectedIds].forEach((id) => approveVendorApi(id).catch(() => {}));
-    setVendors(prev => prev.map(v => selectedIds.has(v.id) ? { ...v, status: 'Active' } : v));
-    setSelectedIds(new Set());
+  // Bulk activation never forces past the KYC gate; refused vendors keep their
+  // current status and stay selected so the reviewer can handle them one by one.
+  const handleBulkActivate = async () => {
+    const ids = [...selectedIds];
+    const results = await Promise.allSettled(ids.map((id) => approveVendorApi(id)));
+    const activated = new Set(ids.filter((_, i) => results[i].status === 'fulfilled'));
+
+    setVendors(prev => prev.map(v => activated.has(v.id) ? { ...v, status: 'Active' } : v));
+    setSelectedIds(new Set(ids.filter((id) => !activated.has(id))));
+    if (activated.size < ids.length) {
+      window.alert(`${activated.size} of ${ids.length} activated — the rest have unverified KYC documents.`);
+    }
   };
 
   const handleBulkSuspend = () => {
