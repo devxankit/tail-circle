@@ -32,11 +32,22 @@ export function adminLogout() {
   localStorage.removeItem(ADMIN_KEY);
 }
 
-/* ── Dashboard ────────────────────────────────────────────── */
+/* ── Dashboard & Action Items ──────────────────────────────── */
 export async function fetchAdminDashboard() {
   const { data } = await api.get('/admin/dashboard');
   return data;
 }
+
+export async function fetchActionItems(params = {}) {
+  const { data } = await api.get('/admin/action-items', { params });
+  return data;
+}
+
+export async function resolveActionItemApi(id, { action = 'approve', note = '' } = {}) {
+  const { data } = await api.post(`/admin/action-items/${id}/resolve`, { action, note });
+  return data;
+}
+
 
 /* ── Users & pets ─────────────────────────────────────────── */
 export async function fetchAdminUsers(search) {

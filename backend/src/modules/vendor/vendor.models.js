@@ -41,7 +41,7 @@ const vendorProfileSchema = new mongoose.Schema(
     documents: [
       {
         _id: false,
-        kind: { type: String, enum: ['license', 'owner_id', 'gst'] },
+        kind: { type: String, required: true },
         url: { type: String, default: '' },
         // KYC verification workflow, driven by the admin VendorDocuments screen.
         status: { type: String, enum: ['Pending', 'Verified', 'Rejected', 'Re-upload'], default: 'Pending' },

@@ -9,6 +9,8 @@ import { ApiError } from '../../utils/ApiError.js';
 import { adminPasswordLogin } from './admin.auth.service.js';
 import {
   getDashboard,
+  listActionItems,
+  resolveActionItem,
   listUsers,
   setUserBlocked,
   listPets,
@@ -124,6 +126,26 @@ const superOnly = asyncHandler(async (req, _res, next) => {
 router.get('/dashboard', asyncHandler(async (_req, res) => {
   sendSuccess(res, { data: await getDashboard() });
 }));
+
+router.get('/action-items', asyncHandler(async (req, res) => {
+  sendSuccess(res, {
+    data: await listActionItems({
+      status: req.query.status,
+      category: req.query.category,
+      priority: req.query.priority,
+    }),
+  });
+}));
+
+router.post(
+  '/action-items/:id/resolve',
+  validate(z.object({ action: z.enum(['approve', 'reject']).optional(), note: z.string().optional() })),
+  asyncHandler(async (req, res) => {
+    sendSuccess(res, {
+      data: await resolveActionItem(req.user, req.params.id, { action: req.body.action, note: req.body.note }, req.ip),
+    });
+  })
+);
 
 /* Users & pets */
 router.get('/users', asyncHandler(async (req, res) => {

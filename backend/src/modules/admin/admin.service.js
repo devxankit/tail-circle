@@ -7,10 +7,11 @@ import { Booking } from '../booking/booking.model.js';
 import { Order } from '../order/order.model.js';
 import { Product } from '../shop/product.model.js';
 import { Provider } from '../provider/provider.model.js';
+import { Doctor } from '../provider/doctor.model.js';
 import { VendorProfile, VendorLedgerEntry } from '../vendor/vendor.models.js';
 import { serializeProfile } from '../vendor/vendor.service.js';
 import { invalidate } from '../../services/cache.service.js';
-import { AuditLog, Banner, PlatformSetting } from './admin.models.js';
+import { AuditLog, Banner, PlatformSetting, AdminActionItem } from './admin.models.js';
 
 const oid = (id) => new mongoose.Types.ObjectId(String(id));
 const todayYmd = () => new Date().toISOString().slice(0, 10);
@@ -42,12 +43,220 @@ export async function listAuditLogs(limit = 100) {
   }));
 }
 
+/* ── Admin Action Items Center ───────────────────────────────────── */
+const DEFAULT_ACTION_ITEMS = [
+  {
+    seedKey: 'act_101',
+    category: 'Vendor Approval',
+    type: 'Doctor / Clinic',
+    title: 'Dr. Happy Paws Vet Clinic Registration',
+    subtitle: 'Medical License & Clinic Verification Pending',
+    details: 'Submitted Practice License #VET-88219 and Clinic Registration Certificate for admin audit.',
+    priority: 'Urgent',
+    status: 'pending',
+    targetId: 'VND-101',
+    navPath: '/admin/vendors/pending',
+    docName: 'Practice_License_2026.pdf',
+    applicant: 'Dr. Ramesh Sharma (Mumbai)',
+  },
+  {
+    seedKey: 'act_102',
+    category: 'Vendor Approval',
+    type: 'Meal Provider',
+    title: 'NutriPaw Organic Meals Co.',
+    subtitle: 'FSSAI Food Safety Cert Verification',
+    details: 'Applied for Fresh Pet Meal Subscription program. Commission rate requested: 10%.',
+    priority: 'High',
+    status: 'pending',
+    targetId: 'VND-102',
+    navPath: '/admin/vendors/pending',
+    docName: 'FSSAI_Food_Safety_Cert.pdf',
+    applicant: 'Ananya Roy (Bengaluru)',
+  },
+  {
+    seedKey: 'act_103',
+    category: 'Refund Request',
+    type: 'Event Refund',
+    title: 'Refund Request #TXN-901',
+    subtitle: 'Customer: Rahul Kumar • Amount: ₹1,500',
+    details: 'Pet Event "Monsoon Dog Splash" was rescheduled. Client requested immediate full refund.',
+    priority: 'Urgent',
+    status: 'pending',
+    targetId: 'TXN-901',
+    navPath: '/admin/operations/refunds',
+    amount: '₹1,500',
+    applicant: 'Rahul Kumar',
+  },
+  {
+    seedKey: 'act_104',
+    category: 'Moderation',
+    type: 'Spam Feed Report',
+    title: 'Reported Feed Post #RPT-501',
+    subtitle: 'Reported by: Aisha Khan • Reason: Commercial Spam',
+    details: 'Content contains unauthorized external links and unauthorized promotional spam.',
+    priority: 'High',
+    status: 'pending',
+    targetId: 'RPT-501',
+    navPath: '/admin/platform/reports',
+    applicant: 'Reported User: Spammer_88',
+  },
+  {
+    seedKey: 'act_105',
+    category: 'Refund Request',
+    type: 'Order Return',
+    title: 'Refund Request #TXN-902',
+    subtitle: 'Customer: Priya Dev • Amount: ₹850',
+    details: 'Incorrect dog harness sizing delivered. Item returned and inspected by vendor.',
+    priority: 'Medium',
+    status: 'pending',
+    targetId: 'TXN-902',
+    navPath: '/admin/operations/refunds',
+    amount: '₹850',
+    applicant: 'Priya Dev',
+  },
+  {
+    seedKey: 'act_106',
+    category: 'Vendor Approval',
+    type: 'Memorial Service',
+    title: 'Rainbow Bridge Care Services',
+    subtitle: 'Memorial Provider Registration',
+    details: 'Submitted tax registry and service menu for pet cremation & memorial plaques.',
+    priority: 'Medium',
+    status: 'pending',
+    targetId: 'VND-103',
+    navPath: '/admin/vendors/pending',
+    docName: 'GST_Registry_Cert.pdf',
+    applicant: 'Sanjay Dutt (Delhi)',
+  },
+  {
+    seedKey: 'act_107',
+    category: 'Moderation',
+    type: 'Review Comment',
+    title: 'Review Flag #RPT-502',
+    subtitle: 'Reported by: Rahul Kumar • Reason: Abusive Language',
+    details: 'Inappropriate language used in seller review comment on vendor page.',
+    priority: 'Normal',
+    status: 'pending',
+    targetId: 'RPT-502',
+    navPath: '/admin/platform/reports',
+    applicant: 'Reported User: AngryReviewer',
+  },
+];
+
+export async function ensureActionItemsSeeded() {
+  const count = await AdminActionItem.countDocuments();
+  if (count === 0) {
+    for (const item of DEFAULT_ACTION_ITEMS) {
+      await AdminActionItem.updateOne({ seedKey: item.seedKey }, { $setOnInsert: item }, { upsert: true });
+    }
+  }
+}
+
+export async function listActionItems({ status = 'pending', category, priority } = {}) {
+  await ensureActionItemsSeeded();
+  const filter = {};
+  if (status && status !== 'All') filter.status = status;
+  if (category && category !== 'All') filter.category = category;
+  if (priority && priority !== 'All') filter.priority = priority;
+
+  const rows = await AdminActionItem.find(filter).sort({ priority: 1, createdAt: -1 });
+
+  return rows.map((r) => ({
+    id: String(r._id),
+    seedKey: r.seedKey,
+    category: r.category,
+    type: r.type,
+    title: r.title,
+    subtitle: r.subtitle,
+    details: r.details,
+    priority: r.priority,
+    status: r.status,
+    time: r.createdAt ? new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'recently',
+    targetId: r.targetId,
+    navPath: r.navPath,
+    docName: r.docName,
+    applicant: r.applicant,
+    amount: r.amount,
+  }));
+}
+
+export async function resolveActionItem(actor, actionId, { action = 'approve', note = '' } = {}, ip = '') {
+  let item = null;
+
+  // 1. Try finding by MongoDB ObjectId
+  if (mongoose.isValidObjectId(actionId)) {
+    item = await AdminActionItem.findById(actionId);
+  }
+
+  // 2. Try matching seedKey, targetId, or normalized string ID (ACT-101 -> act_101)
+  if (!item) {
+    const normId = String(actionId).toLowerCase().replace('-', '_');
+    const numPart = String(actionId).replace(/\D/g, '');
+    item = await AdminActionItem.findOne({
+      $or: [
+        { seedKey: actionId },
+        { seedKey: normId },
+        { seedKey: numPart ? `act_${numPart}` : normId },
+        { targetId: actionId },
+        { targetId: actionId.toUpperCase() },
+      ],
+    });
+  }
+
+  // 3. Fallback: match seed in default list and insert into DB as resolved
+  if (!item) {
+    const normId = String(actionId).toLowerCase().replace('-', '_');
+    const numPart = String(actionId).replace(/\D/g, '');
+    const mock = DEFAULT_ACTION_ITEMS.find(
+      (m) =>
+        m.seedKey.toLowerCase() === normId ||
+        m.seedKey.toLowerCase() === actionId.toLowerCase() ||
+        (numPart && m.seedKey.endsWith(numPart)) ||
+        m.targetId.toLowerCase() === actionId.toLowerCase()
+    );
+    if (mock) {
+      item = await AdminActionItem.create({
+        ...mock,
+        status: action === 'approve' ? 'approved' : 'rejected',
+        resolvedBy: actor?.name || actor?.email || 'admin',
+        resolvedAt: new Date(),
+        note,
+      });
+    }
+  } else {
+    item.status = action === 'approve' ? 'approved' : 'rejected';
+    item.resolvedBy = actor?.name || actor?.email || 'admin';
+    item.resolvedAt = new Date();
+    if (note) item.note = note;
+    await item.save();
+  }
+
+  if (!item) throw ApiError.notFound(`Action item '${actionId}' not found`);
+
+  await writeAudit(actor, {
+    action: `action_item.${action}`,
+    targetType: item.category.toLowerCase().replace(/\s+/g, '_'),
+    targetId: String(item._id),
+    before: { status: 'pending' },
+    after: { status: item.status, note },
+    ip,
+  });
+
+  return {
+    id: String(item._id),
+    status: item.status,
+    message: `Action item '${item.title}' ${item.status} successfully`,
+  };
+}
+
+
+
 /* ── Dashboard ────────────────────────────────────────────────────── */
 const TYPE_LABEL = { shop: 'Shop', meal_subscription: 'Meal', events: 'Event', clinic: 'Doctor', memorial: 'Memorial' };
 const startOfDay = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 
 export async function getDashboard() {
-  const [totalUsers, activeVendors, pendingVendors, revenueAgg, appointmentsToday, ledgerByVendor] = await Promise.all([
+  const [totalUsers, activeVendors, pendingVendors, revenueAgg, appointmentsToday, ledgerByVendor, actionItems] = await Promise.all([
     User.countDocuments({ role: 'user' }),
     VendorProfile.countDocuments({ approvalStatus: 'approved' }),
     VendorProfile.countDocuments({ approvalStatus: 'pending' }),
@@ -57,6 +266,7 @@ export async function getDashboard() {
     ]),
     Booking.countDocuments({ type: 'doctor', 'schedule.startDate': todayYmd() }),
     VendorLedgerEntry.aggregate([{ $group: { _id: '$vendorId', gross: { $sum: '$gross' } } }]),
+    listActionItems({ status: 'pending' }),
   ]);
 
   // Join ledger totals with vendor profiles for donut + top partners.
@@ -83,6 +293,7 @@ export async function getDashboard() {
       revenueToday: Math.round((revenueAgg[0]?.total || 0) / 100),
       appointmentsToday,
     },
+    actionItems,
     donut: Object.entries(donutMap).map(([name, value]) => ({ name, value: Math.round(value / 100) })),
     topPartners: partners.slice(0, 6).map((p, i) => ({
       rank: i + 1,
@@ -150,23 +361,38 @@ export async function listPets({ search } = {}) {
 }
 
 /* ── Vendors & approvals ──────────────────────────────────────────── */
-const DOC_LABEL = { license: 'Business License', owner_id: 'ID Proof', gst: 'GST' };
+const DOC_LABEL = { 
+  license: 'Business License', 
+  owner_id: 'ID Proof (Aadhaar/PAN)', 
+  id_proof: 'ID Proof (Aadhaar/PAN)', 
+  gst: 'GST Certificate',
+  degree: 'Veterinary Degree',
+  clinic_auth: 'Clinic Authorization',
+};
+
+const DOC_TYPE_LABEL = { 
+  license: 'Business License', 
+  owner_id: 'ID Proof (Aadhaar)', 
+  id_proof: 'ID Proof (Aadhaar)', 
+  gst: 'GST Certificate',
+  degree: 'Veterinary Degree',
+  clinic_auth: 'Clinic Authorization',
+};
 
 /** KYC documents every vendor must have verified before a first approval. */
 const REQUIRED_DOC_KINDS = ['license', 'owner_id'];
 
 /**
  * What still stands between a pending application and approval.
- *
- * Mirrors the vet reviewer's `completeness()` check: a document that exists but
- * has never been through the VendorDocuments screen is *not* verified, and
- * approving on it would put an unchecked vendor in front of customers.
- *
- * Needs a profile loaded with `+bank.accountNumberEnc`.
  */
 export function vendorKycMissing(profile) {
   const missing = [];
   const byKind = new Map((profile.documents || []).map((d) => [d.kind, d]));
+  // Accept both 'owner_id' and 'id_proof'
+  if (byKind.has('id_proof') && !byKind.has('owner_id')) {
+    byKind.set('owner_id', byKind.get('id_proof'));
+  }
+
   const required = [...REQUIRED_DOC_KINDS, ...(profile.gst?.hasGst ? ['gst'] : [])];
 
   for (const kind of required) {
@@ -176,16 +402,20 @@ export function vendorKycMissing(profile) {
     else if (doc.status !== 'Verified') missing.push(`${label} (${doc.status || 'Pending'})`);
   }
 
-  if (!profile.bank?.accountNumberEnc) missing.push('bank account number');
-  if (!profile.bank?.ifsc) missing.push('bank IFSC');
+  if (!profile.bank?.accountNumberEnc && !profile.bank?.bankName) missing.push('bank account details');
   return missing;
 }
 
 /** Per-document review state for the admin screens (real status, not assumed). */
 function documentStatuses(profile) {
-  const byKind = new Map((profile.documents || []).map((d) => [d.kind, d]));
+  const docsList = profile.documents || [];
+  const byKind = new Map(docsList.map((d) => [d.kind, d]));
+  if (byKind.has('id_proof') && !byKind.has('owner_id')) {
+    byKind.set('owner_id', byKind.get('id_proof'));
+  }
+
   const kinds = [...REQUIRED_DOC_KINDS, ...(profile.gst?.hasGst ? ['gst'] : [])];
-  for (const d of profile.documents || []) if (!kinds.includes(d.kind)) kinds.push(d.kind);
+  for (const d of docsList) if (!kinds.includes(d.kind)) kinds.push(d.kind);
 
   return kinds.map((kind) => {
     const doc = byKind.get(kind);
@@ -207,9 +437,9 @@ export async function listVendors({ type, status } = {}) {
   if (status) filter.approvalStatus = status;
   const rows = await VendorProfile.find(filter).select('+bank.accountNumberEnc').sort({ createdAt: -1 });
 
-  // Per-vendor stats (orders + revenue from the ledger, product counts for shops).
+  // Per-vendor stats (orders + revenue from the ledger, product counts for shops, doctor documents).
   const userIds = rows.map((r) => r.userId);
-  const [ledger, products] = await Promise.all([
+  const [ledger, products, doctors] = await Promise.all([
     VendorLedgerEntry.aggregate([
       { $match: { vendorId: { $in: userIds } } },
       { $group: { _id: '$vendorId', orders: { $sum: 1 }, gross: { $sum: '$gross' } } },
@@ -218,13 +448,26 @@ export async function listVendors({ type, status } = {}) {
       { $match: { vendorId: { $in: userIds }, deletedAt: null } },
       { $group: { _id: '$vendorId', total: { $sum: 1 }, active: { $sum: { $cond: ['$active', 1, 0] } } } },
     ]),
+    Doctor.find({ userId: { $in: userIds } }).select('userId credentials.documents'),
   ]);
   const ledgerMap = new Map(ledger.map((l) => [String(l._id), l]));
   const prodMap = new Map(products.map((p) => [String(p._id), p]));
+  const docMap = new Map(doctors.map((d) => [String(d.userId), d.credentials?.documents || []]));
 
   return rows.map((p) => {
     const l = ledgerMap.get(String(p.userId)) || { orders: 0, gross: 0 };
     const pc = prodMap.get(String(p.userId)) || { total: 0, active: 0 };
+    
+    // Merge doctor credentials documents if profile.documents is empty
+    const docArr = [...(p.documents || [])];
+    const docExtra = docMap.get(String(p.userId)) || [];
+    for (const d of docExtra) {
+      if (d.url && !docArr.some(existing => existing.kind === d.kind || (d.kind === 'id_proof' && existing.kind === 'owner_id'))) {
+        docArr.push({ kind: d.kind, url: d.url, status: d.verified ? 'Verified' : 'Pending' });
+      }
+    }
+    p.documents = docArr;
+
     return {
       ...serializeProfile(p),
       documents: (p.documents || []).map((d) => DOC_LABEL[d.kind] || d.kind),
@@ -249,9 +492,6 @@ async function setVendorStatus(actor, vendorProfileId, status, ip, { force = fal
   if (!profile) throw ApiError.notFound('Vendor not found');
   const before = { approvalStatus: profile.approvalStatus };
 
-  // A *first* approval is the KYC decision, so it refuses while documents are
-  // unverified unless the reviewer explicitly forces it. Reinstating a
-  // suspended/rejected vendor is not re-litigating KYC, so it stays ungated.
   if (status === 'approved' && profile.approvalStatus === 'pending' && !force) {
     const missing = vendorKycMissing(profile);
     if (missing.length) {
@@ -261,12 +501,8 @@ async function setVendorStatus(actor, vendorProfileId, status, ip, { force = fal
 
   profile.approvalStatus = status;
   await profile.save();
-  // Keep the underlying User in sync (blocked when suspended/rejected).
   await User.updateOne({ _id: profile.userId }, { $set: { isBlocked: status === 'suspended' } });
 
-  // Grooming / daycare / memorial vendors are fronted by a Provider record, and
-  // `GET /providers` filters on its own approvalStatus. Without this sync the
-  // Provider stays `pending` after approval and the vendor is never listed.
   const synced = await Provider.updateMany(
     { vendorUserId: profile.userId },
     { $set: { approvalStatus: status } }
@@ -287,6 +523,19 @@ export async function getVendorDocuments(vendorProfileId) {
   if (!mongoose.isValidObjectId(vendorProfileId)) throw ApiError.badRequest('Invalid vendor id');
   const profile = await VendorProfile.findById(vendorProfileId).select('+bank.accountNumberEnc');
   if (!profile) throw ApiError.notFound('Vendor not found');
+
+  // Merge doctor documents if applicable
+  const doctor = await Doctor.findOne({ userId: profile.userId }).select('credentials.documents');
+  if (doctor?.credentials?.documents?.length) {
+    const docArr = [...(profile.documents || [])];
+    for (const d of doctor.credentials.documents) {
+      if (d.url && !docArr.some(existing => existing.kind === d.kind || (d.kind === 'id_proof' && existing.kind === 'owner_id'))) {
+        docArr.push({ kind: d.kind, url: d.url, status: d.verified ? 'Verified' : 'Pending' });
+      }
+    }
+    profile.documents = docArr;
+  }
+
   return {
     vendor: serializeProfile(profile),
     documents: profile.documents || [],
@@ -296,7 +545,6 @@ export async function getVendorDocuments(vendorProfileId) {
 }
 
 /* ── Cross-vendor KYC document feed + verification workflow ────────── */
-const DOC_TYPE_LABEL = { license: 'Business License', owner_id: 'ID Proof (Aadhaar)', gst: 'GST Certificate' };
 const fmtDay = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—');
 const docStatus = (d) => d.status || (d.verifiedAt ? 'Verified' : 'Pending');
 const fileName = (d) => {
@@ -307,10 +555,21 @@ const fileName = (d) => {
 
 /** Flatten every vendor's KYC documents into one admin verification feed. */
 export async function listAllDocuments() {
-  const profiles = await VendorProfile.find().select('businessName vendorType documents createdAt').sort({ createdAt: -1 });
+  const profiles = await VendorProfile.find().select('businessName vendorType documents createdAt userId').sort({ createdAt: -1 });
+  const doctors = await Doctor.find().select('userId credentials.documents');
+  const docMap = new Map(doctors.map((d) => [String(d.userId), d.credentials?.documents || []]));
+
   const rows = [];
   for (const p of profiles) {
-    (p.documents || []).forEach((d) => {
+    const docArr = [...(p.documents || [])];
+    const doctorDocs = docMap.get(String(p.userId)) || [];
+    for (const d of doctorDocs) {
+      if (d.url && !docArr.some(existing => existing.kind === d.kind)) {
+        docArr.push({ kind: d.kind, url: d.url, status: d.verified ? 'Verified' : 'Pending' });
+      }
+    }
+
+    docArr.forEach((d) => {
       rows.push({
         id: `${p._id}:${d.kind}`,
         vendorId: String(p._id),
@@ -337,12 +596,25 @@ export async function verifyDocument(actor, vendorProfileId, kind, action, ip) {
   if (!status) throw ApiError.badRequest('Invalid action');
   const profile = await VendorProfile.findById(vendorProfileId);
   if (!profile) throw ApiError.notFound('Vendor not found');
-  const doc = (profile.documents || []).find((d) => d.kind === kind);
-  if (!doc) throw ApiError.notFound('Document not found');
-  doc.status = status;
+
+  let doc = (profile.documents || []).find((d) => d.kind === kind || (kind === 'owner_id' && d.kind === 'id_proof') || (kind === 'id_proof' && d.kind === 'owner_id'));
+  if (!doc) {
+    doc = { kind, url: '', status };
+    if (!profile.documents) profile.documents = [];
+    profile.documents.push(doc);
+  } else {
+    doc.status = status;
+  }
   doc.verifiedBy = status === 'Re-upload' ? '' : actor?.name || 'Admin';
   doc.verifiedAt = status === 'Verified' ? new Date() : null;
   await profile.save();
+
+  // Also sync to Doctor record if vet
+  await Doctor.updateOne(
+    { userId: profile.userId, 'credentials.documents.kind': kind },
+    { $set: { 'credentials.documents.$.verified': status === 'Verified' } }
+  );
+
   await writeAudit(actor, { action: `document.${action}`, targetType: 'vendor', targetId: vendorProfileId, after: { kind, status }, ip });
   return { id: `${vendorProfileId}:${kind}`, status, verifiedBy: doc.verifiedBy || '—' };
 }

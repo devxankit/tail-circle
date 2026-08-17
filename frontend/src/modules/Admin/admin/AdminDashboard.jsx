@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { fetchAdminDashboard } from '../../../services/admin';
+import { useNavigate } from 'react-router-dom';
+import { fetchAdminDashboard, approveVendorGuarded, fetchPendingVendors, resolveActionItemApi } from '../../../services/admin';
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line, ComposedChart,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -8,7 +9,9 @@ import {
 import {
   Users, Store, Wallet, Calendar, BellRing, ShieldCheck, Send,
   Star, ArrowUpRight, ArrowDownRight, ChevronRight, CheckCircle2,
-  AlertTriangle, Zap, Package, Clock, Activity
+  AlertTriangle, Zap, Package, Clock, Activity, Check, X, Eye, Filter,
+  ShieldAlert, RefreshCw, FileText, ExternalLink, MessageSquare, DollarSign,
+  AlertCircle, ThumbsUp, ThumbsDown, CheckSquare, Sparkles
 } from 'lucide-react';
 import { ChartCard, ToggleGroup, CustomTooltip, COLORS } from '../components/ChartCard';
 import { Modal } from '../components/Modal';
@@ -70,10 +73,110 @@ const topVendorsBar = [
 
 /* ── KPI sparklines ── */
 const kpis = [
-  { title: 'Total Users',    value: '12,450',  label: 'Owners',       change: '+2.3%', up: true,  icon: Users,    color: C.teal,   data: [320,410,380,500,470,620,580,710,680,760] },
-  { title: 'Active Vendors', value: '342',     label: 'Vetted',       change: '-0.8%', up: false, icon: Store,    color: C.blue,   data: [80,95,88,102,97,90,88,92,88,85] },
-  { title: 'Revenue Today',  value: '₹95,200', label: 'Platform',     change: '+12.1%',up: true,  icon: Wallet,   color: C.amber,  data: [420,510,480,600,580,720,700,810,790,950] },
-  { title: 'Appointments',   value: '148',     label: 'Today',        change: '+5.3%', up: true,  icon: Calendar, color: C.purple, data: [20,35,28,42,38,55,48,60,52,70] },
+  { title: 'Total Users',    value: '12,450',  label: 'Owners',       change: '+2.3%', up: true,  icon: Users,    color: C.teal,   data: [320,410,380,500,470,620,580,710,680,760], path: '/admin/users' },
+  { title: 'Active Vendors', value: '342',     label: 'Vetted',       change: '-0.8%', up: false, icon: Store,    color: C.blue,   data: [80,95,88,102,97,90,88,92,88,85], path: '/admin/vendors' },
+  { title: 'Revenue Today',  value: '₹95,200', label: 'Platform',     change: '+12.1%',up: true,  icon: Wallet,   color: C.amber,  data: [420,510,480,600,580,720,700,810,790,950], path: '/admin/finance/transactions' },
+  { title: 'Appointments',   value: '148',     label: 'Today',        change: '+5.3%', up: true,  icon: Calendar, color: C.purple, data: [20,35,28,42,38,55,48,60,52,70], path: '/admin/operations/appointments' },
+];
+
+/* ── Initial Action Items requiring Admin Attention ── */
+const initialActionItems = [
+  {
+    id: 'ACT-101',
+    category: 'Vendor Approval',
+    type: 'Doctor / Clinic',
+    title: 'Dr. Happy Paws Vet Clinic Registration',
+    subtitle: 'Medical License & Clinic Verification Pending',
+    details: 'Submitted Practice License #VET-88219 and Clinic Registration Certificate for admin audit.',
+    priority: 'Urgent',
+    time: '12 mins ago',
+    targetId: 'VND-101',
+    navPath: '/admin/vendors/pending',
+    docName: 'Practice_License_2026.pdf',
+    applicant: 'Dr. Ramesh Sharma (Mumbai)'
+  },
+  {
+    id: 'ACT-102',
+    category: 'Vendor Approval',
+    type: 'Meal Provider',
+    title: 'NutriPaw Organic Meals Co.',
+    subtitle: 'FSSAI Food Safety Cert Verification',
+    details: 'Applied for Fresh Pet Meal Subscription program. Commission rate requested: 10%.',
+    priority: 'High',
+    time: '45 mins ago',
+    targetId: 'VND-102',
+    navPath: '/admin/vendors/pending',
+    docName: 'FSSAI_Food_Safety_Cert.pdf',
+    applicant: 'Ananya Roy (Bengaluru)'
+  },
+  {
+    id: 'ACT-103',
+    category: 'Refund Request',
+    type: 'Event Refund',
+    title: 'Refund Request #TXN-901',
+    subtitle: 'Customer: Rahul Kumar • Amount: ₹1,500',
+    details: 'Pet Event "Monsoon Dog Splash" was rescheduled. Client requested immediate full refund.',
+    priority: 'Urgent',
+    time: '1 hour ago',
+    targetId: 'TXN-901',
+    navPath: '/admin/operations/refunds',
+    amount: '₹1,500',
+    applicant: 'Rahul Kumar'
+  },
+  {
+    id: 'ACT-104',
+    category: 'Moderation',
+    type: 'Spam Feed Report',
+    title: 'Reported Feed Post #RPT-501',
+    subtitle: 'Reported by: Aisha Khan • Reason: Commercial Spam',
+    details: 'Content contains unauthorized external links and unauthorized promotional spam.',
+    priority: 'High',
+    time: '2 hours ago',
+    targetId: 'RPT-501',
+    navPath: '/admin/platform/reports',
+    applicant: 'Reported User: Spammer_88'
+  },
+  {
+    id: 'ACT-105',
+    category: 'Refund Request',
+    type: 'Order Return',
+    title: 'Refund Request #TXN-902',
+    subtitle: 'Customer: Priya Dev • Amount: ₹850',
+    details: 'Incorrect dog harness sizing delivered. Item returned and inspected by vendor.',
+    priority: 'Medium',
+    time: '3 hours ago',
+    targetId: 'TXN-902',
+    navPath: '/admin/operations/refunds',
+    amount: '₹850',
+    applicant: 'Priya Dev'
+  },
+  {
+    id: 'ACT-106',
+    category: 'Vendor Approval',
+    type: 'Memorial Service',
+    title: 'Rainbow Bridge Care Services',
+    subtitle: 'Memorial Provider Registration',
+    details: 'Submitted tax registry and service menu for pet cremation & memorial plaques.',
+    priority: 'Medium',
+    time: '5 hours ago',
+    targetId: 'VND-103',
+    navPath: '/admin/vendors/pending',
+    docName: 'GST_Registry_Cert.pdf',
+    applicant: 'Sanjay Dutt (Delhi)'
+  },
+  {
+    id: 'ACT-107',
+    category: 'Moderation',
+    type: 'Review Comment',
+    title: 'Review Flag #RPT-502',
+    subtitle: 'Reported by: Rahul Kumar • Reason: Abusive Language',
+    details: 'Inappropriate language used in seller review comment on vendor page.',
+    priority: 'Normal',
+    time: '6 hours ago',
+    targetId: 'RPT-502',
+    navPath: '/admin/platform/reports',
+    applicant: 'Reported User: AngryReviewer'
+  }
 ];
 
 /* ── partners table ── */
@@ -94,6 +197,13 @@ const roleBadge = r => ({
   Memorial:       'bg-slate-100 text-slate-600 border-slate-200',
 }[r] || 'bg-gray-50 text-gray-500 border-gray-100');
 
+const priorityBadge = p => ({
+  Urgent: 'bg-rose-100 text-rose-800 border-rose-200',
+  High:   'bg-amber-100 text-amber-800 border-amber-200',
+  Medium: 'bg-blue-100 text-blue-800 border-blue-200',
+  Normal: 'bg-slate-100 text-slate-700 border-slate-200',
+}[p] || 'bg-gray-100 text-gray-700 border-gray-200');
+
 /* ── axis style ── */
 const axisTick = { fontSize: 11, fill: '#A0AEC0' };
 const gridStroke = '#F0F4F8';
@@ -102,17 +212,44 @@ const gridStroke = '#F0F4F8';
 const rupeeFmt = v => `₹${(v/1000).toFixed(0)}k`;
 
 export function AdminDashboard() {
+  const navigate = useNavigate();
   const [revRange, setRevRange] = useState('1M');
   const [modalOpen, setModalOpen] = useState(false);
   const [broadcastForm, setBroadcastForm] = useState({ scope: 'All', title: '', message: '' });
   const [alertSent, setAlertSent] = useState(false);
 
+  // Action Center States
+  const [actionItems, setActionItems] = useState([]);
+  const [actionCategory, setActionCategory] = useState('All');
+  const [priorityFilter, setPriorityFilter] = useState('All');
+  const [selectedAction, setSelectedAction] = useState(null);
+  const [actionModalOpen, setActionModalOpen] = useState(false);
+  const [actionReason, setActionReason] = useState('');
+  const [toastMessage, setToastMessage] = useState(null);
+  const [completedCount, setCompletedCount] = useState(0);
+
   const revChartData = revRange === '7D' ? revData7 : revRange === '3M' ? revData3m : revData30;
   const showEvery = revRange === '3M' ? 2 : revRange === '1M' ? 5 : 1;
 
-  // Live KPI headline numbers (charts stay decorative demo series).
+  // Live KPI headline numbers + Backend Action Items
   const [live, setLive] = useState(null);
-  useEffect(() => { fetchAdminDashboard().then(setLive).catch(() => {}); }, []);
+
+  const loadDashboardData = () => {
+    fetchAdminDashboard().then(res => {
+      setLive(res);
+      if (res?.actionItems && Array.isArray(res.actionItems)) {
+        setActionItems(res.actionItems);
+      }
+    }).catch(err => {
+      console.warn('Backend fetch failed, using default action center items:', err);
+      setActionItems(initialActionItems);
+    });
+  };
+
+  useEffect(() => { 
+    loadDashboardData();
+  }, []);
+
   const kpiCards = live ? kpis.map(k => {
     if (k.title === 'Total Users')    return { ...k, value: (live.kpis.totalUsers || 0).toLocaleString('en-IN') };
     if (k.title === 'Active Vendors') return { ...k, value: String(live.kpis.activeVendors || 0) };
@@ -121,6 +258,58 @@ export function AdminDashboard() {
     return k;
   }) : kpis;
 
+  // Trigger Toast Notification
+  const showToast = (msg) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  // Direct Approve Handler (Backend Connected)
+  const handleApproveAction = async (item, e) => {
+    if (e) e.stopPropagation();
+    try {
+      if (item.category === 'Vendor Approval' && item.targetId) {
+        await approveVendorGuarded(item.targetId, item.title);
+      }
+      await resolveActionItemApi(item.id || item.seedKey || item.targetId, { action: 'approve', note: actionReason });
+    } catch (err) {
+      console.error('Action resolve failed:', err);
+    }
+    setActionItems(prev => prev.filter(i => i.id !== item.id));
+    setCompletedCount(c => c + 1);
+    if (selectedAction?.id === item.id) {
+      setActionModalOpen(false);
+      setSelectedAction(null);
+    }
+    showToast(`✓ Action Completed: "${item.title}" approved successfully!`);
+    loadDashboardData();
+  };
+
+  // Direct Reject / Dismiss Handler (Backend Connected)
+  const handleRejectAction = (item, e) => {
+    if (e) e.stopPropagation();
+    setSelectedAction(item);
+    setActionReason('');
+    setActionModalOpen(true);
+  };
+
+  const confirmRejectAction = async () => {
+    if (!selectedAction) return;
+    try {
+      await resolveActionItemApi(selectedAction.id || selectedAction.seedKey || selectedAction.targetId, { action: 'reject', note: actionReason });
+    } catch (err) {
+      console.error('Action reject failed:', err);
+    }
+    setActionItems(prev => prev.filter(i => i.id !== selectedAction.id));
+    setCompletedCount(c => c + 1);
+    showToast(`✕ Action Item "${selectedAction.title}" rejected/dismissed.`);
+    setActionModalOpen(false);
+    setSelectedAction(null);
+    loadDashboardData();
+  };
+
+
+
   const handleBroadcast = e => {
     e.preventDefault();
     if (!broadcastForm.title || !broadcastForm.message) return;
@@ -128,33 +317,219 @@ export function AdminDashboard() {
     setTimeout(() => { setAlertSent(false); setModalOpen(false); setBroadcastForm({ scope:'All', title:'', message:'' }); }, 2000);
   };
 
-  return (
-    <div className="space-y-6 pb-6">
+  // Filtered action items
+  const filteredActions = actionItems.filter(item => {
+    if (actionCategory !== 'All' && item.category !== actionCategory) return false;
+    if (priorityFilter !== 'All' && item.priority !== priorityFilter) return false;
+    return true;
+  });
 
-      {/* ── Health Banner ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-3.5 rounded-2xl border"
-        style={{ background:'rgba(0,200,150,0.05)', borderColor:'rgba(0,200,150,0.2)' }}>
-        <div className="flex items-center gap-3">
-          <span className="relative flex h-2.5 w-2.5 shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
-          </span>
-          <span className="text-[11.5px] font-bold text-slate-700 tracking-wide">
-            ALL NODES ACTIVE &nbsp;·&nbsp; HEALTH INDEX: <span className="text-teal-600">99.98%</span>
-          </span>
+  const countVendor = actionItems.filter(i => i.category === 'Vendor Approval').length;
+  const countRefund = actionItems.filter(i => i.category === 'Refund Request').length;
+  const countModeration = actionItems.filter(i => i.category === 'Moderation').length;
+  const countUrgent = actionItems.filter(i => i.priority === 'Urgent').length;
+
+  return (
+    <div className="space-y-6 pb-6 relative">
+
+      {/* ── Floating Action Toast ── */}
+      {toastMessage && (
+        <div className="fixed top-20 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-slate-700 animate-in fade-in slide-in-from-top-4 duration-300">
+          <Sparkles className="text-emerald-400 shrink-0" size={18} />
+          <span className="text-xs font-semibold">{toastMessage}</span>
+          <button onClick={() => setToastMessage(null)} className="text-slate-400 hover:text-white ml-2">
+            <X size={14} />
+          </button>
         </div>
-        <button onClick={() => setModalOpen(true)}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-black rounded-lg uppercase tracking-wider transition shadow-sm cursor-pointer">
-          <BellRing size={11} /> Broadcast Warning
-        </button>
+      )}
+
+      {/* ── System Health & Quick Action Control Header ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-3.5 rounded-2xl border bg-slate-900 border-slate-800 text-white shadow-md">
+        <div className="flex items-center gap-3">
+          <span className="relative flex h-3 w-3 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
+          </span>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] font-black tracking-wider text-slate-100 uppercase">PLATFORM HEALTH: 99.98%</span>
+              <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">ALL SYSTEMS ONLINE</span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              {actionItems.length} action items require admin review • {countUrgent} urgent priority
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-black rounded-xl uppercase tracking-wider transition shadow-sm cursor-pointer">
+            <BellRing size={12} /> Broadcast Warning
+          </button>
+        </div>
       </div>
 
-      {/* ── KPI Cards ── */}
+      {/* ── ADMIN ACTION COMMAND CENTER (PRIMARY SPOTLIGHT) ── */}
+      <div className="bg-gradient-to-br from-white via-slate-50/50 to-teal-50/20 rounded-2xl border border-teal-200/60 shadow-lg p-5 sm:p-6 relative overflow-hidden">
+        {/* Subtle accent bar */}
+        <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-teal-500 via-emerald-500 to-amber-500" />
+
+        {/* Action Center Header */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center shadow-md shadow-teal-600/20 shrink-0">
+              <CheckSquare size={22} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">Admin Action Required Center</h2>
+                <span className="bg-rose-500 text-white text-[11px] font-black px-2.5 py-0.5 rounded-full animate-pulse shadow-sm">
+                  {actionItems.length} Pending
+                </span>
+                {completedCount > 0 && (
+                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                    {completedCount} Resolved Today ✓
+                  </span>
+                )}
+              </div>
+              <p className="text-[11.5px] text-slate-500 mt-0.5">
+                Review and act immediately on pending vendor registrations, refund requests, and content moderation alerts.
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Summary Chips */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+            <button 
+              onClick={() => { setActionCategory('Vendor Approval'); setPriorityFilter('All'); }}
+              className={`px-3 py-1.5 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 transition cursor-pointer shrink-0 ${actionCategory === 'Vendor Approval' ? 'bg-teal-600 text-white border-teal-600 shadow-sm' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'}`}
+            >
+              <Store size={13} /> Vendors <span className="px-1.5 py-0.2 bg-teal-100 text-teal-800 rounded-full text-[10px]">{countVendor}</span>
+            </button>
+            <button 
+              onClick={() => { setActionCategory('Refund Request'); setPriorityFilter('All'); }}
+              className={`px-3 py-1.5 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 transition cursor-pointer shrink-0 ${actionCategory === 'Refund Request' ? 'bg-teal-600 text-white border-teal-600 shadow-sm' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'}`}
+            >
+              <DollarSign size={13} /> Refunds <span className="px-1.5 py-0.2 bg-amber-100 text-amber-800 rounded-full text-[10px]">{countRefund}</span>
+            </button>
+            <button 
+              onClick={() => { setActionCategory('Moderation'); setPriorityFilter('All'); }}
+              className={`px-3 py-1.5 rounded-xl border text-[11px] font-bold flex items-center gap-1.5 transition cursor-pointer shrink-0 ${actionCategory === 'Moderation' ? 'bg-teal-600 text-white border-teal-600 shadow-sm' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'}`}
+            >
+              <ShieldAlert size={13} /> Moderation <span className="px-1.5 py-0.2 bg-rose-100 text-rose-800 rounded-full text-[10px]">{countModeration}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Filter Controls Row */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 pb-4">
+          <div className="flex items-center gap-2 overflow-x-auto">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+              <Filter size={11} /> Filter:
+            </span>
+            {['All', 'Vendor Approval', 'Refund Request', 'Moderation'].map(cat => (
+              <button key={cat} onClick={() => setActionCategory(cat)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${actionCategory === cat ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                {cat}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Priority:</span>
+            <select value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)}
+              className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-[11px] font-bold text-slate-700 cursor-pointer focus:outline-none focus:border-teal-500">
+              <option value="All">All Priorities</option>
+              <option value="Urgent">Urgent Only ({countUrgent})</option>
+              <option value="High">High Priority</option>
+              <option value="Medium">Medium Priority</option>
+              <option value="Normal">Normal</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Pending Action Cards Grid */}
+        {filteredActions.length === 0 ? (
+          <div className="py-10 text-center bg-white rounded-xl border border-slate-200/70 p-6">
+            <CheckCircle2 className="mx-auto text-emerald-500 mb-2" size={36} />
+            <h4 className="text-sm font-bold text-slate-800">All Action Items Clear!</h4>
+            <p className="text-xs text-slate-500 mt-1">There are currently no pending tasks under this filter.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredActions.map(item => (
+              <div 
+                key={item.id}
+                onClick={() => { setSelectedAction(item); setActionModalOpen(true); }}
+                className="bg-white rounded-xl border border-slate-200/90 hover:border-teal-400 p-4 shadow-xs hover:shadow-md transition-all duration-200 flex flex-col justify-between cursor-pointer group relative"
+              >
+                <div>
+                  {/* Top Badge Line */}
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
+                      {item.type}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${priorityBadge(item.priority)}`}>
+                        {item.priority}
+                      </span>
+                      <span className="text-[10px] font-semibold text-slate-400">{item.time}</span>
+                    </div>
+                  </div>
+
+                  {/* Title & Subtitle */}
+                  <h4 className="text-[13px] font-bold text-slate-900 group-hover:text-teal-600 transition leading-snug">
+                    {item.title}
+                  </h4>
+                  <p className="text-[11px] font-semibold text-slate-500 mt-0.5">
+                    {item.subtitle}
+                  </p>
+
+                  {/* Snippet / Details */}
+                  <p className="text-[11.5px] text-slate-600 mt-2 line-clamp-2 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                    {item.details}
+                  </p>
+                </div>
+
+                {/* Quick Action Button Bar */}
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setSelectedAction(item); setActionModalOpen(true); }}
+                    className="text-[11px] font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1 transition"
+                  >
+                    <Eye size={13} /> Quick Review
+                  </button>
+
+                  <div className="flex items-center gap-1.5">
+                    <button 
+                      onClick={(e) => handleRejectAction(item, e)}
+                      className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                      title="Reject or Reject with Note"
+                    >
+                      <X size={12} /> Reject
+                    </button>
+                    <button 
+                      onClick={(e) => handleApproveAction(item, e)}
+                      className="px-3 py-1 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-[11px] font-black transition flex items-center gap-1 shadow-xs cursor-pointer"
+                      title="Approve immediately"
+                    >
+                      <Check size={13} /> Approve
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── KPI Cards (Interactive) ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {kpiCards.map((k, i) => (
-          <div key={i} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-0.5 transition-transform duration-200 cursor-pointer">
+          <div key={i} 
+            onClick={() => k.path && navigate(k.path)}
+            className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:-translate-y-0.5 hover:border-teal-200 transition-all duration-200 cursor-pointer group">
             <div className="flex items-center justify-between mb-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: k.color + '18' }}>
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform" style={{ background: k.color + '18' }}>
                 <k.icon size={17} style={{ color: k.color }} />
               </div>
               <span className={`flex items-center gap-0.5 text-[11px] font-bold px-2 py-0.5 rounded-full ${k.up ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
@@ -162,8 +537,11 @@ export function AdminDashboard() {
               </span>
             </div>
             <p className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-widest mb-0.5">{k.title}</p>
-            <p className="text-[22px] font-black text-slate-900 leading-none">{k.value}</p>
-            <p className="text-[10px] text-slate-400 mt-0.5 mb-3">{k.label}</p>
+            <p className="text-[22px] font-black text-slate-900 leading-none group-hover:text-teal-600 transition">{k.value}</p>
+            <div className="flex items-center justify-between text-[10px] text-slate-400 mt-0.5 mb-3">
+              <span>{k.label}</span>
+              <span className="text-teal-600 font-bold opacity-0 group-hover:opacity-100 transition flex items-center gap-0.5">View <ChevronRight size={10}/></span>
+            </div>
             {/* Sparkline */}
             <ResponsiveContainer width="100%" height={40}>
               <AreaChart data={k.data.map((v,j)=>({ v, j }))} margin={{ top:2, right:0, left:0, bottom:0 }}>
@@ -321,7 +699,9 @@ export function AdminDashboard() {
             <h3 className="text-[13px] font-black text-slate-800 uppercase tracking-wide">Top Performing Partners</h3>
             <p className="text-[11px] text-slate-400 mt-0.5">Ranked by monthly gross billing</p>
           </div>
-          <span className="text-[11px] font-bold text-teal-500 hover:text-teal-700 cursor-pointer flex items-center gap-0.5 transition">
+          <span 
+            onClick={() => navigate('/admin/vendors')}
+            className="text-[11px] font-bold text-teal-500 hover:text-teal-700 cursor-pointer flex items-center gap-0.5 transition">
             View All <ChevronRight size={12}/>
           </span>
         </div>
@@ -370,6 +750,98 @@ export function AdminDashboard() {
           </table>
         </div>
       </div>
+
+      {/* ── Action Review Modal ── */}
+      {selectedAction && (
+        <Modal 
+          isOpen={actionModalOpen} 
+          onClose={() => setActionModalOpen(false)} 
+          title={`Action Review: ${selectedAction.category}`}
+          footer={(
+            <>
+              <button 
+                onClick={() => {
+                  if (selectedAction.navPath) {
+                    navigate(selectedAction.navPath);
+                    setActionModalOpen(false);
+                  }
+                }}
+                className="px-3.5 py-2 border border-slate-200 text-xs font-bold rounded-xl text-slate-600 hover:bg-slate-100 flex items-center gap-1.5 transition cursor-pointer mr-auto"
+              >
+                Go to Full Page <ExternalLink size={13} />
+              </button>
+
+              <button 
+                onClick={confirmRejectAction}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+              >
+                Confirm Reject / Dismiss
+              </button>
+
+              <button 
+                onClick={() => handleApproveAction(selectedAction)}
+                className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-black rounded-xl flex items-center gap-1.5 transition cursor-pointer shadow-md"
+              >
+                Approve & Resolve Now <Check size={14} />
+              </button>
+            </>
+          )}
+        >
+          <div className="space-y-4 text-slate-700">
+            <div className="flex items-center justify-between bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+              <div>
+                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Target Item ID</span>
+                <p className="text-xs font-bold text-slate-900">{selectedAction.targetId || selectedAction.id}</p>
+              </div>
+              <div>
+                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Priority</span>
+                <p><span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${priorityBadge(selectedAction.priority)}`}>{selectedAction.priority}</span></p>
+              </div>
+              <div>
+                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Submitted</span>
+                <p className="text-xs font-semibold text-slate-700">{selectedAction.time}</p>
+              </div>
+            </div>
+
+            <div>
+              <h4 className="text-sm font-bold text-slate-900">{selectedAction.title}</h4>
+              <p className="text-xs text-slate-500 font-semibold">{selectedAction.subtitle}</p>
+            </div>
+
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Details & Context</span>
+              <p className="text-xs text-slate-800 leading-relaxed font-medium">{selectedAction.details}</p>
+
+              {selectedAction.docName && (
+                <div className="mt-3 pt-2 border-t border-slate-200/80 flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-600 flex items-center gap-1.5">
+                    <FileText size={14} className="text-teal-600" /> Attached File: {selectedAction.docName}
+                  </span>
+                  <span className="text-teal-600 font-bold hover:underline cursor-pointer">Preview Doc</span>
+                </div>
+              )}
+
+              {selectedAction.applicant && (
+                <div className="mt-2 text-xs text-slate-600">
+                  <span className="font-bold">Applicant / User:</span> {selectedAction.applicant}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                Admin Note / Rejection Reason (Optional for Reject)
+              </label>
+              <textarea 
+                value={actionReason}
+                onChange={e => setActionReason(e.target.value)}
+                placeholder="Enter feedback note if rejecting or requesting changes..."
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-teal-500 resize-none min-h-[70px]"
+              />
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* ── Broadcast Modal ── */}
       <Modal isOpen={modalOpen} onClose={() => setModalOpen(false)} title="Broadcast System Warning"
