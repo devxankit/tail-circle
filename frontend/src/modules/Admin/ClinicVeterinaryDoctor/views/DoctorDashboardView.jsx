@@ -16,8 +16,10 @@ const typeBadge = {
   'Clinic Visit':       'bg-white text-slate-600 border-slate-200',
 };
 
+import VerificationBanner from '../../components/VerificationBanner';
+
 export function DoctorDashboardView({ onNavigate }) {
-  const { doctorAppointments, doctorPatients } = useVendor();
+  const { profile, doctorAppointments, doctorPatients } = useVendor();
 
   const today = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const todayAppointments = doctorAppointments.filter(a => a.date === today);
@@ -30,6 +32,10 @@ export function DoctorDashboardView({ onNavigate }) {
 
   return (
     <div className="space-y-6">
+      <VerificationBanner
+        approvalStatus={profile?.approvalStatus || 'pending'}
+        onOpenKyc={() => onNavigate('vet_profile')}
+      />
 
       {/* ── KPI CARDS (Minimal) ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">

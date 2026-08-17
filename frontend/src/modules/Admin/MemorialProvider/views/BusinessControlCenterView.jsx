@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useMemorialProvider } from '../context/MemorialProviderContext';
-import { updateVendorProfile, changeVendorPassword } from '../../../../services/vendor';
+import { updateVendorProfile, changeVendorPassword, uploadVendorFile, addVendorDocument, removeVendorDocument } from '../../../../services/vendor';
 import {
   Building2, ShieldCheck, Mail, Phone,
-  MapPin, Upload, CheckCircle, Loader2
+  MapPin, Upload, CheckCircle, Loader2, CreditCard, Trash2
 } from 'lucide-react';
+import { cn } from '../../../user/utils/cn';
 
 export function BusinessControlCenterView() {
   const { profile, updateProfile, refresh } = useMemorialProvider();
@@ -16,10 +17,50 @@ export function BusinessControlCenterView() {
   const [saveError, setSaveError] = useState('');
   const logoInputRef = React.useRef(null);
 
+  // Bank & GST details state
+  const [bankData, setBankData] = useState({
+    bankName: profile?.bank?.bankName || '',
+    accountHolder: profile?.bank?.accountHolder || profile?.businessName || '',
+    accountNumber: '',
+    ifsc: profile?.bank?.ifsc || '',
+    accountType: profile?.bank?.accountType || 'Saving',
+  });
+  const [gstData, setGstData] = useState({
+    hasGst: profile?.gst?.hasGst || false,
+    number: profile?.gst?.number || '',
+  });
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [docKind, setDocKind] = useState('license');
+
   const [passwords, setPasswords] = useState({ current: '', next: '' });
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordDone, setPasswordDone] = useState(false);
   const [passwordError, setPasswordError] = useState('');
+
+  const handleDocUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = null;
+    if (!file) return;
+    setUploadingDoc(true);
+    try {
+      const url = await uploadVendorFile(file, 'memorial-kyc');
+      await addVendorDocument(docKind, url);
+      await refresh();
+    } catch (err) {
+      setSaveError(err?.response?.data?.message || 'Could not upload document');
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
+  const handleDocRemove = async (index) => {
+    try {
+      await removeVendorDocument(index);
+      await refresh();
+    } catch (err) {
+      setSaveError(err?.response?.data?.message || 'Could not remove document');
+    }
+  };
 
   const handleLogoUpload = (e) => {
     const file = e.target.files[0];
@@ -44,6 +85,8 @@ export function BusinessControlCenterView() {
         businessName: formData.businessName,
         phone: formData.phone,
         address: formData.address,
+        bank: bankData,
+        gst: gstData,
       });
       updateProfile({ businessName: updated.businessName, phone: updated.phone, address: updated.address });
       await refresh();
@@ -178,6 +221,89 @@ export function BusinessControlCenterView() {
                 <div className="relative">
                   <MapPin size={16} className="absolute left-4 top-4 text-slate-400" />
                   <textarea name="address" value={formData.address} onChange={handleChange} rows="2" className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"></textarea>
+                </div>
+              </div>
+
+              {/* BANK & KYC CARD */}
+              <div className="pt-6 border-t border-slate-100 space-y-6">
+                <div>
+                  <h3 className="text-base font-black text-slate-900 mb-1 flex items-center gap-2">
+                    <CreditCard size={18} className="text-slate-700" /> Bank Account & Payout Details
+                  </h3>
+                  <p className="text-xs font-semibold text-slate-500">Required to receive payouts for memorial packages and remembrance services.</p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Bank Name</label>
+                    <input type="text" placeholder="e.g. ICICI Bank" value={bankData.bankName} onChange={e => setBankData({...bankData, bankName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-900" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Account Holder Name</label>
+                    <input type="text" placeholder="Name on account" value={bankData.accountHolder} onChange={e => setBankData({...bankData, accountHolder: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-900" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Account Number</label>
+                    <input type="text" placeholder="Enter account number" value={bankData.accountNumber} onChange={e => setBankData({...bankData, accountNumber: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-900" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">IFSC Code</label>
+                    <input type="text" placeholder="ICIC0001234" value={bankData.ifsc} onChange={e => setBankData({...bankData, ifsc: e.target.value.toUpperCase()})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-900" />
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 flex items-center gap-4">
+                  <label className="flex items-center gap-2 text-sm font-bold text-slate-700 cursor-pointer">
+                    <input type="checkbox" checked={gstData.hasGst} onChange={e => setGstData({...gstData, hasGst: e.target.checked})} className="accent-slate-900 w-4 h-4" />
+                    GSTIN Registered
+                  </label>
+                  {gstData.hasGst && (
+                    <input type="text" placeholder="GSTIN Number" value={gstData.number} onChange={e => setGstData({...gstData, number: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 flex-1" />
+                  )}
+                </div>
+
+                {/* KYC DOCUMENTS */}
+                <div className="pt-4 border-t border-slate-100 space-y-3">
+                  <h4 className="text-sm font-black text-slate-900">Required KYC Documents</h4>
+                  <p className="text-xs font-semibold text-slate-500">Upload Memorial Business Permit & Owner ID for Super Admin verification.</p>
+
+                  <div className="space-y-2">
+                    {(profile.documents || []).map((doc, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                        <div className="flex items-center gap-3">
+                          <span className="font-bold text-xs text-slate-900 uppercase tracking-wide">
+                            {doc.kind === 'license' ? 'Memorial Permit' : doc.kind === 'clinic_auth' ? 'Premises Auth' : doc.kind === 'owner_id' ? 'Owner ID' : doc.kind === 'gst' ? 'GST Certificate' : doc.kind}
+                          </span>
+                          <a href={doc.url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-blue-600 hover:underline truncate max-w-[160px]">View File</a>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className={cn(
+                            "px-2 py-0.5 text-[10px] font-extrabold uppercase rounded",
+                            doc.status === 'Verified' ? "bg-emerald-100 text-emerald-800" : doc.status === 'Rejected' ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"
+                          )}>
+                            {doc.status || 'Pending'}
+                          </span>
+                          <button onClick={() => handleDocRemove(idx)} className="text-slate-400 hover:text-red-600 transition">
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center gap-3 pt-2">
+                    <select value={docKind} onChange={e => setDocKind(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800">
+                      <option value="license">Memorial Centre Business Permit</option>
+                      <option value="clinic_auth">Premises / Crematorium Authorization</option>
+                      <option value="owner_id">Owner ID Proof (Aadhaar/PAN)</option>
+                      <option value="gst">GST Registration Certificate</option>
+                    </select>
+
+                    <input type="file" id="memorialDocInput" accept="image/*,application/pdf" className="hidden" onChange={handleDocUpload} />
+                    <button onClick={() => document.getElementById('memorialDocInput').click()} disabled={uploadingDoc} className="px-4 py-2 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition flex items-center gap-2 disabled:opacity-50">
+                      {uploadingDoc ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />} {uploadingDoc ? 'Uploading...' : 'Upload'}
+                    </button>
+                  </div>
                 </div>
               </div>
 

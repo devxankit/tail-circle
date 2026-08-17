@@ -1,9 +1,4 @@
-import React, { useState } from 'react';
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Utensils, FileText, CalendarCheck, Truck, ListChecks, HeartPulse, Package, Tag, Settings, LogOut, Bell, Search, Map, Wallet, Menu, Users, Star, MessageSquare, CreditCard, Shield, Activity, Receipt, Bookmark, MapPin } from 'lucide-react';
-import { useMealProvider } from './context/MealProviderContext';
-import { vendorLogout, updateVendorProfile } from '../../../services/vendor';
-import { cn } from '../../user/utils/cn';
+import VerificationBanner from '../components/VerificationBanner';
 
 export function MealProviderLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -158,6 +153,10 @@ export function MealProviderLayout() {
 
         {/* Content Outlet */}
         <main className="flex-1 p-6 md:p-8 overflow-y-auto custom-scrollbar">
+          <VerificationBanner
+            approvalStatus={profile?.approvalStatus || 'pending'}
+            kycPath="/vendor/meal-provider/settings"
+          />
           <Outlet />
         </main>
       </div>

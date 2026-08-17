@@ -191,16 +191,15 @@ async function createVetProfile(user, payload) {
   });
 }
 
-/** Approval-gated: only approved vendors receive tokens. */
+/** Approval-gated: approved and pending vendors receive tokens. */
 function assertApproved(profile) {
   if (!profile) throw ApiError.forbidden('No vendor profile found');
-  if (profile.approvalStatus === 'approved') return;
+  if (profile.approvalStatus === 'approved' || profile.approvalStatus === 'pending') return;
   const messages = {
-    pending: 'Your application is under review. We will email you within 24–48 hours.',
     rejected: 'Your vendor application was rejected.',
     suspended: 'Your vendor account is suspended. Contact support.',
   };
-  throw new ApiError(403, messages[profile.approvalStatus] || 'Vendor not approved', {
+  throw new ApiError(403, messages[profile.approvalStatus] || 'Vendor account inactive', {
     details: { approvalStatus: profile.approvalStatus },
   });
 }

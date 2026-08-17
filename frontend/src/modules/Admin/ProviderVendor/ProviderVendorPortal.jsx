@@ -21,6 +21,8 @@ import { fetchVendorProfile, addVendorDocument, removeVendorDocument, uploadVend
  * Everything is scoped server-side to the vendor's own Provider, so this screen
  * never sends or receives another vendor's data.
  */
+import VerificationBanner from '../components/VerificationBanner';
+
 export function ProviderVendorPortal({ vertical = 'grooming' }) {
   const copy = VERTICAL_COPY[vertical] || VERTICAL_COPY.grooming;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -76,6 +78,10 @@ export function ProviderVendorPortal({ vertical = 'grooming' }) {
 
   return (
     <div className="p-6 space-y-6">
+      <VerificationBanner
+        approvalStatus={summary?.approvalStatus || 'pending'}
+        onOpenKyc={() => go('profile')}
+      />
       <div>
         <h1 className="text-2xl font-black text-gray-900">{summary?.providerName || copy.title}</h1>
         <p className="text-sm text-gray-500 mt-1">
@@ -496,10 +502,35 @@ function Profile({ vertical, copy, onChanged }) {
       .finally(() => setLoading(false));
   }, [vertical]);
 
+  const [bankData, setBankData] = useState({
+    bankName: '',
+    accountHolder: '',
+    accountNumber: '',
+    ifsc: '',
+  });
+
+  useEffect(() => {
+    fetchVendorProfile()
+      .then((vp) => {
+        if (vp?.bank) {
+          setBankData({
+            bankName: vp.bank.bankName || '',
+            accountHolder: vp.bank.accountHolder || vp.businessName || '',
+            accountNumber: '',
+            ifsc: vp.bank.ifsc || '',
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const save = async () => {
     setBusy(true);
     setErr('');
     try {
+      if (bankData.bankName || bankData.accountNumber) {
+        await updateVendorProfile({ bank: bankData });
+      }
       setP(await updateProviderProfile(vertical, {
         name: p.name,
         about: p.about,
@@ -560,6 +591,18 @@ function Profile({ vertical, copy, onChanged }) {
           <input type="checkbox" checked={p.isOpen ?? true} onChange={(e) => setP({ ...p, isOpen: e.target.checked })} className="rounded" />
           Currently accepting bookings
         </label>
+      </div>
+
+      {/* Bank Account Details */}
+      <div className="border-t border-gray-100 pt-4">
+        <h3 className="font-bold text-gray-900 text-sm mb-1">Bank Account & Payout Details</h3>
+        <p className="text-xs text-gray-500 mb-3">Required to receive payouts for bookings.</p>
+        <div className="grid md:grid-cols-2 gap-3">
+          <Input label="Bank Name" value={bankData.bankName} onChange={(v) => setBankData({ ...bankData, bankName: v })} />
+          <Input label="Account Holder Name" value={bankData.accountHolder} onChange={(v) => setBankData({ ...bankData, accountHolder: v })} />
+          <Input label="Account Number" value={bankData.accountNumber} onChange={(v) => setBankData({ ...bankData, accountNumber: v })} />
+          <Input label="IFSC Code" value={bankData.ifsc} onChange={(v) => setBankData({ ...bankData, ifsc: v.toUpperCase() })} />
+        </div>
       </div>
 
       <VendorDocuments />

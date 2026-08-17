@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useMealProvider } from '../context/MealProviderContext';
-import { updateVendorProfile, changeVendorPassword, uploadVendorFile } from '../../../../services/vendor';
-import { Building2, ShieldCheck, Upload, Save, CheckCircle, Loader2, Store } from 'lucide-react';
+import { updateVendorProfile, changeVendorPassword, uploadVendorFile, addVendorDocument, removeVendorDocument } from '../../../../services/vendor';
+import { Building2, ShieldCheck, Upload, Save, CheckCircle, Loader2, Store, CreditCard, Trash2 } from 'lucide-react';
 import { cn } from '../../../user/utils/cn';
 
 export function BusinessControlCenterView() {
@@ -18,6 +18,21 @@ export function BusinessControlCenterView() {
   const [codEnabled, setCodEnabled] = useState(profile?.policies?.codEnabled ?? true);
   const [returnsEnabled, setReturnsEnabled] = useState(profile?.policies?.returnsEnabled ?? true);
   const [minOrderValue, setMinOrderValue] = useState(profile?.policies?.minOrderValue ?? 0);
+
+  // Bank & GST state
+  const [bankData, setBankData] = useState({
+    bankName: profile?.bank?.bankName || '',
+    accountHolder: profile?.bank?.accountHolder || profile?.businessName || '',
+    accountNumber: '',
+    ifsc: profile?.bank?.ifsc || '',
+    accountType: profile?.bank?.accountType || 'Saving',
+  });
+  const [gstData, setGstData] = useState({
+    hasGst: profile?.gst?.hasGst || false,
+    number: profile?.gst?.number || '',
+  });
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [docKind, setDocKind] = useState('license');
 
   // Re-sync form state if profile updates asynchronously
   React.useEffect(() => {
@@ -57,9 +72,35 @@ export function BusinessControlCenterView() {
 
   const navItems = [
     { id: 'profile', label: 'Business Profile', icon: <Building2 size={18} /> },
+    { id: 'bank_kyc', label: 'Bank & KYC Verification', icon: <CreditCard size={18} /> },
     { id: 'settings', label: 'Kitchen & Policies', icon: <Store size={18} /> },
     { id: 'security', label: 'Security & Access', icon: <ShieldCheck size={18} /> },
   ];
+
+  const handleDocUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = null;
+    if (!file) return;
+    setUploadingDoc(true);
+    try {
+      const url = await uploadVendorFile(file, 'meal-kyc');
+      await addVendorDocument(docKind, url);
+      await refresh();
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Could not upload document');
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
+  const handleDocRemove = async (index) => {
+    try {
+      await removeVendorDocument(index);
+      await refresh();
+    } catch (err) {
+      setError(err?.response?.data?.message || 'Could not remove document');
+    }
+  };
 
   const handleLogoUpload = async (e) => {
     const file = e.target.files[0];
@@ -82,6 +123,8 @@ export function BusinessControlCenterView() {
     try {
       const updated = await updateVendorProfile({
         ...formData,
+        bank: bankData,
+        gst: gstData,
         policies: { codEnabled, returnsEnabled, minOrderValue },
       });
       updateProfile({ businessName: updated.businessName, phone: updated.phone, address: updated.address, logo: updated.logo });
@@ -230,6 +273,94 @@ export function BusinessControlCenterView() {
                     onChange={e => setFormData({...formData, address: e.target.value})} 
                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:border-[#F87B68] focus:ring-2 focus:ring-[#F87B68]/20 transition" 
                   />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* BANK & KYC VERIFICATION TAB */}
+          {activeTab === 'bank_kyc' && (
+            <div className="p-8 space-y-8 animate-in fade-in max-w-2xl">
+              <div>
+                <h3 className="text-lg font-black text-gray-900 mb-1">Bank Account & Payout Details</h3>
+                <p className="text-xs font-semibold text-gray-500 mb-4">Required to receive meal subscription payouts.</p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Bank Name</label>
+                    <input type="text" placeholder="e.g. HDFC Bank" value={bankData.bankName} onChange={e => setBankData({...bankData, bankName: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Account Holder Name</label>
+                    <input type="text" placeholder="Full name on bank account" value={bankData.accountHolder} onChange={e => setBankData({...bankData, accountHolder: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Account Number</label>
+                    <input type="text" placeholder="Enter account number" value={bankData.accountNumber} onChange={e => setBankData({...bankData, accountNumber: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-900" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">IFSC Code</label>
+                    <input type="text" placeholder="HDFC0001234" value={bankData.ifsc} onChange={e => setBankData({...bankData, ifsc: e.target.value.toUpperCase()})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-900" />
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-4">
+                  <label className="flex items-center gap-2 text-sm font-bold text-gray-700 cursor-pointer">
+                    <input type="checkbox" checked={gstData.hasGst} onChange={e => setGstData({...gstData, hasGst: e.target.checked})} className="accent-gray-900 w-4 h-4" />
+                    GSTIN Registered
+                  </label>
+                  {gstData.hasGst && (
+                    <input type="text" placeholder="GSTIN Number (15 digits)" value={gstData.number} onChange={e => setGstData({...gstData, number: e.target.value})} className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm font-bold text-gray-900 flex-1" />
+                  )}
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-gray-100 space-y-4">
+                <div>
+                  <h3 className="text-lg font-black text-gray-900">Required KYC Documents</h3>
+                  <p className="text-xs font-semibold text-gray-500">Upload FSSAI License, Kitchen Permit & Owner ID for Super Admin approval.</p>
+                </div>
+
+                <div className="space-y-3">
+                  {(profile.documents || []).map((doc, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-3.5 bg-gray-50 border border-gray-200 rounded-xl">
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-sm text-gray-900 uppercase tracking-wide">
+                          {doc.kind === 'license' ? 'FSSAI / Food License' : doc.kind === 'clinic_auth' ? 'Kitchen Permit' : doc.kind === 'owner_id' ? 'Owner ID Proof' : doc.kind === 'gst' ? 'GST Certificate' : doc.kind}
+                        </span>
+                        <a href={doc.url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-blue-600 hover:underline truncate max-w-[180px]">View Document</a>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={cn(
+                          "px-2.5 py-1 text-[10px] font-extrabold uppercase rounded-md",
+                          doc.status === 'Verified' ? "bg-emerald-100 text-emerald-800" : doc.status === 'Rejected' ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"
+                        )}>
+                          {doc.status || 'Pending'}
+                        </span>
+                        <button onClick={() => handleDocRemove(idx)} className="text-gray-400 hover:text-red-600 transition">
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {(!profile.documents || profile.documents.length === 0) && (
+                    <p className="text-xs text-gray-400 font-medium py-2">No KYC documents uploaded yet.</p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3 pt-2">
+                  <select value={docKind} onChange={e => setDocKind(e.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-800">
+                    <option value="license">FSSAI Food License</option>
+                    <option value="clinic_auth">Kitchen Premises / Sanitary Permit</option>
+                    <option value="owner_id">Owner ID Proof (Aadhaar/PAN)</option>
+                    <option value="gst">GST Registration Certificate</option>
+                  </select>
+
+                  <input type="file" id="mealDocInput" accept="image/*,application/pdf" className="hidden" onChange={handleDocUpload} />
+                  <button onClick={() => document.getElementById('mealDocInput').click()} disabled={uploadingDoc} className="px-5 py-2.5 bg-gray-900 hover:bg-black text-white text-xs font-bold rounded-xl transition flex items-center gap-2 disabled:opacity-50">
+                    {uploadingDoc ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {uploadingDoc ? 'Uploading...' : 'Upload File'}
+                  </button>
                 </div>
               </div>
             </div>

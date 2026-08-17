@@ -5,10 +5,12 @@ import { vendorLogout } from '../../../services/vendor';
 import {
   LayoutDashboard, HeartHandshake, CalendarDays, Users,
   Leaf, Gift, FileText, MessageSquare,
-  Wallet, Settings, LogOut, Bell, Search, Menu, CheckCircle, AlertCircle
+  Wallet, Settings, LogOut, Bell, Search, Menu, CheckCircle, AlertCircle,
+  Package, ImageIcon, Heart, Star
 } from 'lucide-react';
 import { cn } from '../../user/utils/cn';
 import { CreateRequestModal } from './components/CreateRequestModal';
+import VerificationBanner from '../components/VerificationBanner';
 
 export function MemorialProviderLayout() {
   const { profile, notifications, services, addons, addRequest } = useMemorialProvider();
@@ -33,22 +35,22 @@ export function MemorialProviderLayout() {
       items: [
         { name: 'Dashboard', path: '/vendor/memorial-provider', icon: LayoutDashboard, exact: true },
         { name: 'Service Requests', path: '/vendor/memorial-provider/requests', icon: HeartHandshake },
-        { name: 'Schedule Calendar', path: '/vendor/memorial-provider/calendar', icon: CalendarDays },
-        { name: 'Team Assignment', path: '/vendor/memorial-provider/team', icon: Users },
+        { name: 'Memorial Bookings', path: '/vendor/memorial-provider/bookings', icon: CalendarDays },
+        { name: 'Bereavement Consultations', path: '/vendor/memorial-provider/consultations', icon: Users },
       ]
     },
     {
-      title: 'SERVICE MANAGEMENT',
+      title: 'MEMORIAL MANAGEMENT',
       items: [
-        { name: 'Memorial Services', path: '/vendor/memorial-provider/services', icon: Leaf },
-        { name: 'Memory Add-ons', path: '/vendor/memorial-provider/addons', icon: Gift },
-        { name: 'Service Proofs', path: '/vendor/memorial-provider/proofs', icon: FileText },
+        { name: 'Packages & Add-ons', path: '/vendor/memorial-provider/packages', icon: Package },
+        { name: 'Memorial Tributes Gallery', path: '/vendor/memorial-provider/tributes', icon: ImageIcon },
+        { name: 'Remembrance Products', path: '/vendor/memorial-provider/products', icon: Heart },
       ]
     },
     {
       title: 'MANAGEMENT',
       items: [
-        { name: 'Customer Support', path: '/vendor/memorial-provider/support', icon: MessageSquare },
+        { name: 'Customer Tributes & Feedback', path: '/vendor/memorial-provider/feedback', icon: Star },
         { name: 'Finance Center', path: '/vendor/memorial-provider/finance', icon: Wallet },
         { name: 'Business Control Center', path: '/vendor/memorial-provider/settings', icon: Settings },
       ]
@@ -94,17 +96,13 @@ export function MemorialProviderLayout() {
                   return (
                     <div key={item.name} className="relative group">
                       <NavLink
-                        to={isVerified ? item.path : '#'}
-                        onClick={(e) => {
-                          if (!isVerified) e.preventDefault();
-                          setIsMobileMenuOpen(false);
-                        }}
+                        to={item.path}
+                        onClick={() => setIsMobileMenuOpen(false)}
                         className={cn(
                           "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group text-sm font-semibold",
                           isActive 
                             ? "bg-white text-black font-bold shadow-md shadow-white/10" 
-                            : "hover:bg-neutral-900 hover:text-white text-neutral-400",
-                          !isVerified && "opacity-50 cursor-not-allowed hover:bg-transparent hover:text-slate-300"
+                            : "hover:bg-neutral-900 hover:text-white text-neutral-400"
                         )}
                       >
                         <Icon size={18} className={cn("shrink-0 transition-transform", isActive ? "scale-110 text-black" : "group-hover:scale-110 text-neutral-400 group-hover:text-white")} />
@@ -256,43 +254,13 @@ export function MemorialProviderLayout() {
 
         {/* Scrollable Content Area */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10 relative custom-scrollbar">
-          {!isVerified ? (
-            <div className="absolute inset-0 bg-[#FAF7F2] z-20 flex flex-col items-center justify-center p-6 text-center animate-in fade-in zoom-in duration-500">
-              <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
-                <AlertCircle size={40} className="text-slate-500" />
-              </div>
-              <h2 className="text-3xl font-black text-slate-900 mb-2">Account Pending Verification</h2>
-              <p className="text-slate-500 font-medium max-w-md mb-8">
-                Your Memorial Provider account is currently under review by our admin team. You will receive an email once approved.
-              </p>
-              
-              <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm w-full max-w-md text-left mb-8">
-                <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider mb-4 border-b border-slate-100 pb-3">Status Checklist</h3>
-                <ul className="space-y-4">
-                  <li className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-slate-600">Business Details Submitted</span>
-                    <CheckCircle size={18} className="text-emerald-500" />
-                  </li>
-                  <li className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-slate-600">Identity Documents</span>
-                    <CheckCircle size={18} className="text-emerald-500" />
-                  </li>
-                  <li className="flex items-center justify-between">
-                    <span className="text-sm font-semibold text-slate-900">Admin Approval</span>
-                    <span className="px-2 py-1 bg-slate-100 text-slate-700 text-[10px] font-bold uppercase rounded border border-slate-200 animate-pulse">Pending</span>
-                  </li>
-                </ul>
-              </div>
-
-              <button onClick={handleLogout} className="px-6 py-3 bg-slate-900 hover:bg-black text-white rounded-xl font-bold text-sm transition shadow-lg cursor-pointer">
-                Log Out
-              </button>
-            </div>
-          ) : (
-            <div className="max-w-7xl mx-auto min-h-full">
-              <Outlet />
-            </div>
-          )}
+          <div className="max-w-7xl mx-auto min-h-full">
+            <VerificationBanner
+              approvalStatus={profile?.approvalStatus || 'pending'}
+              kycPath="/vendor/memorial-provider/settings"
+            />
+            <Outlet />
+          </div>
         </div>
 
       </main>

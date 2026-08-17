@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { ApiError } from '../../utils/ApiError.js';
-import { maskAccount } from '../../utils/fieldCrypto.js';
+import { maskAccount, encryptField } from '../../utils/fieldCrypto.js';
 import { Order } from '../order/order.model.js';
 import { Product } from '../shop/product.model.js';
 import { VendorProfile, VendorLedgerEntry, Payout } from './vendor.models.js';
@@ -28,9 +28,10 @@ export function serializeProfile(profile) {
     logo: profile.logo,
     online: profile.online,
     approvalStatus: profile.approvalStatus,
+    rejectionReason: profile.rejectionReason,
     commissionRate: profile.commissionRate,
     rating: profile.rating,
-    gst: profile.gst,
+    gst: profile.gst || { hasGst: false, number: '' },
     documents: (profile.documents || []).map((d) => ({
       kind: d.kind, url: d.url, status: d.status, verifiedAt: d.verifiedAt,
     })),
@@ -46,6 +47,7 @@ export function serializeProfile(profile) {
       accountType: profile.bank?.accountType || 'Saving',
       accountMasked: maskAccount(profile.bank?.accountNumberEnc),
     },
+    createdAt: profile.createdAt,
   };
 }
 
@@ -55,6 +57,15 @@ export async function updateVendorProfile(userId, patch) {
   const profile = await getVendorProfile(userId);
   for (const key of EDITABLE) if (key in patch) profile[key] = patch[key];
   if (patch.gst) profile.gst = { hasGst: Boolean(patch.gst.hasGst), number: patch.gst.number || '' };
+  if (patch.bank) {
+    profile.bank = {
+      bankName: patch.bank.bankName ?? (profile.bank?.bankName || ''),
+      accountHolder: patch.bank.accountHolder ?? (profile.bank?.accountHolder || profile.businessName),
+      accountNumberEnc: patch.bank.accountNumber ? encryptField(patch.bank.accountNumber) : (profile.bank?.accountNumberEnc || null),
+      ifsc: patch.bank.ifsc ?? (profile.bank?.ifsc || ''),
+      accountType: patch.bank.accountType ?? (profile.bank?.accountType || 'Saving'),
+    };
+  }
   if (patch.policies) {
     profile.policies = {
       codEnabled: patch.policies.codEnabled !== undefined ? Boolean(patch.policies.codEnabled) : (profile.policies?.codEnabled ?? true),
