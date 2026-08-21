@@ -126,13 +126,37 @@ const NEXT = {
   out_for_delivery: ['delivered'],
 };
 
-export function toVendorOrder(o) {
+/**
+ * Orders this seller has a stake in.
+ *
+ * Matches on `items.vendorId`, not the order-level `vendorId`: an order can mix
+ * this shop's goods with the platform's own, and the order-level field is only
+ * set when a single seller owns every line. Querying the order-level field
+ * alone (as this did) returned nothing at all, because checkout never set it.
+ */
+const ownedByVendor = (vendorId) => ({ 'items.vendorId': vendorId });
+
+/** Only this seller's lines, and what they are worth in paise. */
+function vendorLines(order, vendorId) {
+  const mine = (order.items || []).filter((i) => String(i.vendorId || '') === String(vendorId));
+  return { items: mine, grossPaise: Math.round(mine.reduce((sum, i) => sum + i.total, 0) * 100) };
+}
+
+export function toVendorOrder(o, vendorId) {
+  // A seller sees their own lines and their own revenue, not the whole basket's
+  // — showing the order total would overstate what a mixed order earned them.
+  const mine = vendorId ? vendorLines(o, vendorId) : null;
   return {
     id: o.orderNo,
     _id: String(o._id),
     customer: o.addressSnapshot?.fullName || 'Customer',
-    products: o.items?.length || 0,
-    total: Math.round((o.amounts?.total || 0) / 100),
+    products: mine ? mine.items.length : o.items?.length || 0,
+    items: (mine ? mine.items : o.items || []).map((i) => ({
+      name: i.name, size: i.size, qty: i.qty, total: i.total,
+    })),
+    total: Math.round((mine ? mine.grossPaise : o.amounts?.total || 0) / 100),
+    orderTotal: Math.round((o.amounts?.total || 0) / 100),
+    isSharedOrder: Boolean(mine && mine.items.length !== (o.items || []).length),
     paymentStatus: o.paymentMethod === 'cod' ? 'COD' : 'Paid',
     status: STATUS_TO_MOCK[o.status] || o.status,
     rawStatus: o.status,
@@ -142,14 +166,14 @@ export function toVendorOrder(o) {
 }
 
 export async function listVendorOrders(vendorId) {
-  const orders = await Order.find({ vendorId, status: { $ne: 'pending_payment' } })
+  const orders = await Order.find({ ...ownedByVendor(vendorId), status: { $ne: 'pending_payment' } })
     .sort({ createdAt: -1 })
     .limit(200);
-  return orders.map(toVendorOrder);
+  return orders.map((o) => toVendorOrder(o, vendorId));
 }
 
 export async function updateVendorOrderStatus(vendorId, id, target) {
-  const order = await Order.findOne({ _id: id, vendorId });
+  const order = await Order.findOne({ _id: id, ...ownedByVendor(vendorId) });
   if (!order) throw ApiError.notFound('Order not found');
   const allowed = NEXT[order.status] || [];
   if (!allowed.includes(target)) {
@@ -165,13 +189,13 @@ export async function updateVendorOrderStatus(vendorId, id, target) {
     link: '/app/profile/orders',
     data: { orderId: String(order._id), status: target },
   }).catch(() => {});
-  return toVendorOrder(order);
+  return toVendorOrder(order, vendorId);
 }
 
 /* ── Returns ──────────────────────────────────────────────── */
 
 export async function listVendorReturns(vendorId) {
-  const orders = await Order.find({ vendorId, status: { $in: ['return_requested', 'returned'] } })
+  const orders = await Order.find({ ...ownedByVendor(vendorId), status: { $in: ['return_requested', 'returned'] } })
     .sort({ updatedAt: -1 })
     .limit(100);
   return orders.map((o) => ({
@@ -179,16 +203,16 @@ export async function listVendorReturns(vendorId) {
     _id: String(o._id),
     orderId: o.orderNo,
     customer: o.addressSnapshot?.fullName || 'Customer',
-    product: o.items?.[0]?.name || '',
+    product: vendorLines(o, vendorId).items[0]?.name || o.items?.[0]?.name || '',
     reason: o.timeline?.find((t) => t.status === 'return_requested')?.note || 'Return requested',
-    amount: Math.round((o.amounts?.total || 0) / 100),
+    amount: Math.round(vendorLines(o, vendorId).grossPaise / 100),
     status: o.status === 'returned' ? 'Approved' : 'Requested',
     date: o.updatedAt,
   }));
 }
 
 export async function resolveReturn(vendorId, id, action) {
-  const order = await Order.findOne({ _id: id, vendorId, status: 'return_requested' });
+  const order = await Order.findOne({ _id: id, ...ownedByVendor(vendorId), status: 'return_requested' });
   if (!order) throw ApiError.notFound('Return request not found');
   order.status = action === 'approve' ? 'returned' : 'delivered';
   order.timeline.push({ status: order.status, note: `Return ${action}d by vendor` });

@@ -28,22 +28,44 @@ function idOrLegacyFilter(id, { numericLegacy = false } = {}) {
   return { $or: or };
 }
 
-/** Resolve offerings by legacyId, scoped to provider (or platform-wide). */
+/**
+ * Resolve offerings by their public handle, scoped to provider (or
+ * platform-wide).
+ *
+ * The handle is `legacyId` for seeded mock catalogue rows and the Mongo `_id`
+ * for anything a vendor created from their dashboard — vendor-created services
+ * have no legacyId, so matching on legacyId alone (as this did) meant a salon's
+ * own packages and add-ons could never be booked.
+ */
 async function resolveOfferings(providerId, providerType, refs) {
   if (!refs?.length) return [];
+  const handles = refs.map((r) => String(r.refId));
   const offerings = await ServiceOffering.find({
-    legacyId: { $in: refs.map((r) => r.refId) },
+    $and: [
+      {
+        $or: [
+          { legacyId: { $in: handles } },
+          { _id: { $in: handles.filter(isObjectId) } },
+        ],
+      },
+      { $or: [{ providerId }, { providerId: null }] },
+    ],
     providerType,
     active: true,
-    $or: [{ providerId }, { providerId: null }],
   });
-  const byLegacy = new Map(offerings.map((o) => [o.legacyId, o]));
+
+  const byHandle = new Map();
+  for (const o of offerings) {
+    if (o.legacyId) byHandle.set(o.legacyId, o);
+    byHandle.set(String(o._id), o);
+  }
+
   return refs.map((r) => {
-    const offering = byLegacy.get(r.refId);
+    const offering = byHandle.get(String(r.refId));
     if (!offering) throw ApiError.badRequest(`Unknown service item: ${r.refId}`);
     return {
       kind: offering.kind,
-      refId: offering.legacyId,
+      refId: offering.legacyId || String(offering._id),
       name: offering.name,
       price: offering.price,
       unit: offering.unit,
@@ -59,6 +81,98 @@ const PRICING_RULES = {
   grooming: { discount: 100, homeVisitFee: 50 },
   doctor: { onlinePlatformFee: 29 }, // DoctorCheckout shows it for prepaid only
 };
+
+/**
+ * A salon's travel fee and promo discount (rupees). Vendors edit these from the
+ * grooming dashboard; the defaults are the numbers the customer-facing price
+ * summary has always shown, so an untouched salon prices exactly as before.
+ */
+export function groomingFeesFor(provider) {
+  const configured = provider?.details?.groomingFees || {};
+  const num = (v, fallback) => (Number.isFinite(Number(v)) ? Math.max(0, Number(v)) : fallback);
+  return {
+    travelFee: num(configured.travelFee, PRICING_RULES.grooming.homeVisitFee),
+    discount: num(configured.discount, PRICING_RULES.grooming.discount),
+  };
+}
+
+/**
+ * Daycare reserves a place for a whole day rather than a clock time, but the
+ * capacity counter is keyed on (provider, date, time). This sentinel is that
+ * key's `time`, so one day = one counter.
+ */
+const DAY_SLOT = '__day__';
+
+/**
+ * A daycare centre's platform fee and promo discount (rupees), matching what
+ * the price summary displays. Vendors own the numbers; the defaults are the
+ * values the screen has always shown.
+ */
+export function daycareFeesFor(provider) {
+  const configured = provider?.details?.daycareFees || {};
+  const num = (v, fallback) => (Number.isFinite(Number(v)) ? Math.max(0, Number(v)) : fallback);
+  return {
+    platformFee: num(configured.platformFee, PRICING_RULES.daycare.platformFee),
+    discount: num(configured.discount, PRICING_RULES.daycare.discount),
+  };
+}
+
+/** How many pets the centre can board on any one day. */
+export function daycareDailyCapacity(provider) {
+  const configured = Number(provider?.details?.dailyCapacity);
+  return Number.isFinite(configured) && configured > 0 ? Math.min(500, Math.round(configured)) : 20;
+}
+
+/** YYYY-MM-DD → Date at UTC midnight, and back. Avoids any timezone drift. */
+const parseYMD = (s) => new Date(`${s}T00:00:00Z`);
+const formatYMD = (d) => d.toISOString().slice(0, 10);
+
+/**
+ * Every calendar day a stay occupies.
+ *
+ * The booking screen lets a customer tick individual days (a Tue/Thu-only
+ * arrangement is normal), so an explicit `meta.dates` list wins. Otherwise the
+ * stay is a contiguous run from `startDate` — bounded by `endDate` when given,
+ * else by `durationDays`.
+ */
+function daycareStayDates(payload, schedule) {
+  const valid = (s) => /^\d{4}-\d{2}-\d{2}$/.test(s || '') && !Number.isNaN(parseYMD(s).getTime());
+
+  const explicit = payload.meta?.dates;
+  if (Array.isArray(explicit) && explicit.length) {
+    const unique = [...new Set(explicit.filter(valid))].sort();
+    if (unique.length > MAX_STAY_DAYS) throw ApiError.badRequest(`A stay cannot exceed ${MAX_STAY_DAYS} days`);
+    return unique;
+  }
+
+  if (!valid(schedule.startDate)) return [];
+  const start = parseYMD(schedule.startDate);
+
+  let days;
+  if (valid(schedule.endDate)) {
+    const end = parseYMD(schedule.endDate);
+    days = Math.floor((end - start) / 86_400_000) + 1;
+    if (days < 1) throw ApiError.badRequest('The end date cannot be before the start date');
+  } else {
+    days = Math.max(1, Number(schedule.durationDays) || 1);
+  }
+  if (days > MAX_STAY_DAYS) throw ApiError.badRequest(`A stay cannot exceed ${MAX_STAY_DAYS} days`);
+
+  return Array.from({ length: days }, (_, i) => formatYMD(new Date(start.getTime() + i * 86_400_000)));
+}
+
+const MAX_STAY_DAYS = 90;
+
+/**
+ * How many pets the salon takes in one slot. Read from the vendor's own slot
+ * template — this used to be hard-coded to 2 for every provider, so a
+ * one-groomer salon that set capacity 1 still got double-booked.
+ */
+function slotCapacity(provider, time) {
+  const entry = (provider?.details?.slotTemplate || []).find((t) => t.time === time);
+  const capacity = Number(entry?.capacity);
+  return Number.isFinite(capacity) && capacity > 0 ? Math.min(50, Math.round(capacity)) : 1;
+}
 
 /** Human labels for consult modes — used in item names and error messages. */
 const MODE_LABEL = {
@@ -98,16 +212,52 @@ async function isFollowUpVisit(userId, doctor, petId) {
   return Boolean(previous);
 }
 
-/** Take one seat in a slot atomically; throws when the slot is full. */
+/**
+ * Exactly what a consultation will be billed, for this user, this vet, this
+ * mode and this pet — follow-up rate included.
+ *
+ * The public slots endpoint cannot answer this: it is unauthenticated, so it
+ * quotes `doctor.feeFor(mode)` with no follow-up discount, and the checkout
+ * screen showed that full fee while `buildBooking` charged the follow-up rate.
+ * Both sides now read this one function.
+ */
+export async function quoteConsult({ userId, doctor, mode, petId, paymentMethod = 'razorpay' }) {
+  const isFollowUp = await isFollowUpVisit(userId, doctor, petId);
+  const fee = doctor.feeFor(mode, { followUp: isFollowUp });
+  if (fee == null) throw ApiError.badRequest('This consultation type is unavailable');
+  const platformFee = paymentMethod === 'razorpay' ? PRICING_RULES.doctor.onlinePlatformFee : 0;
+  return {
+    mode,
+    fee,
+    isFollowUp,
+    standardFee: doctor.feeFor(mode) ?? fee,
+    platformFee,
+    total: fee + platformFee,
+    durationMinutes: doctor.modes?.[mode]?.durationMinutes ?? 15,
+  };
+}
+
+/**
+ * Take one seat in a slot atomically; throws when the slot is full.
+ *
+ * The guard compares `booked` against the capacity passed in, not against the
+ * stored `$capacity` field. Two reasons: the stored value is whatever applied
+ * the first time anyone booked that slot, and the previous `$expr` form
+ * (`$lt: ['$booked', ['$capacity']]`) compared a number against a one-element
+ * array — under BSON type ordering a number always sorts below an array, so the
+ * condition was unconditionally true and every slot accepted unlimited
+ * bookings.
+ */
 async function takeSlot({ providerId, doctorId = null, date, time, capacity }) {
+  const seats = Math.max(1, Number(capacity) || 1);
   const filter = { providerId, doctorId, date, time };
   await SlotBooking.updateOne(
     filter,
-    { $setOnInsert: { ...filter, capacity, booked: 0 } },
+    { $setOnInsert: { ...filter, booked: 0 }, $set: { capacity: seats } },
     { upsert: true }
   );
   const res = await SlotBooking.updateOne(
-    { ...filter, $expr: { $lt: ['$booked', ['$capacity']] } },
+    { ...filter, booked: { $lt: seats } },
     { $inc: { booked: 1 } }
   );
   if (res.modifiedCount === 0) {
@@ -157,23 +307,19 @@ async function buildBooking(user, payload) {
     };
   }
 
-  if (type === 'event') {
-    const event = await Event.findOne({
-      ...idOrLegacyFilter(payload.eventId, { numericLegacy: true }),
-      status: 'published',
-    });
-    if (!event) throw ApiError.badRequest('Event not found');
-    base.eventId = event.id;
-    base.items = [
-      {
-        kind: 'ticket',
-        refId: String(event.legacyId ?? event.id),
-        name: event.title,
-        price: event.price,
-        qty: Math.max(1, payload.ticketQty || 1),
-      },
-    ];
-  } else if (type === 'daycare' || type === 'grooming') {
+  /*
+   * `event` is handled further down, in the same `else if` chain.
+   *
+   * There used to be a second, earlier `if (type === 'event')` here that only
+   * built the ticket line. Being first in the chain, it always won — so the
+   * complete branch below was dead code and every ticket sale skipped the
+   * atomic capacity guard, never incremented `sold`, never recorded
+   * `meta.ticketQty`, and never charged the ₹49 platform fee the Review Booking
+   * screen displays. Events oversold silently, the organiser's "tickets sold"
+   * never moved, and a later cancellation decremented a counter that had never
+   * gone up, driving `sold` negative.
+   */
+  if (type === 'daycare' || type === 'grooming') {
     const provider = await Provider.findOne({
       ...idOrLegacyFilter(payload.providerId),
       active: true,
@@ -197,17 +343,92 @@ async function buildBooking(user, payload) {
 
     base.items = await resolveOfferings(provider._id, type, payload.items);
 
-    if (type === 'daycare' || type === 'grooming') {
+    if (type === 'grooming') {
+      // The price-summary screen shows a travel fee on home visits and a flat
+      // promo discount. Both were display-only before, so the customer was
+      // charged a different total than the one they approved. They are now
+      // real, and the salon owns the numbers from its dashboard.
+      const fees = groomingFeesFor(provider);
+      if (base.visitType === 'home' && fees.travelFee > 0) {
+        base.items.push({
+          kind: 'fee', refId: null, name: 'Travel Fee', price: fees.travelFee, qty: 1,
+        });
+      }
+      base._discount = Math.min(
+        fees.discount,
+        base.items.reduce((s, i) => s + i.price * i.qty, 0)
+      );
+
       if (!base.schedule.startDate || !base.schedule.time) {
         throw ApiError.badRequest('Pick a date and time slot');
+      }
+      // Only times the salon actually publishes are bookable. Without this a
+      // hand-crafted request could book any time string at all, and it would
+      // show up on the vendor's day sheet as an appointment they never offered.
+      const template = provider.details?.slotTemplate || [];
+      if (!template.some((t) => t.time === base.schedule.time)) {
+        throw ApiError.badRequest('That time is not available — please pick another slot');
       }
       await takeSlot({
         providerId: provider.id,
         date: base.schedule.startDate,
         time: base.schedule.time,
-        capacity: 2,
+        capacity: slotCapacity(provider, base.schedule.time),
       });
       base._slot = { providerId: provider.id, date: base.schedule.startDate, time: base.schedule.time };
+    } else {
+      /*
+       * Daycare is boarding over a range of days, not an appointment at a time
+       * — so it is priced and reserved per day, and `schedule.time` is just the
+       * drop-off label.
+       *
+       * This branch used to be shared with grooming, which demanded a
+       * `schedule.time` drawn from a slot template. Daycare centres have no
+       * such template and the app never sent a time, so every single daycare
+       * booking was rejected with "Pick a date and time slot".
+       */
+      const stayDates = daycareStayDates(payload, base.schedule);
+      if (!stayDates.length) throw ApiError.badRequest('Pick at least one day');
+
+      base.schedule.startDate = stayDates[0];
+      base.schedule.endDate = stayDates.length > 1 ? stayDates[stayDates.length - 1] : null;
+      base.schedule.durationDays = stayDates.length;
+      base.meta.dates = stayDates;
+
+      // A per-day plan or add-on costs its price once per booked day, which is
+      // exactly what the price summary multiplies out.
+      for (const item of base.items) {
+        if (item.unit === 'day') item.qty = item.qty * stayDates.length;
+      }
+
+      const fees = daycareFeesFor(provider);
+      if (fees.platformFee > 0) {
+        base.items.push({
+          kind: 'fee', refId: null, name: 'Platform Fee', price: fees.platformFee, qty: 1,
+        });
+      }
+      base._discount = Math.min(
+        fees.discount,
+        base.items.reduce((s, i) => s + i.price * i.qty, 0)
+      );
+
+      // Hold a kennel place on every day of the stay. All-or-nothing: if the
+      // centre is full on any one day, the days already taken are handed back
+      // so a half-reserved stay can never exist.
+      const capacity = daycareDailyCapacity(provider);
+      const taken = [];
+      try {
+        for (const date of stayDates) {
+          await takeSlot({ providerId: provider.id, date, time: DAY_SLOT, capacity });
+          taken.push(date);
+        }
+      } catch (e) {
+        for (const date of taken) {
+          await releaseSlot({ providerId: provider.id, date, time: DAY_SLOT }).catch(() => {});
+        }
+        throw e;
+      }
+      base._daySlots = { providerId: provider.id, dates: stayDates };
     }
   } else if (type === 'doctor') {
     const doctor = await Doctor.findOne({
@@ -236,6 +457,11 @@ async function buildBooking(user, payload) {
     let isFollowUp = false;
     let fee = 0;
     let durationMinutes = 15;
+    // Declared out here because the capacity hold below needs it. It used to be
+    // a `const` inside the scheduled-consult branch, so the later
+    // `if (!isInstant && slot)` threw `ReferenceError: slot is not defined` —
+    // every scheduled vet appointment failed with a 500.
+    let slot = null;
 
     if (isInstant) {
       const now = new Date();
@@ -264,13 +490,16 @@ async function buildBooking(user, payload) {
         visitType,
         includeFull: true,
       });
-      const slot = slots.find((s) => s.time === base.schedule.time);
+      slot = slots.find((s) => s.time === base.schedule.time);
       if (!slot) throw ApiError.badRequest('That time is not available — please pick another slot');
       if (!slot.available) throw ApiError.badRequest('That slot just filled up — please pick another time');
 
-      isFollowUp = await isFollowUpVisit(user.id, doctor, base.petId);
-      fee = doctor.feeFor(mode, { followUp: isFollowUp });
-      if (fee == null) throw ApiError.badRequest('This consultation type is unavailable');
+      // Same helper the checkout quotes from, so the two cannot drift.
+      const quote = await quoteConsult({
+        userId: user.id, doctor, mode, petId: base.petId, paymentMethod: payload.paymentMethod,
+      });
+      isFollowUp = quote.isFollowUp;
+      fee = quote.fee;
 
       base.visitType = visitType;
       base.schedule.startAt = slot.startAt ? new Date(slot.startAt) : null;
@@ -365,7 +594,22 @@ async function buildBooking(user, payload) {
 }
 
 /** Roll back whatever capacity the failed/cancelled booking held. */
-async function releaseCapacity(booking) {
+export async function releaseCapacity(booking) {
+  // Daycare holds one place per day of the stay, so cancelling has to hand back
+  // every one of them — releasing only the start date would leak capacity for
+  // the rest of the stay and slowly make the centre look permanently full.
+  if (booking.type === 'daycare' && booking.providerId) {
+    const dates = booking._daySlots?.dates?.length
+      ? booking._daySlots.dates
+      : booking.meta?.dates?.length
+        ? booking.meta.dates
+        : [booking.schedule?.startDate].filter(Boolean);
+    for (const date of dates) {
+      await releaseSlot({ providerId: booking.providerId, date, time: DAY_SLOT }).catch(() => {});
+    }
+    return;
+  }
+
   if (booking._slot || (booking.schedule?.time && (booking.providerId || booking.doctorId))) {
     const slot = booking._slot || {
       providerId: booking.doctorId ? (await Doctor.findById(booking.doctorId))?.providerId || booking.doctorId : booking.providerId,
@@ -483,6 +727,25 @@ async function notifyBookingConfirmed(booking) {
         type: 'booking',
         link: '/vendor/doctor/consultations?view=appointments_list',
         data: { bookingId: String(booking._id), type: 'doctor' },
+      }).catch(() => {});
+    }
+  }
+
+  // Same for the salon / centre whose calendar just filled up — without this
+  // the only way a grooming vendor learned about an appointment was by
+  // refreshing their bookings tab.
+  if ((booking.type === 'grooming' || booking.type === 'daycare') && booking.providerId) {
+    const provider = await Provider.findById(booking.providerId).select('vendorUserId');
+    if (provider?.vendorUserId) {
+      const when = `${booking.schedule?.startDate || 'soon'}${booking.schedule?.time ? ` at ${booking.schedule.time}` : ''}`;
+      await notify(provider.vendorUserId, {
+        title: booking.type === 'grooming' ? 'New Grooming Appointment' : 'New Daycare Booking',
+        body: `${booking.petSnapshot?.name ? `${booking.petSnapshot.name}'s` : 'A'} ${
+          booking.visitType === 'home' ? 'home visit' : 'appointment'
+        } was just booked for ${when}.`,
+        type: 'booking',
+        link: `/vendor/${booking.type === 'grooming' ? 'grooming' : 'daycare'}-provider?view=bookings`,
+        data: { bookingId: String(booking._id), type: booking.type },
       }).catch(() => {});
     }
   }
@@ -604,7 +867,63 @@ export async function rescheduleBooking(userId, bookingId, { date, time }) {
   const oldTime = booking.schedule.time;
   if (oldDate === date && oldTime === time) return booking;
 
-  await takeSlot({ providerId: booking.providerId, date, time, capacity: 2 });
+  const provider = await Provider.findById(booking.providerId).select('details');
+
+  // Daycare moves the whole stay: same number of days, new start date, and the
+  // centre has to have room on every one of the new days.
+  if (booking.type === 'daycare') {
+    const oldDates = booking.meta?.dates?.length ? booking.meta.dates : [oldDate].filter(Boolean);
+    const shiftDays = Math.max(1, Number(booking.schedule.durationDays) || oldDates.length || 1);
+    const start = parseYMD(date);
+    if (Number.isNaN(start.getTime())) throw ApiError.badRequest('Pick a valid date');
+
+    const newDates = Array.from({ length: shiftDays }, (_, i) =>
+      formatYMD(new Date(start.getTime() + i * 86_400_000))
+    );
+
+    const capacity = daycareDailyCapacity(provider);
+    const taken = [];
+    try {
+      for (const d of newDates) {
+        // Days the stay already holds are kept, not double-counted.
+        if (oldDates.includes(d)) continue;
+        await takeSlot({ providerId: booking.providerId, date: d, time: DAY_SLOT, capacity });
+        taken.push(d);
+      }
+    } catch (e) {
+      for (const d of taken) {
+        await releaseSlot({ providerId: booking.providerId, date: d, time: DAY_SLOT }).catch(() => {});
+      }
+      throw e;
+    }
+
+    for (const d of oldDates) {
+      if (newDates.includes(d)) continue;
+      await releaseSlot({ providerId: booking.providerId, date: d, time: DAY_SLOT }).catch(() => {});
+    }
+
+    booking.schedule.startDate = newDates[0];
+    booking.schedule.endDate = newDates.length > 1 ? newDates[newDates.length - 1] : null;
+    if (time) booking.schedule.time = time;
+    booking.meta = { ...(booking.meta || {}), dates: newDates };
+    booking.markModified('meta');
+    booking.timeline.push({ status: booking.status, note: `Stay moved to ${newDates[0]}` });
+    await booking.save();
+    return booking;
+  }
+
+  // The new time has to be one the provider actually offers, otherwise a
+  // reschedule was a way to book a slot that never appears on the calendar.
+  const template = provider?.details?.slotTemplate || [];
+  if (!template.some((t) => t.time === time)) {
+    throw ApiError.badRequest('That time is not offered — please pick another slot');
+  }
+  await takeSlot({
+    providerId: booking.providerId,
+    date,
+    time,
+    capacity: slotCapacity(provider, time),
+  });
   if (oldDate && oldTime) {
     await releaseSlot({ providerId: booking.providerId, date: oldDate, time: oldTime }).catch(() => {});
   }
@@ -625,6 +944,43 @@ export async function rescheduleBooking(userId, bookingId, { date, time }) {
  * working days, blocks and consult duration by
  * `provider/availability.service.js → getDoctorSlots()`.
  */
+/**
+ * Day-by-day availability for a daycare centre, over `days` starting at `from`.
+ *
+ * Daycare has no slot template — a day is either under the centre's daily
+ * capacity or it is full — so the booking calendar needs this rather than
+ * `getSlots`, which would return an empty array for every centre.
+ */
+export async function getDayAvailability({ providerId, from, days = 60 }) {
+  const provider = await Provider.findOne({ ...idOrLegacyFilter(providerId), active: true });
+  if (!provider) throw ApiError.notFound('Provider not found');
+
+  const span = Math.max(1, Math.min(120, Number(days) || 60));
+  const start = parseYMD(from);
+  if (Number.isNaN(start.getTime())) throw ApiError.badRequest('from=YYYY-MM-DD is required');
+
+  const dates = Array.from({ length: span }, (_, i) =>
+    formatYMD(new Date(start.getTime() + i * 86_400_000))
+  );
+
+  const counters = await SlotBooking.find({
+    providerId: provider.id,
+    doctorId: null,
+    time: DAY_SLOT,
+    date: { $in: dates },
+  });
+  const booked = new Map(counters.map((c) => [c.date, c.booked]));
+  const capacity = daycareDailyCapacity(provider);
+
+  return {
+    capacity,
+    days: dates.map((date) => {
+      const used = booked.get(date) || 0;
+      return { date, capacity, booked: used, available: used < capacity };
+    }),
+  };
+}
+
 export async function getSlots({ providerId, date }) {
   const provider = await Provider.findOne({ ...idOrLegacyFilter(providerId), active: true });
   if (!provider) throw ApiError.notFound('Provider not found');
@@ -635,10 +991,17 @@ export async function getSlots({ providerId, date }) {
 
   return template.map((t) => {
     const counter = byTime.get(t.time);
+    // Capacity comes from the live template, not the counter row: a counter is
+    // stamped with whatever capacity applied when it was first created, so
+    // reading it back would freeze a salon at its old capacity forever.
+    const capacity = slotCapacity(provider, t.time);
+    const booked = counter?.booked || 0;
     return {
       time: t.time,
       period: t.period,
-      available: !counter || counter.booked < counter.capacity,
+      capacity,
+      booked,
+      available: booked < capacity,
     };
   });
 }

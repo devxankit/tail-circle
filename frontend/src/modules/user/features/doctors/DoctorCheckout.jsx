@@ -7,8 +7,9 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
 import { cn } from '../../utils/cn';
 import { payWithRazorpay } from '../../../../services/payments';
+import { fetchMyPets } from '../../../../services/pets';
 import {
-  getDoctor, getDoctorSlots, enabledModes, upcomingDates, createConsultBooking,
+  getDoctor, getDoctorSlots, enabledModes, upcomingDates, createConsultBooking, getConsultQuote,
 } from '../../../../services/doctorsApi';
 
 const MODE_ICON = { inClinic: MapPin, video: Video, homeVisit: Home, emergency: Siren };
@@ -27,6 +28,14 @@ export function DoctorCheckout() {
   const [loadError, setLoadError] = useState('');
 
   const [mode, setMode] = useState(null);
+  // Which animal is being seen. Nothing in this flow used to ask, so every vet
+  // appointment reached the clinic with no pet attached — no name, no species,
+  // nothing to hang a medical record on, and follow-up pricing could never
+  // apply because it is keyed on the pet.
+  const [pets, setPets] = useState([]);
+  const [petId, setPetId] = useState('');
+  // What this consult will actually be billed, for this customer and this pet.
+  const [quote, setQuote] = useState(null);
   const dates = useMemo(() => upcomingDates(14), []);
   const [dateIdx, setDateIdx] = useState(0);
 
@@ -80,9 +89,34 @@ export function DoctorCheckout() {
     return () => { cancelled = true; };
   }, [doctor?._id, activeMode, dateIdx, dates]);
 
+  /* ── The customer's pets ──────────────────────────────── */
+  useEffect(() => {
+    let cancelled = false;
+    fetchMyPets()
+      .then((list) => {
+        if (cancelled) return;
+        setPets(list);
+        if (list.length) setPetId((current) => current || list[0]._id);
+      })
+      .catch(() => !cancelled && setPets([]));
+    return () => { cancelled = true; };
+  }, []);
+
   /* ── Pricing ──────────────────────────────────────────── */
-  const fee = activeMode?.fee ?? 0;
-  const total = fee + PLATFORM_FEE;
+  // Quoted by the server for this customer, mode and pet, so the total shown
+  // is the total charged — the follow-up rate included.
+  useEffect(() => {
+    if (!doctor?._id || !activeMode) return;
+    let cancelled = false;
+    getConsultQuote({ doctorId: doctor._id, visitType: activeMode.visitType, petId })
+      .then((q) => !cancelled && setQuote(q))
+      .catch(() => !cancelled && setQuote(null));
+    return () => { cancelled = true; };
+  }, [doctor?._id, activeMode, petId]);
+
+  const fee = quote?.fee ?? activeMode?.fee ?? 0;
+  const platformFee = quote?.platformFee ?? PLATFORM_FEE;
+  const total = quote?.total ?? fee + platformFee;
 
   const handlePay = async () => {
     if (!selectedSlot || !activeMode) return;
@@ -94,6 +128,7 @@ export function DoctorCheckout() {
         date: dates[dateIdx].ymd,
         time: selectedSlot.time,
         visitType: activeMode.visitType,
+        ...(petId ? { petId } : {}),
         paymentMethod: 'razorpay',
       });
       if (data.razorpay) {
@@ -284,16 +319,73 @@ export function DoctorCheckout() {
             )}
           </div>
 
+          {/* Which pet — the vet has to know what they are seeing. */}
+          <div className="bg-white p-4 mb-4 border-y border-border-light">
+            <h3 className="font-bold text-text-primary mb-1">Which pet?</h3>
+            {pets.length === 0 ? (
+              <div className="flex items-start gap-2 text-sm text-text-secondary bg-bg-secondary rounded-xl p-3 mt-3">
+                <Info size={16} className="shrink-0 mt-0.5" />
+                <span>
+                  No pets on your profile yet. You can still book — tell the vet the details on arrival.
+                </span>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-text-secondary mb-3">
+                  Shared with the clinic so they can prepare, and so this visit joins your pet's record.
+                </p>
+                <div className="flex gap-2 overflow-x-auto hide-scrollbar -mx-1 px-1 pb-1">
+                  {pets.map((p) => {
+                    const selected = petId === p._id;
+                    return (
+                      <button
+                        key={p._id}
+                        onClick={() => setPetId(p._id)}
+                        className={cn(
+                          'shrink-0 flex items-center gap-2 rounded-2xl border px-3 py-2 transition-all',
+                          selected
+                            ? 'bg-primary-main border-primary-main text-white shadow-md shadow-primary-main/30'
+                            : 'bg-white border-border-light text-text-primary'
+                        )}
+                      >
+                        {p.avatarUrl ? (
+                          <img src={p.avatarUrl} alt="" className="w-7 h-7 rounded-full object-cover" />
+                        ) : (
+                          <span className="w-7 h-7 rounded-full bg-bg-secondary flex items-center justify-center text-xs">
+                            {p.species === 'cat' ? '🐈' : '🐕'}
+                          </span>
+                        )}
+                        <span className="text-left leading-tight">
+                          <span className="block text-[13px] font-bold">{p.name}</span>
+                          <span className={cn('block text-[10px]', selected ? 'text-white/80' : 'text-text-secondary')}>
+                            {p.breed || p.species || 'Pet'}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+
           {/* Bill */}
           <div className="bg-white p-4 mb-4 border-y border-border-light">
             <h3 className="font-bold text-text-primary mb-4">Bill Details</h3>
             <div className="flex justify-between mb-2 text-sm">
-              <span className="text-text-secondary">{activeMode?.label || 'Consultation'} Fee</span>
-              <span className="font-medium text-text-primary">₹{fee}</span>
+              <span className="text-text-secondary">
+                {quote?.isFollowUp ? 'Follow-up ' : ''}{activeMode?.label || 'Consultation'} Fee
+              </span>
+              <span className="font-medium text-text-primary">
+                {quote?.isFollowUp && quote.standardFee > quote.fee && (
+                  <span className="text-text-secondary line-through mr-1.5 font-normal">₹{quote.standardFee}</span>
+                )}
+                ₹{fee}
+              </span>
             </div>
             <div className="flex justify-between mb-4 text-sm">
               <span className="text-text-secondary">Platform Fee &amp; Taxes</span>
-              <span className="font-medium text-text-primary">₹{PLATFORM_FEE}</span>
+              <span className="font-medium text-text-primary">₹{platformFee}</span>
             </div>
             <div className="border-t border-border-light pt-4 flex justify-between">
               <span className="font-bold text-text-primary">Total Payable</span>

@@ -195,6 +195,9 @@ export const updateAdminDoctorService = async (id, body) => (await api.patch(`/a
 export const fetchAdminEventCategories = async () => (await api.get('/admin/event-categories')).data;
 export const fetchAdminMemorialPackages = async () => (await api.get('/admin/memorial-packages')).data;
 export const fetchAdminGroomingDaycare = async () => (await api.get('/admin/grooming-daycare')).data;
+export const updateAdminGroomingService = async (id, body) => (await api.patch(`/admin/grooming-daycare/${id}`, body)).data;
+/** Real partner salons/centres plus month-to-date volume for the admin console. */
+export const fetchAdminGroomingFacilities = async () => (await api.get('/admin/grooming-facilities')).data;
 export const fetchAdminAddons = async () => (await api.get('/admin/addons')).data;
 export const updateAdminAddon = async (id, body) => (await api.patch(`/admin/addons/${id}`, body)).data;
 

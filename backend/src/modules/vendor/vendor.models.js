@@ -17,6 +17,9 @@ export const VENDOR_TYPES = [
   // rather than their own catalog models.
   'grooming',
   'daycare',
+  // Shelters, rescues and breeders who list pets for adoption or sale and
+  // review the applications that come in for them.
+  'adoption',
 ];
 export const APPROVAL_STATUSES = ['pending', 'approved', 'rejected', 'suspended'];
 
@@ -102,7 +105,15 @@ const vendorLedgerEntrySchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-vendorLedgerEntrySchema.index({ refType: 1, refId: 1 }, { unique: true });
+/*
+ * One entry per vendor per reference.
+ *
+ * This was unique on (refType, refId) alone, which meant a single order could
+ * only ever credit one seller — a basket mixing two shops silently dropped the
+ * second one's earnings. Including `vendorId` keeps re-fulfilment (verify +
+ * webhook) idempotent while letting each seller be paid for their own lines.
+ */
+vendorLedgerEntrySchema.index({ vendorId: 1, refType: 1, refId: 1 }, { unique: true });
 vendorLedgerEntrySchema.index({ vendorId: 1, createdAt: -1 });
 
 export const VendorLedgerEntry = mongoose.model('VendorLedgerEntry', vendorLedgerEntrySchema);

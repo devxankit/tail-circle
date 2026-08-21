@@ -171,25 +171,48 @@ export async function processSwipe({ userId, profileId, action }) {
     return { matched: false };
   }
 
-  // Check reciprocity:
-  // 1. Target profile has autoLikesBack enabled (demo / bot profiles)
-  // 2. OR Target profile owner has swiped 'like' or 'superlike' on user's pet
+  /*
+   * Reciprocity.
+   *
+   * A match needs the other owner to have liked one of *my* pets. The reverse
+   * lookup used to omit `profileId` entirely, so it asked "has this owner ever
+   * liked anybody?" — which meant liking someone who had swiped right on a
+   * total stranger produced a match. In a populated deck almost every like
+   * became a false match.
+   */
   let isMutual = false;
   if (profile.autoLikesBack && MATCH_ENGINE_CONFIG.enableAutoReciprocity) {
+    // Seeded demo profiles with no real owner behind them.
     isMutual = true;
   } else if (profile.ownerId) {
-    const reverseSwipe = await Swipe.findOne({
-      userId: profile.ownerId,
-      action: { $in: ['like', 'superlike'] },
-    });
-    if (reverseSwipe) isMutual = true;
+    const myProfileIds = await MatchProfile.find({ ownerId: userId }).distinct('_id');
+    if (myProfileIds.length) {
+      const reverseSwipe = await Swipe.findOne({
+        userId: profile.ownerId,
+        profileId: { $in: myProfileIds },
+        action: { $in: ['like', 'superlike'] },
+      });
+      if (reverseSwipe) isMutual = true;
+    }
   }
 
   if (!isMutual) {
     return { matched: false };
   }
 
-  // Create mutual match & chat conversation
+  /*
+   * A match is a two-sided thing.
+   *
+   * Only the swiper used to get a Match row, and the conversation was created
+   * with a single participant — so when both sides were real users, the other
+   * owner never saw the match, never appeared in the chat's participant list
+   * (which is what drives delivery and unread counts), and could not even open
+   * the conversation: `getOwnedConversation` filters on participants and would
+   * 404 for them. That was invisible while every profile was a seeded bot.
+   */
+  const otherOwnerId = profile.ownerId ? String(profile.ownerId) : null;
+  const isRealCounterpart = otherOwnerId && otherOwnerId !== String(userId);
+
   let match = await Match.findOne({ userId, profileId: profile.id });
   if (!match) {
     const conversation = await ensureConversation({
@@ -197,6 +220,8 @@ export async function processSwipe({ userId, profileId, action }) {
       context: 'match',
       refId: profile.id,
       counterpart: { name: profile.name, image: profile.img, subtitle: profile.breed },
+      // Put the other owner in the room from the start.
+      alsoInclude: isRealCounterpart ? [otherOwnerId] : [],
     });
 
     match = await Match.create({
@@ -205,13 +230,11 @@ export async function processSwipe({ userId, profileId, action }) {
       conversationId: conversation.id,
     });
 
-    // Realtime Socket event
     emitToUser(userId, SOCKET_EVENTS.MATCH_NEW, {
       profileName: profile.name,
       conversationId: conversation.id,
     });
 
-    // In-app notification fallback
     await notify(userId, {
       title: 'New Match!',
       body: `${profile.name} liked your pet back. Say hi!`,
@@ -219,6 +242,35 @@ export async function processSwipe({ userId, profileId, action }) {
       link: `/app/chat/room/${conversation.id}`,
       data: { conversationId: String(conversation.id) },
     }).catch(() => {});
+
+    // The other owner gets their own view of the same match, pointing at
+    // whichever of my pets they liked, and shares the one conversation.
+    if (isRealCounterpart) {
+      const theirLike = await Swipe.findOne({
+        userId: otherOwnerId,
+        profileId: { $in: await MatchProfile.find({ ownerId: userId }).distinct('_id') },
+        action: { $in: ['like', 'superlike'] },
+      });
+      if (theirLike) {
+        const myProfile = await MatchProfile.findById(theirLike.profileId).lean();
+        await Match.updateOne(
+          { userId: otherOwnerId, profileId: theirLike.profileId },
+          { $setOnInsert: { conversationId: conversation.id, matchedAt: new Date() } },
+          { upsert: true }
+        );
+        emitToUser(otherOwnerId, SOCKET_EVENTS.MATCH_NEW, {
+          profileName: myProfile?.name || 'a new pet',
+          conversationId: conversation.id,
+        });
+        await notify(otherOwnerId, {
+          title: 'New Match!',
+          body: `${myProfile?.name || 'Someone'} liked your pet back. Say hi!`,
+          type: 'match',
+          link: `/app/chat/room/${conversation.id}`,
+          data: { conversationId: String(conversation.id) },
+        }).catch(() => {});
+      }
+    }
   }
 
   return {

@@ -84,19 +84,13 @@ export function MeetAndGreet() {
       </div>
 
       <div className="px-5 pt-4">
+        {/* The shelter books the meet — this screen only confirms the adopter has
+            read the visit guidance and moves them on to the agreement. */}
         <button
-          onClick={async () => {
-            try {
-              const { advanceApplication } = await import('../../../../../services/adoptApi');
-              await advanceApplication(id, 'meet_scheduled');
-              navigate(`/app/adopt/agreement/${id}`);
-            } catch (err) {
-              alert(err.message);
-            }
-          }}
+          onClick={() => navigate(`/app/adopt/agreement/${id}`)}
           className="w-full bg-[#66B4B1] text-white py-4 rounded-[16px] text-[16px] font-bold shadow-lg shadow-[#66B4B1]/20 active:scale-95 transition-transform"
         >
-          Confirm Visit
+          Continue to agreement
         </button>
       </div>
     </div>

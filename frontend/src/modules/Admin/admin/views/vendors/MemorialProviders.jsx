@@ -144,7 +144,7 @@ export function MemorialProviders() {
     <div className="p-3 sm:px-10 sm:py-8 w-full max-w-[1600px] mx-auto min-w-0 overflow-x-hidden transition-all duration-300">
       <div className="flex flex-row items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
         <div className="flex-1">
-          <h1 className="text-xl sm:text-[28px] font-black text-gray-900 tracking-tight leading-tight">Memorial Providers</h1>
+          <h1 className="text-xl sm:text-[28px] font-black text-gray-900 tracking-tight leading-tight">Last Ride Partners</h1>
           <p className="hidden sm:block text-sm text-gray-500 font-medium mt-1">{providers.length} registered providers</p>
         </div>
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -461,7 +461,7 @@ export function MemorialProviders() {
         </div>
       )}
 
-      {/* Side-Drawer for Memorial Provider Profile Details */}
+      {/* Side-Drawer for Last Ride Partner Profile Details */}
       {selectedProviderForView && (
         <div className="fixed inset-0 z-50 flex justify-end bg-gray-900/40 backdrop-blur-sm transition-all duration-300">
           <div className="absolute inset-0" onClick={() => setSelectedProviderForView(null)} />

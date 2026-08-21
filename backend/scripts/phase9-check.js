@@ -209,7 +209,7 @@ check('shop dashboard returns stats', typeof dash.data?.products === 'number' &&
 // cleanup test order
 await Order.deleteOne({ _id: order._id });
 
-/* ══ Meal Subscription Provider portal ═══════════════════ */
+/* ══ Fresh Meals Partner portal ═══════════════════ */
 
 const mealLogin = await json(
   await fetch(`${BASE}/vendor/login`, {
@@ -294,7 +294,7 @@ check('rider location broadcast accepted', loc.data?.orderId === String(del._id)
 // cleanup meal test orders
 await MealOrder.deleteMany({ _id: { $in: [sub._id, del._id] } });
 
-/* ══ Pet Events Organizer portal ═════════════════════════ */
+/* ══ Events Partner portal ═════════════════════════ */
 
 const evLogin = await json(
   await fetch(`${BASE}/vendor/login`, {
@@ -385,7 +385,7 @@ check('vendorType guard blocks meal→events access (403)', evIsolation.status =
 await Booking.deleteOne({ _id: evBooking._id });
 await Event.deleteOne({ _id: newEvent.data._id });
 
-/* ══ Memorial Provider portal ════════════════════════════ */
+/* ══ Last Ride Partner portal ════════════════════════════ */
 
 const memLogin = await json(
   await fetch(`${BASE}/vendor/login`, {

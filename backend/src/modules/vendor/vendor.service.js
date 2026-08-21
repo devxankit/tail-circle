@@ -188,8 +188,11 @@ export async function getDashboard(vendorId, vendorType) {
     const [productCount, lowStock, orderAgg, reviewAgg] = await Promise.all([
       Product.countDocuments({ vendorId, deletedAt: null }),
       Product.countDocuments({ vendorId, deletedAt: null, 'packSizes.stock': { $lte: 5 } }),
+      // Matched on the line owner, not the order-level `vendorId` — that field
+      // is only set when one seller owns the whole basket, and nothing set it
+      // at all until recently, so this counted zero orders for every vendor.
       Order.aggregate([
-        { $match: { vendorId: oid(vendorId) } },
+        { $match: { 'items.vendorId': oid(vendorId), status: { $ne: 'pending_payment' } } },
         { $group: { _id: '$status', count: { $sum: 1 } } },
       ]),
       (async () => {

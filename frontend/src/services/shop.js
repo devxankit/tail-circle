@@ -112,6 +112,7 @@ function hydratedToDisplay(hydrated) {
     size: i.size,
     price: i.price,
     quantity: i.quantity,
+    bundleSlug: i.bundleSlug || null,
     inStock: i.inStock,
   }));
 }
@@ -123,6 +124,9 @@ function displayToServer(displayItems) {
       productId: i.productId,
       packSizeIndex: i.packSizeIndex ?? 0,
       qty: i.quantity,
+      // Without this the breed bundle discount is lost the moment the cart
+      // round-trips through the local mirror, and checkout charges list price.
+      bundleSlug: i.bundleSlug || null,
     }));
 }
 
@@ -150,19 +154,25 @@ export async function saveCart(displayItems) {
 }
 
 /** Add one line (product must be a mapped legacy product with `_id`). */
-export async function addToCart(product, { packSizeIndex = 0, qty = 1 } = {}) {
+export async function addToCart(product, { packSizeIndex = 0, qty = 1, bundleSlug = null } = {}) {
   if (isLoggedIn() && product._id) {
     const { data } = await api.post('/cart/items', {
       productId: product._id,
       packSizeIndex,
       qty,
+      bundleSlug,
     });
     return mirrorCart(hydratedToDisplay(data));
   }
   // Logged-out fallback: legacy local behaviour.
   const items = JSON.parse(localStorage.getItem('cart') || '[]');
   const pack = product.packSizes?.[packSizeIndex];
-  const line = items.find((i) => i.id === product.id && i.size === (pack?.size || 'Standard'));
+  const line = items.find(
+    (i) =>
+      i.id === product.id &&
+      i.size === (pack?.size || 'Standard') &&
+      (i.bundleSlug || null) === (bundleSlug || null)
+  );
   if (line) line.quantity += qty;
   else {
     items.push({
@@ -174,6 +184,7 @@ export async function addToCart(product, { packSizeIndex = 0, qty = 1 } = {}) {
       size: pack?.size || 'Standard',
       price: pack?.price ?? product.price,
       quantity: qty,
+      bundleSlug,
     });
   }
   return mirrorCart(items);

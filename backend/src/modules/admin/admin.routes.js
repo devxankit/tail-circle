@@ -64,6 +64,8 @@ import {
   listEventCategories,
   listMemorialPackages,
   listGroomingDaycare,
+  updateGroomingDaycare,
+  listGroomingFacilities,
   listAddons,
   updateAddon,
 } from './admin.catalog.service.js';
@@ -339,6 +341,8 @@ router.patch(
 router.get('/event-categories', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listEventCategories() })));
 router.get('/memorial-packages', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listMemorialPackages() })));
 router.get('/grooming-daycare', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listGroomingDaycare() })));
+router.patch('/grooming-daycare/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateGroomingDaycare(req.user, req.params.id, req.body, req.ip) })));
+router.get('/grooming-facilities', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listGroomingFacilities() })));
 router.get('/addons', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listAddons() })));
 router.patch('/addons/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateAddon(req.user, req.params.id, req.body, req.ip) })));
 

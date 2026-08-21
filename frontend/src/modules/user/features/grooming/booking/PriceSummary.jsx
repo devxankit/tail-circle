@@ -11,6 +11,7 @@ export function PriceSummary() {
   
   const [paymentMethod, setPaymentMethod] = useState('UPI');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [payError, setPayError] = useState('');
   const [upiApp, setUpiApp] = useState(null);
 
   // Card details state for realism
@@ -23,17 +24,20 @@ export function PriceSummary() {
     return null;
   }
 
-  // Calculate totals
+  // Totals. The travel fee and promo discount are the salon's own numbers, and
+  // the server now charges exactly these — they used to be hard-coded here and
+  // applied nowhere, so the amount shown was not the amount billed.
   const packagePrice = pkg?.price || 0;
-  const addonsPrice = addons.reduce((sum, a) => sum + a.price, 0);
-  const travelFee = visitType === 'Home Visit' ? 50 : 0;
-  const discount = 100;
-  
+  const addonsPrice = addons.reduce((sum, a) => sum + (a.price || 0), 0);
+  const travelFee = visitType === 'Home Visit' ? (shop.fees?.travelFee ?? 50) : 0;
+
   const subtotal = packagePrice + addonsPrice + travelFee;
+  const discount = Math.min(shop.fees?.discount ?? 100, subtotal);
   const total = Math.max(0, subtotal - discount);
 
   const handlePay = async () => {
     setIsProcessing(true);
+    setPayError('');
     try {
       // Card/UPI details are collected inside the Razorpay sheet.
       const serviceName = pkg ? pkg.name : addons[0]?.name + (addons.length > 1 ? ` + ${addons.length - 1} more` : '');
@@ -50,7 +54,8 @@ export function PriceSummary() {
         visitType,
         addressId: bookingData.address?._id,
         totalPaid: total,
-        paymentMode: paymentMethod
+        // 'COD' is the pay-at-salon option; it must not be routed to Razorpay.
+        paymentMode: paymentMethod === 'COD' ? 'Cash' : paymentMethod
       };
 
       const savedBooking = await createBooking(newBooking);
@@ -58,7 +63,11 @@ export function PriceSummary() {
 
       navigate('/app/services/grooming/book/success');
     } catch (e) {
+      // A rejected slot, an expired session or a dismissed Razorpay sheet all
+      // land here. Silently resetting the spinner left the customer staring at
+      // an unchanged screen with no idea the booking had failed.
       console.error(e);
+      setPayError(e?.message || 'We could not complete this booking. Please try again.');
       setIsProcessing(false);
     }
   };
@@ -111,10 +120,12 @@ export function PriceSummary() {
           )}
 
           {/* Discount */}
-          <div className="flex justify-between items-center border-b border-gray-100 py-4">
-            <span className="text-[14px] text-gray-600 font-medium">Discount</span>
-            <span className="text-[14px] font-bold text-[#66B4B1]">- ₹{discount}</span>
-          </div>
+          {discount > 0 && (
+            <div className="flex justify-between items-center border-b border-gray-100 py-4">
+              <span className="text-[14px] text-gray-600 font-medium">Discount</span>
+              <span className="text-[14px] font-bold text-[#66B4B1]">- ₹{discount}</span>
+            </div>
+          )}
 
           {/* Total Amount */}
           <div className="flex justify-between items-center pt-5">
@@ -249,6 +260,9 @@ export function PriceSummary() {
 
       {/* Bottom CTA */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-5 py-4 pb-6 z-20">
+        {payError && (
+          <p className="text-[12px] font-bold text-red-600 mb-3 text-center leading-snug">{payError}</p>
+        )}
         <button 
           onClick={handlePay}
           disabled={isProcessing}
@@ -260,7 +274,7 @@ export function PriceSummary() {
               <span>Processing...</span>
             </div>
           ) : (
-            `Pay ₹${total}`
+            paymentMethod === 'COD' ? `Confirm Booking • ₹${total}` : `Pay ₹${total}`
           )}
         </button>
       </div>

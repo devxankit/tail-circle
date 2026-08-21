@@ -185,10 +185,15 @@ export async function listCustomerRequests(vendorId) {
 
 export async function claimCustomerRequest(vendorId, id) {
   const provider = await ownMemorialProvider(vendorId);
-  const booking = await Booking.findOne({ _id: id, type: 'memorial', providerId: null });
+  // Atomic claim: these requests are broadcast unclaimed to every memorial
+  // provider, so two of them pressing "Claim" at the same moment both used to
+  // read `providerId: null` and both took the same grieving family.
+  const booking = await Booking.findOneAndUpdate(
+    { _id: id, type: 'memorial', providerId: null },
+    { $set: { providerId: provider._id } },
+    { new: true }
+  );
   if (!booking) throw ApiError.notFound('Request not found or already claimed');
-  booking.providerId = provider._id;
-  await booking.save();
   return mapCustomerRequest(booking, provider._id);
 }
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { ChevronDown, Upload, Check, ArrowRight, ArrowLeft } from 'lucide-react';
 import { cn } from '../../../modules/user/utils/cn';
+import { VENDOR_CATEGORIES, slugLabel } from '../../../constants/vendorTypes';
 import {
   registerVendor,
   loginVendorPassword,
@@ -17,7 +18,9 @@ const ROLE_ROUTES = {
   shop: '/vendor/shop-provider',
   grooming: '/vendor/grooming-provider',
   daycare: '/vendor/daycare-provider',
+  adoption: '/vendor/adoption-partner',
 };
+
 
 export function VendorAuth() {
   const navigate = useNavigate();
@@ -79,7 +82,7 @@ export function VendorAuth() {
   const handleSendOtp = async () => {
     if (!formData.loginRegisterNo) return showToast('Enter registered mobile number or registration number');
     try {
-      await requestVendorOtp(formData.loginRegisterNo);
+      await requestVendorOtp(formData.loginRegisterNo, formData.loginRole);
       setOtpSent(true); setOtpCountdown(30); showToast('OTP sent!', 'success');
     } catch (err) {
       showToast(err.message || 'Could not send OTP');
@@ -88,6 +91,7 @@ export function VendorAuth() {
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
+    if (!formData.loginRole) return showToast('Please select your vendor category');
     if (loginMethod === 'password') {
       if (!formData.loginEmail || !formData.loginPassword) return showToast('Enter email and password');
     } else {
@@ -95,13 +99,24 @@ export function VendorAuth() {
     }
     try {
       const { profile } = loginMethod === 'password'
-        ? await loginVendorPassword(formData.loginEmail, formData.loginPassword)
-        : await loginVendorOtp(formData.loginRegisterNo, formData.loginOtp);
+        ? await loginVendorPassword(formData.loginEmail, formData.loginPassword, formData.loginRole)
+        : await loginVendorOtp(formData.loginRegisterNo, formData.loginOtp, formData.loginRole);
+      
       showToast('Login successful!', 'success');
-      // Route by the vendor's real type; fall back to the picker selection.
-      const typeToSlug = { shop: 'shop', clinic: 'doctor', meal_subscription: 'meal', events: 'event', memorial: 'memorial', grooming: 'grooming', daycare: 'daycare' };
-      const slug = typeToSlug[profile?.vendorType] || formData.loginRole;
-      setTimeout(() => navigate(ROLE_ROUTES[slug] || '/vendor/login'), 800);
+      
+      const VENDOR_HOME = {
+        shop: '/vendor/shop-provider',
+        clinic: '/vendor/doctor/consultations',
+        meal_subscription: '/vendor/meal-provider/dashboard',
+        events: '/vendor/events-organizer',
+        memorial: '/vendor/memorial-provider',
+        grooming: '/vendor/grooming-provider',
+        daycare: '/vendor/daycare-provider',
+        adoption: '/vendor/adoption-partner',
+      };
+      
+      const targetPath = VENDOR_HOME[profile?.vendorType] || ROLE_ROUTES[formData.loginRole] || '/vendor/login';
+      setTimeout(() => navigate(targetPath), 800);
     } catch (err) {
       showToast(err.message || 'Login failed');
     }
@@ -222,12 +237,7 @@ export function VendorAuth() {
                       className={cn(inputClass, "flex items-center justify-between cursor-pointer")}
                     >
                       <span className="truncate">
-                        {formData.loginRole === 'shop' && 'Store Shop Vendor'}
-                        {formData.loginRole === 'grooming' && 'Pet Grooming & Spa Provider'}
-                        {formData.loginRole === 'doctor' && 'Clinic Veterinary Doctor'}
-                        {formData.loginRole === 'meal' && 'Meal Subscription Provider'}
-                        {formData.loginRole === 'event' && 'Pet Events Organizer'}
-                        {formData.loginRole === 'memorial' && 'Memorial End-of-Life Provider'}
+                        {slugLabel(formData.loginRole)}
                       </span>
                       <ChevronDown size={16} className={cn("text-gray-400 transition-transform duration-200 shrink-0", isDropdownOpen && "rotate-180")} />
                     </div>
@@ -235,28 +245,33 @@ export function VendorAuth() {
                     {isDropdownOpen && (
                       <>
                         <div className="fixed inset-0 z-40" onClick={() => setIsDropdownOpen(false)} />
-                        <div className="absolute top-full left-0 w-full mt-2 bg-white border border-gray-100 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 py-2">
-                          {[
-                            { val: 'shop', label: 'Store Shop Vendor' },
-                            { val: 'grooming', label: 'Pet Grooming & Spa Provider' },
-                            { val: 'doctor', label: 'Clinic Veterinary Doctor' },
-                            { val: 'meal', label: 'Meal Subscription Provider' },
-                            { val: 'event', label: 'Pet Events Organizer' },
-                            { val: 'memorial', label: 'Memorial End-of-Life Provider' }
-                          ].map(role => (
+                        {/* Capped and scrollable: the full list of partner
+                            categories runs past the fold on a phone, pushing
+                            the login button off screen. ~4.5 rows are visible,
+                            so it reads as scrollable rather than truncated. */}
+                        <div className="absolute top-full left-0 w-full mt-2 bg-white border border-gray-100 rounded-xl shadow-xl z-50 max-h-[220px] overflow-y-auto overflow-x-hidden overscroll-contain animate-in fade-in zoom-in-95 duration-200 py-2">
+                          {VENDOR_CATEGORIES.map(({ slug, label }) => (
                             <div
-                              key={role.val}
+                              key={slug}
+                              // Bring the current choice into view on open —
+                              // otherwise picking a category near the end of
+                              // the list reopens scrolled to the top.
+                              ref={(el) => {
+                                if (el && formData.loginRole === slug) {
+                                  el.scrollIntoView({ block: 'nearest' });
+                                }
+                              }}
                               onClick={() => {
-                                handleInputChange('loginRole', role.val);
+                                handleInputChange('loginRole', slug);
                                 setIsDropdownOpen(false);
                               }}
                               className={cn(
                                 "px-5 py-3 text-sm cursor-pointer transition-colors flex items-center justify-between",
-                                formData.loginRole === role.val ? "bg-[#40716F]/10 text-[#40716F] font-bold" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 font-medium"
+                                formData.loginRole === slug ? "bg-[#40716F]/10 text-[#40716F] font-bold" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 font-medium"
                               )}
                             >
-                              {role.label}
-                              {formData.loginRole === role.val && <Check size={14} className="text-[#40716F]" />}
+                              {label}
+                              {formData.loginRole === slug && <Check size={14} className="text-[#40716F]" />}
                             </div>
                           ))}
                         </div>
@@ -368,20 +383,14 @@ export function VendorAuth() {
                           <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
                             <p className="text-xs text-gray-500 font-medium mb-1">Select Partner Category</p>
                             <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
-                              {['shop', 'grooming', 'daycare', 'doctor', 'meal', 'event', 'memorial'].map(r => (
+                              {VENDOR_CATEGORIES.map(({ slug: r }) => (
                                 <label key={r} className={cn("flex items-center gap-4 cursor-pointer p-3 rounded-lg border transition-colors", formData.role === r ? "border-[#40716F] bg-[#40716F]/5" : "border-gray-200 hover:border-gray-300")}>
                                   <input type="radio" name="role" checked={formData.role === r} onChange={() => handleInputChange('role', r)} className="hidden" />
                                   <div className={cn("w-4 h-4 rounded-full border-2 transition-all flex items-center justify-center", formData.role === r ? "border-[#40716F] bg-[#40716F]" : "border-gray-300")}>
                                     {formData.role === r && <span className="w-1.5 h-1.5 bg-white rounded-full" />}
                                   </div>
                                   <span className={cn("text-sm font-medium transition-colors", formData.role === r ? "text-gray-900" : "text-gray-600")}>
-                                    {r === 'shop' && 'Store Shop Vendor'}
-                                    {r === 'grooming' && 'Pet Grooming & Spa Provider'}
-                                    {r === 'daycare' && 'Pet Daycare & Boarding Centre'}
-                                    {r === 'doctor' && 'Clinic Veterinary Doctor'}
-                                    {r === 'meal' && 'Meal Subscription Provider'}
-                                    {r === 'event' && 'Pet Events Organizer'}
-                                    {r === 'memorial' && 'Memorial Provider'}
+                                    {slugLabel(r)}
                                   </span>
                                 </label>
                               ))}

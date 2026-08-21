@@ -603,7 +603,7 @@ export function DoctorsClinics() {
         </div>
       )}
 
-      {/* Side-Drawer for Doctor/Clinic Profile Details */}
+      {/* Side-Drawer for Veterinarian Partner Profile Details */}
       {selectedDoctorForView && (
         <div className="fixed inset-0 z-50 flex justify-end bg-gray-900/40 backdrop-blur-sm transition-all duration-300">
           <div className="absolute inset-0" onClick={() => setSelectedDoctorForView(null)} />

@@ -3,7 +3,7 @@ import { FileText, CheckCircle, Search, MapPin, Phone, Mail, MoreVertical, X, Ey
 import { PageHeader, Pagination, ActionMenu, StatusBadge } from '../../components/VendorShared';
 import { fetchPendingVendors, approveVendorApi, rejectVendorApi } from '../../../../../services/admin';
 
-const TYPE_LABEL = { shop: 'Shop', meal_subscription: 'Meal', events: 'Event', clinic: 'Doctor', memorial: 'Memorial' };
+import { VENDOR_TYPE_LABEL as TYPE_LABEL } from '../../../../../constants/vendorTypes';
 
 /** Chip styling per real document review state — never assume "verified". */
 const DOC_STYLES = {

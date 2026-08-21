@@ -14,6 +14,7 @@ import { User } from '../src/modules/user/user.model.js';
 import { VendorProfile } from '../src/modules/vendor/vendor.models.js';
 import { Provider } from '../src/modules/provider/provider.model.js';
 import { Doctor } from '../src/modules/provider/doctor.model.js';
+import { VENDOR_TYPE_LABEL } from '../src/modules/vendor/vendorTypeLabels.js';
 
 const NO_SEED = process.argv.includes('--no-seed');
 const PASSWORD = 'vendor123';
@@ -28,17 +29,12 @@ const PORTAL = {
   memorial: '/vendor/memorial-provider',
   grooming: '/vendor/grooming-provider',
   daycare: '/vendor/daycare-provider',
+  adoption: '/vendor/adoption-partner',
 };
 
-const LABEL = {
-  shop: 'Shop / Store',
-  clinic: 'Veterinary Clinic',
-  meal_subscription: 'Meal Subscription',
-  events: 'Pet Events',
-  memorial: 'Memorial',
-  grooming: 'Grooming Salon',
-  daycare: 'Daycare Centre',
-};
+// Shared labels — this map was another private copy, and it had no entry for
+// adoption partners at all.
+const LABEL = VENDOR_TYPE_LABEL;
 
 /** The seeded demo accounts — one per vertical. */
 const SEEDED = [

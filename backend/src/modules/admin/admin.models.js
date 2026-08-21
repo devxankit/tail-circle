@@ -41,6 +41,12 @@ const bannerSchema = new mongoose.Schema(
 );
 bannerSchema.index({ seedKey: 1 }, { unique: true, partialFilterExpression: { seedKey: { $type: 'string' } } });
 bannerSchema.index({ active: 1, sort: 1 });
+// One banner per slot key. Without this the admin panel could create a second
+// row for a key it had already saved (a stale editor, two tabs, a failed
+// initial load), and the user app -- which reduces the list into a map by key
+// -- would then read whichever copy happened to sort last while the operator
+// kept editing the other one. shop_promotional had drifted exactly that way.
+bannerSchema.index({ key: 1 }, { unique: true });
 
 const platformSettingSchema = new mongoose.Schema(
   {
@@ -76,7 +82,7 @@ adminConfigSchema.index({ seedKey: 1 }, { unique: true, partialFilterExpression:
 const actionItemSchema = new mongoose.Schema(
   {
     category: { type: String, required: true }, // 'Vendor Approval' | 'Refund Request' | 'Moderation'
-    type: { type: String, required: true }, // 'Doctor / Clinic', 'Meal Provider', 'Event Refund', 'Spam Feed Report', etc.
+    type: { type: String, required: true }, // 'Veterinarian Partner', 'Fresh Meals Partner', 'Event Refund', 'Spam Feed Report', etc.
     title: { type: String, required: true },
     subtitle: { type: String, default: '' },
     details: { type: String, default: '' },

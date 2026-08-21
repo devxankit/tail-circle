@@ -77,6 +77,16 @@ import {
   replyToFeedback as replyToEventFeedback,
 } from './events.vendor.service.js';
 import {
+  adoptionSummary,
+  listVendorListings,
+  createListing,
+  updateListing,
+  removeListing,
+  listVendorApplications,
+  reviewApplication,
+  declineApplication,
+} from './adoption.vendor.service.js';
+import {
   listServices as listMemorialServices,
   createService as createMemorialService,
   updateService as updateMemorialService,
@@ -190,9 +200,17 @@ router.post(
 router.post(
   '/login',
   authLimiter,
-  validate(z.object({ email: z.string().email(), password: z.string().min(1) })),
+  validate(
+    z.object({
+      email: z.string().email(),
+      password: z.string().min(1),
+      vendorType: z.string().optional(),
+      role: z.string().optional(),
+    })
+  ),
   asyncHandler(async (req, res) => {
-    const { user, profile, tokens } = await vendorPasswordLogin(req.body.email, req.body.password);
+    const expectedType = req.body.vendorType || req.body.role || null;
+    const { user, profile, tokens } = await vendorPasswordLogin(req.body.email, req.body.password, expectedType);
     sendSuccess(res, { data: { user, profile: serializeProfile(profile), ...tokens } });
   })
 );
@@ -205,13 +223,16 @@ router.post(
       registrationNo: z.string().trim().min(3).max(30).optional(),
       phone: z.string().trim().min(3).max(30).optional(),
       identifier: z.string().trim().min(3).max(30).optional(),
+      vendorType: z.string().optional(),
+      role: z.string().optional(),
     }).refine((data) => data.registrationNo || data.phone || data.identifier, {
       message: 'Registration number or mobile number is required',
     })
   ),
   asyncHandler(async (req, res) => {
     const identifier = req.body.registrationNo || req.body.phone || req.body.identifier;
-    const data = await vendorRequestOtp(identifier);
+    const expectedType = req.body.vendorType || req.body.role || null;
+    const data = await vendorRequestOtp(identifier, expectedType);
     sendSuccess(res, { message: 'OTP sent', data });
   })
 );
@@ -225,13 +246,16 @@ router.post(
       phone: z.string().trim().min(3).max(30).optional(),
       identifier: z.string().trim().min(3).max(30).optional(),
       code: z.string().trim().min(4).max(8),
+      vendorType: z.string().optional(),
+      role: z.string().optional(),
     }).refine((data) => data.registrationNo || data.phone || data.identifier, {
       message: 'Registration number or mobile number is required',
     })
   ),
   asyncHandler(async (req, res) => {
     const identifier = req.body.registrationNo || req.body.phone || req.body.identifier;
-    const { user, profile, tokens } = await vendorVerifyOtp(identifier, req.body.code);
+    const expectedType = req.body.vendorType || req.body.role || null;
+    const { user, profile, tokens } = await vendorVerifyOtp(identifier, req.body.code, expectedType);
     sendSuccess(res, { data: { user, profile: serializeProfile(profile), ...tokens } });
   })
 );
@@ -483,7 +507,7 @@ router.post(
   })
 );
 
-/* ── Pet Events Organizer module ──────────────────────────── */
+/* ── Events Partner module ──────────────────────────── */
 
 const events = [withVendor, requireType('events')];
 
@@ -601,7 +625,95 @@ router.post(
   })
 );
 
-/* ── Memorial Provider module ─────────────────────────────── */
+/* ── Adoption partner module ──────────────────────────────── */
+
+const adoption = [withVendor, requireType('adoption')];
+
+router.get('/adoption-summary', ...adoption, asyncHandler(async (req, res) => {
+  sendSuccess(res, { data: await adoptionSummary(req.user.id) });
+}));
+
+router.get('/adoption-listings', ...adoption, asyncHandler(async (req, res) => {
+  sendSuccess(res, { data: await listVendorListings(req.user.id) });
+}));
+
+const listingFields = {
+  name: z.string().trim().min(1).max(100),
+  type: z.string().max(40).optional(),
+  breed: z.string().trim().min(1).max(100),
+  age: z.string().max(40).optional(),
+  gender: z.string().max(20).optional(),
+  price: z.number().min(0).max(1000000).optional(),
+  weight: z.string().max(40).optional(),
+  location: z.string().max(120).optional(),
+  vaccinated: z.boolean().optional(),
+  dewormed: z.boolean().optional(),
+  neutered: z.boolean().optional(),
+  images: z.array(z.string().max(2000)).max(12).optional(),
+  about: z.string().max(2000).optional(),
+  traits: z.array(z.string().max(40)).max(12).optional(),
+  contactPhone: z.string().max(20).optional(),
+  contactEmail: z.string().max(120).optional(),
+};
+
+router.post(
+  '/adoption-listings',
+  ...adoption,
+  validate(z.object(listingFields)),
+  asyncHandler(async (req, res) => {
+    const data = await createListing(req.user.id, req.vendor?.businessName || req.user.name, req.body);
+    sendSuccess(res, { statusCode: 201, data });
+  })
+);
+
+router.patch(
+  '/adoption-listings/:id',
+  ...adoption,
+  validate(
+    z.object({
+      ...listingFields,
+      status: z.enum(['Available', 'Pending', 'Adopted', 'Withdrawn']).optional(),
+    }).partial()
+  ),
+  asyncHandler(async (req, res) => {
+    sendSuccess(res, { data: await updateListing(req.user.id, req.params.id, req.body) });
+  })
+);
+
+router.delete('/adoption-listings/:id', ...adoption, asyncHandler(async (req, res) => {
+  sendSuccess(res, { data: await removeListing(req.user.id, req.params.id) });
+}));
+
+router.get('/adoption-applications', ...adoption, asyncHandler(async (req, res) => {
+  sendSuccess(res, { data: await listVendorApplications(req.user.id, { status: req.query.status }) });
+}));
+
+/** Move an application along one of the shelter's own vetting steps. */
+router.post(
+  '/adoption-applications/:id/review',
+  ...adoption,
+  validate(
+    z.object({
+      step: z.enum(['home_check_scheduled', 'approved', 'meet_scheduled']),
+      scheduledAt: z.string().max(60).optional(),
+      notes: z.string().max(500).optional(),
+    })
+  ),
+  asyncHandler(async (req, res) => {
+    sendSuccess(res, { data: await reviewApplication(req.user.id, req.params.id, req.body) });
+  })
+);
+
+router.post(
+  '/adoption-applications/:id/decline',
+  ...adoption,
+  validate(z.object({ reason: z.string().max(500).optional() })),
+  asyncHandler(async (req, res) => {
+    sendSuccess(res, { data: await declineApplication(req.user.id, req.params.id, req.body.reason) });
+  })
+);
+
+/* ── Last Ride Partner module ─────────────────────────────── */
 
 const memorial = [withVendor, requireType('memorial')];
 

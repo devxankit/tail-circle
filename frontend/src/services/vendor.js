@@ -57,18 +57,18 @@ export async function registerVendor(form) {
   return data; // { registrationNo, approvalStatus }
 }
 
-export async function loginVendorPassword(email, password) {
-  const { data } = await api.post('/vendor/login', { email, password });
+export async function loginVendorPassword(email, password, role = null) {
+  const { data } = await api.post('/vendor/login', { email, password, role, vendorType: role });
   return storeSession(data);
 }
 
-export async function requestVendorOtp(identifier) {
-  const { data } = await api.post('/vendor/request-otp', { registrationNo: identifier, identifier });
+export async function requestVendorOtp(identifier, role = null) {
+  const { data } = await api.post('/vendor/request-otp', { registrationNo: identifier, identifier, role, vendorType: role });
   return data;
 }
 
-export async function loginVendorOtp(identifier, code) {
-  const { data } = await api.post('/vendor/verify-otp', { registrationNo: identifier, identifier, code });
+export async function loginVendorOtp(identifier, code, role = null) {
+  const { data } = await api.post('/vendor/verify-otp', { registrationNo: identifier, identifier, code, role, vendorType: role });
   return storeSession(data);
 }
 
@@ -238,7 +238,7 @@ export async function sendRiderLocation(id, coords) {
   return data;
 }
 
-/* ── Pet Events Organizer portal ──────────────────────────── */
+/* ── Events Partner portal ──────────────────────────── */
 
 export async function fetchEvents() {
   const { data } = await api.get('/vendor/events');
@@ -323,7 +323,7 @@ export async function replyToEventFeedback(id, text) {
   return data;
 }
 
-/* ── Memorial Provider portal ─────────────────────────────── */
+/* ── Last Ride Partner portal ─────────────────────────────── */
 
 export async function fetchMemorialKpis() {
   const { data } = await api.get('/vendor/memorial-kpis');
@@ -562,5 +562,54 @@ export async function fetchVetSlotPreview({ date, visitType = 'clinic', doctorId
 /** Working-day flags across the booking horizon. */
 export async function fetchVetCalendar({ days = 30, doctorId } = {}) {
   const { data } = await api.get('/vendor/vet/calendar', { params: { days, doctorId } });
+  return data;
+}
+
+
+/* ── Adoption partner (shelter / rescue / breeder) ───────── */
+
+/**
+ * The shelter side of adoption. The vetting steps live here because an
+ * applicant used to walk their own application to "approved" with nobody
+ * reviewing it.
+ */
+export async function fetchAdoptionSummary() {
+  const { data } = await api.get('/vendor/adoption-summary');
+  return data;
+}
+
+export async function fetchAdoptionListings() {
+  const { data } = await api.get('/vendor/adoption-listings');
+  return data;
+}
+
+export async function createAdoptionListing(body) {
+  const { data } = await api.post('/vendor/adoption-listings', body);
+  return data;
+}
+
+export async function updateAdoptionListing(id, body) {
+  const { data } = await api.patch(`/vendor/adoption-listings/${id}`, body);
+  return data;
+}
+
+export async function withdrawAdoptionListing(id) {
+  const { data } = await api.delete(`/vendor/adoption-listings/${id}`);
+  return data;
+}
+
+export async function fetchAdoptionApplications(status) {
+  const { data } = await api.get('/vendor/adoption-applications', { params: { status } });
+  return data;
+}
+
+/** Move an application along one of the shelter's vetting steps. */
+export async function reviewAdoptionApplication(id, body) {
+  const { data } = await api.post(`/vendor/adoption-applications/${id}/review`, body);
+  return data;
+}
+
+export async function declineAdoptionApplication(id, reason) {
+  const { data } = await api.post(`/vendor/adoption-applications/${id}/decline`, { reason });
   return data;
 }

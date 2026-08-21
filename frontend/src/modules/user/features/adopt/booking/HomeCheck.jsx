@@ -1,23 +1,18 @@
 import React from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, MonitorPlay, Camera, Home, CheckCircle2, Circle } from 'lucide-react';
 import { useAdoptStore } from '../../../../../store/useAdoptStore';
 
 export function HomeCheck() {
-  const { id } = useParams();
   const navigate = useNavigate();
   const selectedPet = useAdoptStore(state => state.selectedPet);
 
-  const handleContinue = async () => {
-    try {
-      const { advanceApplication } = await import('../../../../../services/adoptApi');
-      await advanceApplication(id, 'home_check_scheduled');
-      await advanceApplication(id, 'approved'); // self-serve until Phase 11 admin moderation
-      navigate(`/app/adopt/approved/${id}`);
-    } catch (err) {
-      alert(err.message);
-    }
-  };
+  /*
+   * The home check and the approval belong to whoever is rehoming the pet — an
+   * applicant used to call both of these on themselves and walk straight to the
+   * approved screen. All this screen does now is tell them what happens next.
+   */
+  const handleContinue = () => navigate('/app/adopt/my-adoptions');
 
   return (
     <div className="flex flex-col min-h-screen bg-[#FAF7F2] pb-10">
@@ -31,7 +26,8 @@ export function HomeCheck() {
 
       <div className="px-5 pt-6 flex flex-col flex-1">
         <p className="text-[14px] text-gray-600 font-medium mb-8 leading-relaxed">
-          A home check helps us ensure the pet is going to a safe and loving environment.
+          A home check helps make sure the pet is going to a safe and loving home. The shelter will get in
+          touch to arrange one — you will be notified as soon as they do.
         </p>
 
         {/* Steps */}
@@ -83,7 +79,7 @@ export function HomeCheck() {
           onClick={handleContinue}
           className="w-full bg-[#66B4B1] text-white py-4 rounded-[16px] text-[16px] font-bold shadow-lg shadow-[#66B4B1]/20 active:scale-95 transition-transform"
         >
-          Submit & Continue
+          Got it — track my application
         </button>
       </div>
     </div>

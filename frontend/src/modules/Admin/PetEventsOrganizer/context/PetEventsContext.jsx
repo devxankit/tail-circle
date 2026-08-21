@@ -28,7 +28,7 @@ import { fetchNotifications, markAllNotificationsRead } from '../../../../servic
 const PetEventsContext = createContext();
 
 function toPortalProfile(p) {
-  if (!p) return { businessName: 'Events Organizer', email: '', phone: '', address: '', status: 'Online', verification: 'Pending', logo: null };
+  if (!p) return { businessName: 'Events Partner', email: '', phone: '', address: '', status: 'Online', verification: 'Pending', logo: null };
   const vmap = { approved: 'Approved', pending: 'Pending', rejected: 'Rejected', suspended: 'Suspended' };
   return {
     businessName: p.businessName,

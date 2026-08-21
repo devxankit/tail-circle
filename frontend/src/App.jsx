@@ -313,6 +313,9 @@ const AdminLayout = lazy(() => import('./modules/Admin/layouts/AdminLayout').the
 const VendorAuth = lazy(() => import('./modules/Admin/auth/VendorAuth').then(m => ({ default: m.VendorAuth || m.default })));
 const AdminLogin = lazy(() => import('./modules/Admin/auth/AdminLogin').then(m => ({ default: m.AdminLogin || m.default })));
 const ProviderVendorPortal = lazy(() => import('./modules/Admin/ProviderVendor/ProviderVendorPortal').then(m => ({ default: m.ProviderVendorPortal || m.default })));
+const GroomingVendorPortal = lazy(() => import('./modules/Admin/GroomingVendor/GroomingVendorPortal').then(m => ({ default: m.GroomingVendorPortal || m.default })));
+const DaycareVendorPortal = lazy(() => import('./modules/Admin/DaycareVendor/DaycareVendorPortal').then(m => ({ default: m.DaycareVendorPortal || m.default })));
+const AdoptionVendorPortal = lazy(() => import('./modules/Admin/AdoptionVendor/AdoptionVendorPortal').then(m => ({ default: m.AdoptionVendorPortal || m.default })));
 const ShopVendorLayout = lazy(() => import('./modules/Admin/ShopVendor/ShopVendorLayout').then(m => ({ default: m.ShopVendorLayout || m.default })));
 const ShopDashboard = lazy(() => import('./modules/Admin/ShopVendor/views/DashboardOverview').then(m => ({ default: m.DashboardOverview || m.default })));
 const ShopProductsView = lazy(() => import('./modules/Admin/ShopVendor/views/ProductsView').then(m => ({ default: m.ProductsView || m.default })));
@@ -439,6 +442,7 @@ const VENDOR_HOME = {
   memorial: '/vendor/memorial-provider',
   grooming: '/vendor/grooming-provider',
   daycare: '/vendor/daycare-provider',
+  adoption: '/vendor/adoption-partner',
 };
 
 /**
@@ -514,6 +518,11 @@ function App() {
 
             {/* Full Screen Modals/Pages */}
             <Route path="/app/chat/room" element={<ChatRoom />} />
+            {/* Matches, match notifications and the matches list all link to
+                /app/chat/room/<conversationId>. Only the bare path was
+                registered, so every one of those landed on "No routes
+                matched" and a blank screen. */}
+            <Route path="/app/chat/room/:conversationId" element={<ChatRoom />} />
             <Route path="/app/community/create" element={<CreatePost />} />
             <Route path="/app/shop/product/:id" element={<ProductDetail />} />
             <Route path="/app/shop/cart" element={<Cart />} />
@@ -690,8 +699,9 @@ function App() {
             {/* Vendor Dashboard & Tools (Full Web Layout) */}
             <Route path="/vendor" element={<ProtectedVendorRoute><VendorLayout /></ProtectedVendorRoute>}>
               <Route path="doctor/consultations" element={<ProtectedVendorRoute allow="clinic"><ClinicVendorProvider><DoctorManagement /></ClinicVendorProvider></ProtectedVendorRoute>} />
-              <Route path="grooming-provider" element={<ProtectedVendorRoute allow="grooming"><ProviderVendorPortal vertical="grooming" /></ProtectedVendorRoute>} />
-              <Route path="daycare-provider" element={<ProtectedVendorRoute allow="daycare"><ProviderVendorPortal vertical="daycare" /></ProtectedVendorRoute>} />
+              <Route path="grooming-provider" element={<ProtectedVendorRoute allow="grooming"><GroomingVendorPortal /></ProtectedVendorRoute>} />
+              <Route path="daycare-provider" element={<ProtectedVendorRoute allow="daycare"><DaycareVendorPortal /></ProtectedVendorRoute>} />
+              <Route path="adoption-partner" element={<ProtectedVendorRoute allow="adoption"><AdoptionVendorPortal /></ProtectedVendorRoute>} />
               <Route path="meal/plans" element={<Navigate to="/vendor/meal-provider/dashboard" replace />} />
               <Route path="event/packages" element={<Navigate to="/vendor/events-organizer" replace />} />
               <Route path="memorial/requests" element={<Navigate to="/vendor/memorial-provider" replace />} />
@@ -700,7 +710,7 @@ function App() {
               <Route path="support" element={<VendorSupport />} />
             </Route>
 
-            {/* Shop Provider Standalone Dashboard */}
+            {/* Shop Partner Standalone Dashboard */}
             <Route path="/vendor/shop-provider" element={<ProtectedVendorRoute allow="shop"><ShopVendorProvider><ShopVendorLayout /></ShopVendorProvider></ProtectedVendorRoute>}>
               <Route index element={<ShopDashboard />} />
               <Route path="products" element={<ShopProductsView />} />
@@ -713,7 +723,7 @@ function App() {
               <Route path="*" element={<Navigate to="/vendor/shop-provider" replace />} />
             </Route>
 
-            {/* Meal Provider Exclusive Dashboard */}
+            {/* Fresh Meals Partner Exclusive Dashboard */}
             <Route path="/vendor/meal-provider" element={<ProtectedVendorRoute allow="meal_subscription"><MealProviderProvider><MealProviderLayout /></MealProviderProvider></ProtectedVendorRoute>}>
               <Route path="dashboard" element={<MealDashboard />} />
               <Route path="plans" element={<MealPlansView />} />
@@ -738,7 +748,7 @@ function App() {
               <Route path="*" element={<Navigate to="/vendor/meal-provider/dashboard" replace />} />
             </Route>
 
-            {/* Pet Events Organizer Dashboard */}
+            {/* Events Partner Dashboard */}
             <Route path="/vendor/events-organizer" element={<ProtectedVendorRoute allow="events"><PetEventsProvider><PetEventsLayout /></PetEventsProvider></ProtectedVendorRoute>}>
               <Route index element={<DashboardOverview />} />
               <Route path="events" element={<EventsView />} />
@@ -755,7 +765,7 @@ function App() {
               <Route path="*" element={<Navigate to="/vendor/events-organizer" replace />} />
             </Route>
 
-            {/* Memorial Provider Dashboard */}
+            {/* Last Ride Partner Dashboard */}
             <Route path="/vendor/memorial-provider" element={<ProtectedVendorRoute allow="memorial"><MemorialProviderProvider><MemorialProviderLayout /></MemorialProviderProvider></ProtectedVendorRoute>}>
               <Route index element={<MemorialDashboard />} />
               <Route path="requests" element={<MemorialRequests />} />

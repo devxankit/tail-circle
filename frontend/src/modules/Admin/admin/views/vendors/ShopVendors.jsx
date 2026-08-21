@@ -241,7 +241,7 @@ export function ShopVendors() {
       {/* Page Header */}
       <div className="flex flex-row items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
         <div className="flex-1">
-          <h1 className="text-xl sm:text-[28px] font-black text-gray-900 tracking-tight leading-tight">Shop Vendors</h1>
+          <h1 className="text-xl sm:text-[28px] font-black text-gray-900 tracking-tight leading-tight">Shop Partners</h1>
           <p className="hidden sm:block text-sm text-gray-500 font-medium mt-1">{vendors.length} registered shops platform-wide</p>
         </div>
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -279,7 +279,7 @@ export function ShopVendors() {
       {/* Spacious Premium Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-sm col-span-2 md:col-span-1 lg:col-span-1">
-          <p className="text-gray-400 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider mb-1">Total Shop Vendors</p>
+          <p className="text-gray-400 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider mb-1">Total Shop Partners</p>
           <h3 className="text-2xl sm:text-3xl font-black text-gray-900">{vendors.length}</h3>
         </div>
         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-sm">
@@ -728,7 +728,7 @@ export function ShopVendors() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm transition-all duration-300">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden animate-zoomIn border border-gray-100/50">
             <div className="flex items-center justify-between p-5 border-b border-gray-100 bg-gray-50/50 shrink-0">
-              <h3 className="text-lg font-black text-gray-900">{editingVendor ? 'Edit Shop Vendor' : 'Register New Shop Vendor'}</h3>
+              <h3 className="text-lg font-black text-gray-900">{editingVendor ? 'Edit Shop Partner' : 'Register New Shop Partner'}</h3>
               <button onClick={() => { setIsModalOpen(false); setEditingVendor(null); }} className="text-gray-400 hover:bg-gray-100 p-1.5 rounded-lg transition"><X size={20}/></button>
             </div>
             <div className="overflow-y-auto p-5 flex-1">

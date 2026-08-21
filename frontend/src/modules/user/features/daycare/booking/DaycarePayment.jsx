@@ -16,6 +16,7 @@ export function DaycarePayment() {
 
   const [paymentMethod, setPaymentMethod] = useState(''); 
   const [isProcessing, setIsProcessing] = useState(false);
+  const [payError, setPayError] = useState('');
 
   // Bill Calculation
   const getNumDays = () => {
@@ -28,13 +29,16 @@ export function DaycarePayment() {
   const daysCount = getNumDays();
   const planTotal = (selectedPlan?.price || 0) * (selectedPlan?.unit === 'day' ? daysCount : 1);
   const addonsTotal = selectedAddons.reduce((sum, a) => sum + (a.price * (a.unit === 'day' ? daysCount : 1)), 0);
-  const discount = 300; 
-  const subtotal = planTotal + addonsTotal;
-  const platformFee = 49; 
-  const grandTotal = subtotal - discount + platformFee;
+  // The centre's own fee and discount. These were hard-coded here and applied
+  // nowhere server-side, so the total shown was never the total billed.
+  const platformFee = selectedCenter?.fees?.platformFee ?? 49;
+  const subtotal = planTotal + addonsTotal + platformFee;
+  const discount = Math.min(selectedCenter?.fees?.discount ?? 300, subtotal);
+  const grandTotal = Math.max(0, subtotal - discount);
 
   const handlePayment = async () => {
     setIsProcessing(true);
+    setPayError('');
     try {
       const payload = {
         center: selectedCenter,
@@ -56,7 +60,11 @@ export function DaycarePayment() {
       setLastConfirmedBooking(response);
       navigate('/app/services/daycare/book/success');
     } catch (e) {
+      // A day that filled up, an expired session or a dismissed Razorpay sheet
+      // all land here. Silently clearing the spinner left the customer looking
+      // at an unchanged screen with no idea the booking had failed.
       console.error(e);
+      setPayError(e?.message || 'We could not complete this booking. Please try again.');
       setIsProcessing(false);
     }
   };
@@ -157,6 +165,9 @@ export function DaycarePayment() {
 
       {/* Fixed Bottom Action Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 px-5">
+        {payError && (
+          <p className="text-[12px] font-bold text-red-600 mb-3 text-center leading-snug">{payError}</p>
+        )}
         <button 
           onClick={handlePayment}
           disabled={!paymentMethod || isProcessing}
@@ -165,7 +176,9 @@ export function DaycarePayment() {
           {isProcessing ? (
             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
           ) : (
-            `Pay ₹${grandTotal.toLocaleString()}`
+            paymentMethod === 'Cash'
+              ? `Confirm Booking • ₹${grandTotal.toLocaleString()}`
+              : `Pay ₹${grandTotal.toLocaleString()}`
           )}
         </button>
       </div>

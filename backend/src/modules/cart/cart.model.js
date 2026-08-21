@@ -19,6 +19,10 @@ const cartSchema = new mongoose.Schema(
         productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
         packSizeIndex: { type: Number, default: 0, min: 0 },
         qty: { type: Number, required: true, min: 1, max: 99 },
+        // Set when the line was added as part of a breed's Monthly Essentials
+        // Bundle. The discount is resolved server-side from the breed's own
+        // bundlePrice, so this is only ever a grouping marker -- never a price.
+        bundleSlug: { type: String, default: null },
       },
     ],
   },

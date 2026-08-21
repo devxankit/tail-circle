@@ -130,7 +130,7 @@ export function MemorialProviderLayout() {
               <div className="overflow-hidden hidden lg:block">
                 <h4 className="text-sm font-bold text-white truncate">{profile.businessName}</h4>
                 <div className="flex items-center gap-1 mt-0.5">
-                  <span className="text-[10px] font-bold uppercase text-slate-400">Memorial Provider</span>
+                  <span className="text-[10px] font-bold uppercase text-slate-400">Last Ride Partner</span>
                   {isVerified && <CheckCircle size={10} className="text-emerald-400" />}
                 </div>
               </div>

@@ -108,13 +108,14 @@ export function OrdersView() {
           <table>
             <thead><tr><th>Description</th><th>Qty</th><th>Amount</th></tr></thead>
             <tbody>
-              <tr><td>Products & Items (${order.id})</td><td>${order.products}</td><td>₹${order.total}</td></tr>
-              <tr class="total-row"><td colspan="2">TOTAL AMOUNT</td><td>₹${order.total}</td></tr>
+              <tr><td>Your items (${order.id})</td><td>${order.products}</td><td>₹${order.total}</td></tr>
+              <tr class="total-row"><td colspan="2">YOUR EARNINGS</td><td>₹${order.total}</td></tr>
+              ${order.isSharedOrder ? `<tr><td colspan="3" style="font-size:11px;color:#b45309;">Shared basket — the customer paid ₹${order.orderTotal} in total across all sellers.</td></tr>` : ''}
             </tbody>
           </table>
           <div class="footer">
             <p>Thank you for shopping with us! For any queries, contact support@tailcircle.com</p>
-            <p style="margin-top:6px;">TailCircle Shop Vendor · Generated on ${new Date().toLocaleDateString('en-IN')}</p>
+            <p style="margin-top:6px;">TailCircle Shop Partner · Generated on ${new Date().toLocaleDateString('en-IN')}</p>
           </div>
         </body>
       </html>
@@ -124,7 +125,7 @@ export function OrdersView() {
   };
 
   const handleDownloadInvoice = (order) => {
-    const content = `INVOICE\n${'='.repeat(50)}\nOrder ID: ${order.id}\nDate: ${order.date}\nCustomer: ${order.customer}\nDelivery Type: ${order.deliveryType}\nPayment: ${order.paymentStatus}\nStatus: ${order.status}\n${'─'.repeat(50)}\nProducts (${order.products} items)\n${'─'.repeat(50)}\nTOTAL AMOUNT: ₹${order.total}\n${'='.repeat(50)}\nTailCircle Shop Vendor\nGenerated: ${new Date().toLocaleDateString('en-IN')}`;
+    const content = `INVOICE\n${'='.repeat(50)}\nOrder ID: ${order.id}\nDate: ${order.date}\nCustomer: ${order.customer}\nDelivery Type: ${order.deliveryType}\nPayment: ${order.paymentStatus}\nStatus: ${order.status}\n${'─'.repeat(50)}\nProducts (${order.products} items)\n${'─'.repeat(50)}\nTOTAL AMOUNT: ₹${order.total}\n${'='.repeat(50)}\nTailCircle Shop Partner\nGenerated: ${new Date().toLocaleDateString('en-IN')}`;
     const blob = new Blob([content], { type: 'text/plain' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -333,14 +334,33 @@ export function OrdersView() {
                     </span>
                   </div>
                   <div className="space-y-2 text-sm">
-                    <div className="flex justify-between text-slate-600 font-medium">
-                      <span>Items ({selectedOrder.products})</span>
-                      <span>₹{selectedOrder.total}</span>
-                    </div>
+                    {/* The lines this seller is actually fulfilling. A basket can
+                        also carry another seller's goods or the platform's own,
+                        which are none of this vendor's business. */}
+                    {(selectedOrder.items || []).map((it, i) => (
+                      <div key={i} className="flex justify-between text-slate-600 font-medium gap-3">
+                        <span className="min-w-0 truncate">
+                          {it.name}{it.size ? ` · ${it.size}` : ''} × {it.qty}
+                        </span>
+                        <span className="shrink-0">₹{it.total}</span>
+                      </div>
+                    ))}
+                    {!(selectedOrder.items || []).length && (
+                      <div className="flex justify-between text-slate-600 font-medium">
+                        <span>Items ({selectedOrder.products})</span>
+                        <span>₹{selectedOrder.total}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-slate-900 font-black pt-2 border-t border-slate-100 text-lg">
-                      <span>Total Amount</span>
+                      <span>Your earnings</span>
                       <span>₹{selectedOrder.total}</span>
                     </div>
+                    {selectedOrder.isSharedOrder && (
+                      <p className="text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2 leading-snug">
+                        This basket also contains items sold by someone else. The customer paid
+                        ₹{selectedOrder.orderTotal} in total; the ₹{selectedOrder.total} above is your part of it.
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

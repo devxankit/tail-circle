@@ -27,7 +27,7 @@ const mealPlanSchema = new mongoose.Schema(
     active: { type: Boolean, default: true },
     sort: { type: Number, default: 0 },
     // Vendor-authored nutrition attributes (petType, mealType, qty, calories,
-    // protein, duration) surfaced in the Meal Provider portal.
+    // protein, duration) surfaced in the Fresh Meals Partner portal.
     meta: { type: Object, default: {} },
   },
   { timestamps: true }

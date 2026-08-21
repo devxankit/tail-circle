@@ -4,6 +4,7 @@ import { ApiError } from '../../utils/ApiError.js';
 import { notify } from '../../services/notify.js';
 import { getIO, emitToUser } from '../../sockets/index.js';
 import { Booking } from '../booking/booking.model.js';
+import { releaseCapacity } from '../booking/booking.service.js';
 import { Doctor } from '../provider/doctor.model.js';
 import {
   PatientRecord,
@@ -78,6 +79,9 @@ function serializeAppointment(b) {
   const owner = b.meta?.ownerName || b.userId?.name || '';
   return {
     id: String(b._id),
+    // The reference the customer sees on their own booking. Without it the two
+    // sides had no shared identifier to quote at each other over the phone.
+    bookingNo: b.bookingNo || '',
     date: displayDate(b.schedule?.startDate),
     time: b.schedule?.time || '',
     petName: b.petSnapshot?.name || '',
@@ -115,10 +119,26 @@ export async function listAppointments(scope) {
 }
 
 export async function updateAppointmentStatus(scope, id, status) {
-  const clinicVendorId = tenantOf(scope);
   const b = await getOwnedBooking(scope, id);
   b.meta = { ...(b.meta || {}), clinicStatus: status };
   if (status === 'Confirmed' && b.status === 'pending_payment') b.status = 'confirmed';
+
+  /*
+   * Cancelling from the clinic has to cancel the booking itself and hand the
+   * slot back.
+   *
+   * Previously this only wrote `meta.clinicStatus = 'Cancelled'`: the booking
+   * stayed `confirmed`, the capacity counter stayed incremented, and that time
+   * was gone for good — it never reappeared on the vet's calendar and no other
+   * customer could book it. The owner was not told either.
+   */
+  const isCancelling = status === 'Cancelled' && b.status !== 'cancelled';
+  if (isCancelling) {
+    await releaseCapacity(b).catch(() => {});
+    b.status = 'cancelled';
+    b.timeline.push({ status: 'cancelled', note: 'Cancelled by the clinic' });
+  }
+
   b.markModified('meta');
   await b.save();
 
@@ -130,6 +150,17 @@ export async function updateAppointmentStatus(scope, id, status) {
       link: '/appointments',
     }).catch(() => {});
   }
+
+  if (b.userId?._id && isCancelling) {
+    await notify(b.userId._id, {
+      title: 'Appointment cancelled',
+      body: `The clinic cancelled ${b.petSnapshot?.name ? `${b.petSnapshot.name}'s` : 'your'} appointment on ${b.schedule?.startDate || 'the booked date'}. Any payment will be refunded.`,
+      type: 'booking',
+      link: '/app/profile/bookings',
+      data: { bookingId: String(b._id), type: 'doctor' },
+    }).catch(() => {});
+  }
+
   return serializeAppointment(b);
 }
 
@@ -256,9 +287,12 @@ function serializePrescription(p) {
     petName: p.petName,
     owner: p.owner,
     diagnosis: p.diagnosis,
-    items: p.items,
+    items: p.items || [],
     notes: p.notes,
     followUpDate: p.followUpDate,
+    type: p.type || (p.prescriptionUrl ? 'photo' : 'digital'),
+    prescriptionUrl: p.prescriptionUrl || '',
+    prescriptionUrls: p.prescriptionUrls || [],
     status: p.status,
   };
 }
@@ -282,6 +316,10 @@ export async function createPrescription(scope, body) {
     frequency: m.frequency || '',
     duration: m.duration || '',
   }));
+  const prescriptionUrl = body.prescriptionUrl || (Array.isArray(body.prescriptionUrls) && body.prescriptionUrls[0]) || '';
+  const prescriptionUrls = Array.isArray(body.prescriptionUrls) ? body.prescriptionUrls : (prescriptionUrl ? [prescriptionUrl] : []);
+  const type = body.type || (prescriptionUrl ? 'photo' : 'digital');
+
   const rx = await Prescription.create({
     clinicVendorId,
     doctorId: doc?._id || null,
@@ -294,13 +332,16 @@ export async function createPrescription(scope, body) {
     items,
     notes: body.notes || '',
     followUpDate: body.followUpDate || '',
+    type,
+    prescriptionUrl,
+    prescriptionUrls,
     status: 'active',
   });
 
   if (patient?.ownerUserId) {
     await notify(patient.ownerUserId, {
       title: 'New prescription',
-      body: `${doc?.name || 'Your vet'} issued a prescription for ${patient.name}.`,
+      body: `${doc?.name || 'Your vet'} issued a ${type === 'photo' ? 'photo ' : ''}prescription for ${patient.name}.`,
       type: 'vet',
       link: '/appointments',
     }).catch(() => {});

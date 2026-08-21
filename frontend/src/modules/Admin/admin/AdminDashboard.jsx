@@ -84,7 +84,7 @@ const initialActionItems = [
   {
     id: 'ACT-101',
     category: 'Vendor Approval',
-    type: 'Doctor / Clinic',
+    type: 'Veterinarian Partner',
     title: 'Dr. Happy Paws Vet Clinic Registration',
     subtitle: 'Medical License & Clinic Verification Pending',
     details: 'Submitted Practice License #VET-88219 and Clinic Registration Certificate for admin audit.',
@@ -98,7 +98,7 @@ const initialActionItems = [
   {
     id: 'ACT-102',
     category: 'Vendor Approval',
-    type: 'Meal Provider',
+    type: 'Fresh Meals Partner',
     title: 'NutriPaw Organic Meals Co.',
     subtitle: 'FSSAI Food Safety Cert Verification',
     details: 'Applied for Fresh Pet Meal Subscription program. Commission rate requested: 10%.',
@@ -155,7 +155,7 @@ const initialActionItems = [
     category: 'Vendor Approval',
     type: 'Memorial Service',
     title: 'Rainbow Bridge Care Services',
-    subtitle: 'Memorial Provider Registration',
+    subtitle: 'Last Ride Partner Registration',
     details: 'Submitted tax registry and service menu for pet cremation & memorial plaques.',
     priority: 'Medium',
     time: '5 hours ago',
@@ -183,7 +183,7 @@ const initialActionItems = [
 const partners = [
   { rank:1, name:'Happy Paws Shop Store',    role:'Shop',          revenue:'₹4,50,000', rating:4.8, up:true  },
   { rank:2, name:'Dr. Rohit Gupta Clinic',   role:'Doctor',        revenue:'₹3,20,000', rating:4.9, up:true  },
-  { rank:3, name:'Fresh Meals Prep Ltd',     role:'Meal Provider', revenue:'₹2,80,000', rating:4.5, up:true  },
+  { rank:3, name:'Fresh Meals Prep Ltd',     role:'Fresh Meals Partner', revenue:'₹2,80,000', rating:4.5, up:true  },
   { rank:4, name:'Pet Event Magic',          role:'Event',         revenue:'₹2,50,000', rating:4.6, up:false },
   { rank:5, name:'Gentle Care Memorials',    role:'Memorial',      revenue:'₹1,80,000', rating:5.0, up:true  },
   { rank:6, name:'Ravi Pet Clinic',          role:'Shop',          revenue:'₹1,55,000', rating:4.7, up:true  },
@@ -192,7 +192,7 @@ const partners = [
 const roleBadge = r => ({
   Shop:           'bg-teal-50 text-teal-700 border-teal-100',
   Doctor:         'bg-blue-50 text-blue-700 border-blue-100',
-  'Meal Provider':'bg-emerald-50 text-emerald-700 border-emerald-100',
+  'Fresh Meals Partner':'bg-emerald-50 text-emerald-700 border-emerald-100',
   Event:          'bg-purple-50 text-purple-700 border-purple-100',
   Memorial:       'bg-slate-100 text-slate-600 border-slate-200',
 }[r] || 'bg-gray-50 text-gray-500 border-gray-100');

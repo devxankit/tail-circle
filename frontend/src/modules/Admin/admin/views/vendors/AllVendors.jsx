@@ -9,14 +9,11 @@ import {
   fetchAdminVendors, approveVendorGuarded, suspendVendorApi, 
   verifyAdminDocument, fetchVendorDocuments 
 } from '../../../../../services/admin';
+import { VENDOR_TYPE_LABEL } from '../../../../../constants/vendorTypes';
 
-const TYPE_LABEL = { 
-  shop: 'Shop Vendor', 
-  meal_subscription: 'Meal Provider', 
-  events: 'Event Organizer', 
-  clinic: 'Doctor / Clinic', 
-  memorial: 'Memorial Provider' 
-};
+// Shared so a rename lands here too — this map was missing grooming,
+// daycare and adoption, which showed as a blank type in the table.
+const TYPE_LABEL = VENDOR_TYPE_LABEL;
 
 const STATUS_LABEL = { 
   approved: 'Active', 
@@ -676,12 +673,12 @@ export function AllVendors() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Vendor Type</label>
-                <select name="type" defaultValue={editingVendor?.type || 'Shop Vendor'} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-teal-500">
-                  <option>Shop Vendor</option>
-                  <option>Meal Provider</option>
-                  <option>Event Organizer</option>
-                  <option>Doctor / Clinic</option>
-                  <option>Memorial Provider</option>
+                <select name="type" defaultValue={editingVendor?.type || 'Shop Partner'} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-teal-500">
+                  <option>Shop Partner</option>
+                  <option>Fresh Meals Partner</option>
+                  <option>Events Partner</option>
+                  <option>Veterinarian Partner</option>
+                  <option>Last Ride Partner</option>
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">

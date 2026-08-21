@@ -99,6 +99,21 @@ export function upcomingDates(count = 14) {
   });
 }
 
+/**
+ * What this consultation will actually be billed, for the signed-in customer.
+ *
+ * The slots endpoint is public, so it can only quote the vet's standard fee.
+ * A returning customer may be due the follow-up rate, which is keyed on the
+ * pet — only this authenticated call knows that, and it is the same helper the
+ * booking itself prices from.
+ */
+export async function getConsultQuote({ doctorId, visitType, petId, paymentMethod = 'razorpay' }) {
+  const { data } = await api.get(`/doctors/${doctorId}/quote`, {
+    params: { visitType, paymentMethod, ...(petId ? { petId } : {}) },
+  });
+  return data;
+}
+
 /** Create the consultation booking. Razorpay bookings come back with an order. */
 export async function createConsultBooking({
   doctorId,

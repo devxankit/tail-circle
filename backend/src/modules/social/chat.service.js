@@ -14,19 +14,42 @@ import { User } from '../user/user.model.js';
  */
 
 /** Create (or return) a conversation for a user + context. */
-export async function ensureConversation({ userId, context, refId, counterpart }) {
+/**
+ * Find or open a conversation.
+ *
+ * `alsoInclude` carries the other real accounts that belong in the room — a
+ * matched pet owner, for instance. Everything downstream keys off
+ * `participants`: delivery, unread counts, and `getOwnedConversation`, which
+ * 404s for anyone not listed. Rooms were always created with a single
+ * participant, which is invisible when the counterpart is a seeded profile but
+ * silently locks a real person out of their own match.
+ */
+export async function ensureConversation({ userId, context, refId, counterpart, alsoInclude = [] }) {
+  const everyone = [...new Set([String(userId), ...alsoInclude.map(String)])];
+
   let conversation = await Conversation.findOne({
     participants: userId,
     context,
     refId: refId ?? null,
   });
+
   if (!conversation) {
     conversation = await Conversation.create({
-      participants: [userId],
+      participants: everyone,
       context,
       refId: refId ?? null,
       counterpart: counterpart || {},
     });
+    return conversation;
+  }
+
+  // An existing room may predate the counterpart joining, or have been opened
+  // before they had an account — add anyone missing rather than leaving them out.
+  const present = new Set(conversation.participants.map(String));
+  const missing = everyone.filter((id) => !present.has(id));
+  if (missing.length) {
+    conversation.participants.push(...missing);
+    await conversation.save();
   }
   return conversation;
 }
@@ -54,25 +77,25 @@ export async function sendMessage(user, conversationId, { type = 'text', text = 
     type,
     text,
     mediaUrl,
-    meta: type === 'location' ? meta : undefined,
+    meta: (type === 'location' || type === 'document' || type === 'story_reply' || meta) ? meta : undefined,
+    readBy: [user.id],
   });
 
-  conversation.lastMessage = type === 'image' ? '📷 Photo' : type === 'location' ? '📍 Location' : text;
+  const snippet = type === 'image' ? '📷 Photo' 
+    : type === 'location' ? '📍 Location' 
+    : type === 'document' ? `📄 ${meta?.fileName || 'Document'}`
+    : type === 'story_reply' ? '💬 Story Reply' 
+    : text;
+
+  conversation.lastMessage = snippet;
   conversation.lastMessageAt = new Date();
-  // Real unread counter — bumps for every OTHER participant, resets to 0 for
-  // the sender. Today a conversation only ever has one real participant (the
-  // sender), so this is a no-op in practice, but it's the honest mechanism
-  // rather than a badge hardcoded to 0 — it starts counting the moment a
-  // second real account (vendor/support reply, etc.) ever lands in here.
+
   for (const participantId of conversation.participants) {
     const key = String(participantId);
     conversation.unread.set(key, key === String(user.id) ? 0 : (conversation.unread.get(key) || 0) + 1);
   }
   await conversation.save();
 
-  // Live fan-out. Shape mirrors what the client subscription expects
-  // (key / senderId / type / text / mediaUrl / at) plus conversationId so the
-  // client can filter to the open thread.
   const payload = {
     conversationId: String(conversation.id),
     key: String(message.id),
@@ -81,6 +104,8 @@ export async function sendMessage(user, conversationId, { type = 'text', text = 
     text: text || null,
     mediaUrl: mediaUrl || null,
     meta: message.meta || null,
+    reactions: [],
+    readBy: [String(user.id)],
     at: message.createdAt ? message.createdAt.getTime() : Date.now(),
   };
   for (const participantId of conversation.participants) {
@@ -173,4 +198,98 @@ export async function reportAndBlockConversation(userId, conversationId, reason)
   }
 
   return { blocked: true };
+}
+
+/**
+ * Toggle emoji reaction on a message & push live update over Socket.IO.
+ */
+export async function reactToMessage(userId, conversationId, messageId, emoji) {
+  const conversation = await getOwnedConversation(userId, conversationId);
+  const message = await Message.findOne({ _id: messageId, conversationId: conversation.id });
+  if (!message) throw ApiError.notFound('Message not found');
+
+  const existingIndex = message.reactions.findIndex((r) => String(r.userId) === String(userId) && r.emoji === emoji);
+  if (existingIndex > -1) {
+    message.reactions.splice(existingIndex, 1);
+  } else {
+    // Remove any previous reaction from same user (single reaction per user)
+    message.reactions = message.reactions.filter((r) => String(r.userId) !== String(userId));
+    message.reactions.push({ userId, emoji, createdAt: new Date() });
+  }
+
+  await message.save();
+
+  const payload = {
+    conversationId: String(conversation.id),
+    messageId: String(message.id),
+    userId: String(userId),
+    emoji,
+    reactions: message.reactions.map((r) => ({ userId: String(r.userId), emoji: r.emoji })),
+  };
+
+  for (const pid of conversation.participants) {
+    emitToUser(pid, SOCKET_EVENTS.CHAT_REACTION, payload);
+  }
+
+  return payload;
+}
+
+/**
+ * Delete a message (for me or for everyone) & push live update over Socket.IO.
+ */
+export async function deleteMessage(userId, conversationId, messageId, mode = 'everyone') {
+  const conversation = await getOwnedConversation(userId, conversationId);
+  const message = await Message.findOne({ _id: messageId, conversationId: conversation.id });
+  if (!message) throw ApiError.notFound('Message not found');
+
+  if (mode === 'everyone' && String(message.senderId) === String(userId)) {
+    await Message.deleteOne({ _id: message.id });
+  } else {
+    if (!message.deletedFor.some((id) => String(id) === String(userId))) {
+      message.deletedFor.push(userId);
+      await message.save();
+    }
+  }
+
+  const payload = {
+    conversationId: String(conversation.id),
+    messageId: String(message.id),
+    userId: String(userId),
+    mode,
+  };
+
+  for (const pid of conversation.participants) {
+    emitToUser(pid, SOCKET_EVENTS.CHAT_DELETE, payload);
+  }
+
+  return payload;
+}
+
+/**
+ * Mark messages as read by current user & notify participants via Socket.IO.
+ */
+export async function markMessagesAsRead(userId, conversationId) {
+  const conversation = await getOwnedConversation(userId, conversationId);
+  
+  // Bump readBy array on messages
+  await Message.updateMany(
+    { conversationId: conversation.id, readBy: { $ne: userId } },
+    { $addToSet: { readBy: userId } }
+  );
+
+  // Clear unread map counter for this user
+  conversation.unread.set(String(userId), 0);
+  await conversation.save();
+
+  const payload = {
+    conversationId: String(conversation.id),
+    userId: String(userId),
+    readAt: Date.now(),
+  };
+
+  for (const pid of conversation.participants) {
+    emitToUser(pid, SOCKET_EVENTS.CHAT_READ, payload);
+  }
+
+  return payload;
 }

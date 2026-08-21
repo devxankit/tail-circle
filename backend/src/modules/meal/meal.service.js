@@ -7,6 +7,19 @@ import { MealPlan, Meal, MealAccount, MealOrder } from './meal.models.js';
 
 const toPaise = (rupees) => Math.round(rupees * 100);
 
+const isObjectId = (v) => /^[0-9a-f]{24}$/i.test(String(v));
+
+/**
+ * Match a catalogue row by its public handle — the mock `legacyId` for seeded
+ * rows, the Mongo id for anything a kitchen created. Looking up `legacyId`
+ * alone made every vendor-published plan and recipe impossible to order.
+ */
+function byHandle(handle) {
+  const or = [{ legacyId: String(handle) }];
+  if (isObjectId(handle)) or.push({ _id: handle });
+  return { $or: or };
+}
+
 // Server-side catalog for per-item customisation — mirrors MealDashboard.jsx's
 // picker exactly, so the price the modal shows is the price actually charged
 // (customisationId used to be accepted from the client and silently dropped).
@@ -16,6 +29,28 @@ export const MEAL_CUSTOMISATIONS = {
   c3: { name: 'Extra Veggies', price: 60 },
   c4: { name: 'Premium Broth', price: 90 },
 };
+
+/** Every meal referenced by a set of order lines, by either handle. */
+async function findMealsByHandle(lines) {
+  const handles = lines.map((l) => String(l.mealId));
+  return Meal.find({
+    $or: [
+      { legacyId: { $in: handles } },
+      { _id: { $in: handles.filter(isObjectId) } },
+    ],
+    active: true,
+  });
+}
+
+/** Look meals up by whichever handle the client sent. */
+function mealHandleMap(meals) {
+  const map = new Map();
+  for (const m of meals) {
+    if (m.legacyId) map.set(m.legacyId, m);
+    map.set(String(m._id), m);
+  }
+  return map;
+}
 
 export async function getAccount(userId) {
   let account = await MealAccount.findOne({ userId });
@@ -28,7 +63,7 @@ export async function getAccount(userId) {
  * (purpose `subscription` in the shared dispatcher).
  */
 export async function purchasePackage(user, planLegacyId) {
-  const plan = await MealPlan.findOne({ legacyId: planLegacyId, active: true });
+  const plan = await MealPlan.findOne({ ...byHandle(planLegacyId), active: true });
   if (!plan) throw ApiError.badRequest('Plan not found');
 
   const order = await MealOrder.create({
@@ -113,8 +148,8 @@ async function recordMealLedger(order) {
 
 /** Order menu meals using prepaid credits — atomic balance deduction. */
 export async function orderWithPrepaid(user, lines) {
-  const meals = await Meal.find({ legacyId: { $in: lines.map((l) => l.mealId) }, active: true });
-  const byId = new Map(meals.map((m) => [m.legacyId, m]));
+  const meals = await findMealsByHandle(lines);
+  const byId = mealHandleMap(meals);
   const items = lines.map((l) => {
     const meal = byId.get(l.mealId);
     if (!meal) throw ApiError.badRequest(`Unknown meal: ${l.mealId}`);
@@ -122,7 +157,7 @@ export async function orderWithPrepaid(user, lines) {
     // name still rides along as a real kitchen note instead of being dropped.
     const custom = MEAL_CUSTOMISATIONS[l.customisationId];
     return {
-      mealId: meal.legacyId,
+      mealId: meal.legacyId || String(meal._id),
       name: custom && custom.name !== 'Standard Portion' ? `${meal.name} (${custom.name})` : meal.name,
       quantity: l.qty,
       price: 0,
@@ -138,22 +173,33 @@ export async function orderWithPrepaid(user, lines) {
     throw ApiError.badRequest('Not enough prepaid meals. Please purchase a new plan.');
   }
 
-  return MealOrder.create({
-    userId: user.id,
-    providerId: meals[0]?.providerId || null,
-    type: 'prepaid',
-    items,
-    total: 0,
-    mealsUsed: creditsNeeded,
-    status: 'Preparing',
-    deliveryTime: 'Today, in 45 mins',
-  });
+  // The credits are already gone at this point, so anything that fails from
+  // here has to give them back. Without this a failed insert silently ate the
+  // customer's prepaid meals and left no order to show for them.
+  try {
+    return await MealOrder.create({
+      userId: user.id,
+      providerId: meals[0]?.providerId || null,
+      type: 'prepaid',
+      items,
+      total: 0,
+      mealsUsed: creditsNeeded,
+      status: 'Preparing',
+      deliveryTime: 'Today, in 45 mins',
+    });
+  } catch (err) {
+    await MealAccount.updateOne(
+      { userId: user.id },
+      { $inc: { balance: creditsNeeded } }
+    ).catch(() => {});
+    throw err;
+  }
 }
 
 /** À-la-carte order — server-priced, paid via Razorpay. */
 export async function orderALaCarte(user, lines) {
-  const meals = await Meal.find({ legacyId: { $in: lines.map((l) => l.mealId) }, active: true });
-  const byId = new Map(meals.map((m) => [m.legacyId, m]));
+  const meals = await findMealsByHandle(lines);
+  const byId = mealHandleMap(meals);
   const items = lines.map((l) => {
     const meal = byId.get(l.mealId);
     if (!meal) throw ApiError.badRequest(`Unknown meal: ${l.mealId}`);
@@ -161,7 +207,7 @@ export async function orderALaCarte(user, lines) {
     // modal shows is now what's actually charged, not just displayed.
     const custom = MEAL_CUSTOMISATIONS[l.customisationId] || MEAL_CUSTOMISATIONS.c1;
     return {
-      mealId: meal.legacyId,
+      mealId: meal.legacyId || String(meal._id),
       name: custom.name !== 'Standard Portion' ? `${meal.name} (${custom.name})` : meal.name,
       quantity: l.qty,
       price: meal.price + custom.price,
@@ -191,23 +237,42 @@ async function primaryMealProviderId() {
   return plan?.providerId || null;
 }
 
-/** One-time free trial claim. */
+/**
+ * One-time free trial claim.
+ *
+ * The claim is an atomic guarded update rather than read-then-write: two
+ * requests arriving together both used to read `freeTrialClaimed: false` and
+ * both got a free meal. And if the order insert failed afterwards the flag
+ * stayed set, burning the trial with nothing delivered — so a failure now
+ * hands it back.
+ */
 export async function claimTrial(user, contact) {
-  const account = await getAccount(user.id);
-  if (account.freeTrialClaimed) throw ApiError.badRequest('Free trial already claimed');
-  account.freeTrialClaimed = true;
-  await account.save();
+  await getAccount(user.id); // ensure the account row exists
 
-  return MealOrder.create({
-    userId: user.id,
-    providerId: await primaryMealProviderId(),
-    type: 'trial',
-    items: [{ mealId: null, name: 'Free Trial Meal', quantity: 1, price: 0 }],
-    total: 0,
-    status: 'Preparing',
-    deliveryTime: 'Today, in 45 mins',
-    contact,
-  });
+  const claimed = await MealAccount.updateOne(
+    { userId: user.id, freeTrialClaimed: { $ne: true } },
+    { $set: { freeTrialClaimed: true } }
+  );
+  if (claimed.modifiedCount === 0) throw ApiError.badRequest('Free trial already claimed');
+
+  try {
+    return await MealOrder.create({
+      userId: user.id,
+      providerId: await primaryMealProviderId(),
+      type: 'trial',
+      items: [{ mealId: null, name: 'Free Trial Meal', quantity: 1, price: 0 }],
+      total: 0,
+      status: 'Preparing',
+      deliveryTime: 'Today, in 45 mins',
+      contact,
+    });
+  } catch (err) {
+    await MealAccount.updateOne(
+      { userId: user.id },
+      { $set: { freeTrialClaimed: false } }
+    ).catch(() => {});
+    throw err;
+  }
 }
 
 export async function listOrders(userId) {

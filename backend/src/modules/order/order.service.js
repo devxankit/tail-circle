@@ -11,6 +11,7 @@ import { postLedgerEntry } from '../vendor/vendor.service.js';
 import { VendorProfile } from '../vendor/vendor.models.js';
 import { Payment } from '../payment/payment.model.js';
 import { Product } from '../shop/product.model.js';
+import { resolveBundleDiscounts } from '../shop/bundle.service.js';
 import { Address } from '../address/address.model.js';
 import { Cart } from '../cart/cart.model.js';
 import { Order, CANCELLABLE_STATUSES } from './order.model.js';
@@ -41,6 +42,7 @@ async function buildOrderItems(lines) {
     }
     items.push({
       productId: product.id,
+      vendorId: product.vendorId || null,
       legacyId: product.legacyId,
       name: product.name,
       img: product.img || product.images[0] || '',
@@ -49,17 +51,29 @@ async function buildOrderItems(lines) {
       qty: line.qty,
       unitPrice: pack.price,
       total: pack.price * line.qty,
+      bundleSlug: line.bundleSlug || null,
     });
   }
   return items;
 }
 
-function computeAmounts(items) {
+/**
+ * Amounts are in paise and always server-derived.
+ *
+ * `discount` was hardcoded to 0, which meant a breed Monthly Essentials Bundle
+ * charged the full sum of its parts however loudly the shop advertised the box
+ * price. It is now the real bundle saving, resolved from each breed's own
+ * bundlePrice, and tax is charged on the discounted subtotal rather than the
+ * list total.
+ */
+function computeAmounts(items, bundleDiscountRupees = 0) {
   const subtotalRupees = items.reduce((sum, i) => sum + i.total, 0);
   const subtotal = Math.round(subtotalRupees * 100); // paise
-  const tax = Math.round(subtotal * TAX_RATE);
+  const discount = Math.min(subtotal, Math.round(bundleDiscountRupees * 100));
+  const taxable = subtotal - discount;
+  const tax = Math.round(taxable * TAX_RATE);
   const delivery = 0;
-  return { subtotal, tax, delivery, discount: 0, total: subtotal + tax + delivery };
+  return { subtotal, tax, delivery, discount, total: taxable + tax + delivery };
 }
 
 /**
@@ -101,10 +115,23 @@ export async function checkout(user, { items: lines, addressId, paymentMethod })
 
   const items = await buildOrderItems(lines);
   if (!items.length) throw ApiError.badRequest('Your cart is empty');
-  const amounts = computeAmounts(items);
+  // Resolved from the breed catalogue, never from anything the client sent.
+  const { discount: bundleDiscount } = await resolveBundleDiscounts(
+    items.map((i) => ({
+      productId: i.productId,
+      packSizeIndex: i.packSizeIndex,
+      qty: i.qty,
+      bundleSlug: i.bundleSlug || null,
+    }))
+  );
+  const amounts = computeAmounts(items, bundleDiscount);
 
   const order = await Order.create({
     userId: user.id,
+    // Nothing ever set this, so every order was `vendorId: null` — the shop
+    // vendor portal queries orders by vendor, so sellers saw an empty order
+    // list forever and the commission ledger skipped every sale.
+    vendorId: singleVendorOf(items),
     items,
     amounts,
     addressSnapshot: address.toObject(),
@@ -140,21 +167,55 @@ async function afterPlacement(userId) {
   await invalidate('shop:*');
 }
 
-/** Post a vendor commission ledger entry once an order is paid/placed. */
+/** The single seller behind every line, or null for a mixed / platform order. */
+function singleVendorOf(items) {
+  const owners = new Set(items.map((i) => String(i.vendorId || '')));
+  if (owners.size !== 1) return null;
+  const [only] = [...owners];
+  return only || null;
+}
+
+/**
+ * Credit each seller once an order is paid/placed.
+ *
+ * An order can carry lines from more than one shop plus the platform's own
+ * stock, so each seller is settled on the value of *their* lines — with tax
+ * apportioned by their share — rather than on the order total. Crediting the
+ * whole total to one `order.vendorId` would have overpaid a seller whose goods
+ * were part of a larger basket.
+ */
 async function recordVendorLedger(order) {
-  if (!order.vendorId) return; // platform-owned catalog — nothing to settle
-  try {
-    const profile = await VendorProfile.findOne({ userId: order.vendorId });
-    await postLedgerEntry({
-      vendorId: order.vendorId,
-      refType: 'order',
-      refId: order._id,
-      label: `Order ${order.orderNo}`,
-      gross: order.amounts.total,
-      commissionRate: profile?.commissionRate ?? 0.15,
-    });
-  } catch {
-    // ledger is best-effort — never block fulfilment
+  const byVendor = new Map();
+  for (const item of order.items || []) {
+    const vendorId = item.vendorId ? String(item.vendorId) : null;
+    if (!vendorId) continue; // platform-owned line — nothing to settle
+    byVendor.set(vendorId, (byVendor.get(vendorId) || 0) + Math.round(item.total * 100));
+  }
+  if (!byVendor.size) return;
+
+  const subtotal = order.amounts?.subtotal || 0;
+  const extras = (order.amounts?.tax || 0) + (order.amounts?.delivery || 0);
+
+  for (const [vendorId, linesPaise] of byVendor) {
+    try {
+      const share = subtotal > 0 ? linesPaise / subtotal : 0;
+      const gross = linesPaise + Math.round(extras * share);
+      const profile = await VendorProfile.findOne({ userId: vendorId });
+      await postLedgerEntry({
+        vendorId,
+        refType: 'order',
+        // The ledger is unique on (refType, refId), so a multi-vendor order
+        // needs a distinct reference per seller.
+        // Idempotent per (vendor, refType, refId), so re-fulfilment cannot
+        // double-credit while two sellers on one order both get paid.
+        refId: order._id,
+        label: `Order ${order.orderNo}`,
+        gross,
+        commissionRate: profile?.commissionRate ?? 0.15,
+      });
+    } catch {
+      // ledger is best-effort — never block fulfilment
+    }
   }
 }
 

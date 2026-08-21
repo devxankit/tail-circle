@@ -20,7 +20,7 @@ const MealProviderContext = createContext();
 
 /** Map the API vendor profile to the portal's profile shape. */
 function toPortalProfile(p) {
-  if (!p) return { businessName: 'Meal Provider', email: '', phone: '', address: '', status: 'Online', verification: 'Pending', logo: null, policies: { codEnabled: true, returnsEnabled: true, minOrderValue: 0 } };
+  if (!p) return { businessName: 'Fresh Meals Partner', email: '', phone: '', address: '', status: 'Online', verification: 'Pending', logo: null, policies: { codEnabled: true, returnsEnabled: true, minOrderValue: 0 } };
   const vmap = { approved: 'Verified Premium', pending: 'Pending', rejected: 'Rejected', suspended: 'Suspended' };
   return {
     businessName: p.businessName,

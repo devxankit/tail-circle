@@ -3,7 +3,7 @@ import {
   Plus, Search, Trash2, Edit, X, Check, Settings, AlertCircle, 
   Filter, Sparkles, Layers, Award, PawPrint, Heart, Info, DollarSign
 } from 'lucide-react';
-import { products } from '../../../../user/features/shop/shopData';
+import { fetchProducts } from '../../../../../services/shop';
 import { fetchAdminBreeds, createAdminBreed, updateAdminBreed, deleteAdminBreed } from '../../../../../services/admin';
 
 export function BreedManagement() {
@@ -49,14 +49,42 @@ export function BreedManagement() {
   const [bundleName, setBundleName] = useState('');
   const [bundleProductIds, setBundleProductIds] = useState([]);
   const [bundlePrice, setBundlePrice] = useState(0);
-  const [bundleOriginalPrice, setBundleOriginalPrice] = useState(0);
+  // Derived, not stored: see the note where it is computed below.
 
   // Toast / Status state
   const [toastMessage, setToastMessage] = useState(null);
 
+  // The live catalogue, so recommendations can only ever be made against
+  // products that really exist.
+  const [products, setProducts] = useState([]);
+  const [productsError, setProductsError] = useState('');
+
   // Load breeds from the API on mount
   useEffect(() => {
     fetchAdminBreeds().then(setBreeds).catch((err) => console.error('Failed to load breeds', err));
+  }, []);
+
+  /*
+   * This screen used to import a static `products` array from the storefront's
+   * legacy shopData.js mock. Two things were wrong with that: any product a
+   * vendor or admin created after the mock was written could never be
+   * recommended for a breed (it simply was not in the list), and edits to a
+   * product's name, price or category were invisible here.
+   *
+   * fetchProducts() is the same call and the same mapper the shop itself uses,
+   * so the ids saved into a breed's recommendations are guaranteed to be the
+   * ids the shop matches against (`legacyId ?? _id`).
+   */
+  useEffect(() => {
+    fetchProducts({ limit: 500 })
+      .then((rows) => {
+        setProducts(rows);
+        setProductsError('');
+      })
+      .catch(() => {
+        setProducts([]);
+        setProductsError('Could not load the product catalogue — recommendations cannot be edited right now.');
+      });
   }, []);
 
   const showToast = (text, type = 'success') => {
@@ -91,7 +119,6 @@ export function BreedManagement() {
     setBundleName('');
     setBundleProductIds([]);
     setBundlePrice(0);
-    setBundleOriginalPrice(0);
     setIsFormOpen(true);
   };
 
@@ -127,7 +154,6 @@ export function BreedManagement() {
     setBundleName(breed.monthlyBundle?.name || '');
     setBundleProductIds(breed.monthlyBundle?.productIds || []);
     setBundlePrice(breed.monthlyBundle?.bundlePrice || 0);
-    setBundleOriginalPrice(breed.monthlyBundle?.originalPrice || 0);
     setIsFormOpen(true);
   };
 
@@ -161,14 +187,16 @@ export function BreedManagement() {
     setGuidanceMap(prev => ({ ...prev, [productId]: level }));
   };
 
-  // Update original bundle price automatically when bundle items change
-  useEffect(() => {
-    const originalSum = bundleProductIds.reduce((sum, pid) => {
-      const prod = products.find(p => p.id === pid);
-      return sum + (prod ? prod.price : 0);
-    }, 0);
-    setBundleOriginalPrice(originalSum);
-  }, [bundleProductIds]);
+  /*
+   * "Buy separately" total for the bundle. Derived on render rather than
+   * mirrored into state by an effect: it is a pure function of the selected
+   * ids and the catalogue, and the catalogue now loads asynchronously, so an
+   * effect would have shown ₹0 until a second render caught up.
+   */
+  const bundleOriginalPrice = bundleProductIds.reduce(
+    (sum, pid) => sum + (products.find((p) => p.id === pid)?.price || 0),
+    0
+  );
 
   const toggleBundleProduct = (productId) => {
     if (bundleProductIds.includes(productId)) {
@@ -615,6 +643,16 @@ export function BreedManagement() {
                   Select which items from our catalog apply to this breed. For each checked item, assign a confidence Guidance level (`Must Have`, `Good To Have`, `Optional`).
                 </p>
 
+                {productsError && (
+                  <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2">
+                    <AlertCircle size={14} className="mt-0.5 shrink-0 text-red-500" />
+                    <p className="text-[11px] font-semibold leading-snug text-red-600">{productsError}</p>
+                  </div>
+                )}
+                {!productsError && products.length === 0 && (
+                  <p className="text-[11px] font-semibold text-slate-400">Loading catalogue…</p>
+                )}
+
                 {[
                   { label: 'Food Picks', list: recFood, setList: setRecFood, category: 'Food' },
                   { label: 'Treats & Rewards', list: recTreats, setList: setRecTreats, category: 'Treats' },
@@ -625,7 +663,7 @@ export function BreedManagement() {
                   { label: 'Comfort & Bedding', list: recComfort, setList: setRecComfort, category: 'Accessories' },
                   { label: 'Travel Essentials', list: recTravel, setList: setRecTravel, category: 'Accessories' }
                 ].map((recCat, idx) => {
-                  const availableProducts = products.filter(p => p.category.toLowerCase() === recCat.category.toLowerCase());
+                  const availableProducts = products.filter(p => (p.category || '').toLowerCase() === recCat.category.toLowerCase());
                   return (
                     <div key={idx} className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                       <h4 className="font-bold text-[13px] text-slate-800 mb-2 border-b border-slate-200 pb-1.5 flex items-center justify-between">

@@ -11,7 +11,10 @@ import {
   fetchProviderSlots, saveProviderSlots,
   fetchProviderBookings, updateProviderBookingStatus,
 } from '../../../services/providerVendor';
-import { fetchVendorProfile, addVendorDocument, removeVendorDocument, uploadVendorFile } from '../../../services/vendor';
+// `updateVendorProfile` is used by the bank-details save below; it was missing
+// from this list, so saving a profile with bank details threw a ReferenceError
+// and silently lost the whole save.
+import { fetchVendorProfile, updateVendorProfile, addVendorDocument, removeVendorDocument, uploadVendorFile } from '../../../services/vendor';
 
 /**
  * Vendor portal for the Provider-backed verticals — grooming salons and daycare

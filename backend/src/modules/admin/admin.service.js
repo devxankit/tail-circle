@@ -10,6 +10,7 @@ import { Provider } from '../provider/provider.model.js';
 import { Doctor } from '../provider/doctor.model.js';
 import { VendorProfile, VendorLedgerEntry } from '../vendor/vendor.models.js';
 import { serializeProfile } from '../vendor/vendor.service.js';
+import { VENDOR_TYPE_LABEL } from '../vendor/vendorTypeLabels.js';
 import { invalidate } from '../../services/cache.service.js';
 import { AuditLog, Banner, PlatformSetting, AdminActionItem } from './admin.models.js';
 
@@ -48,7 +49,7 @@ const DEFAULT_ACTION_ITEMS = [
   {
     seedKey: 'act_101',
     category: 'Vendor Approval',
-    type: 'Doctor / Clinic',
+    type: 'Veterinarian Partner',
     title: 'Dr. Happy Paws Vet Clinic Registration',
     subtitle: 'Medical License & Clinic Verification Pending',
     details: 'Submitted Practice License #VET-88219 and Clinic Registration Certificate for admin audit.',
@@ -62,7 +63,7 @@ const DEFAULT_ACTION_ITEMS = [
   {
     seedKey: 'act_102',
     category: 'Vendor Approval',
-    type: 'Meal Provider',
+    type: 'Fresh Meals Partner',
     title: 'NutriPaw Organic Meals Co.',
     subtitle: 'FSSAI Food Safety Cert Verification',
     details: 'Applied for Fresh Pet Meal Subscription program. Commission rate requested: 10%.',
@@ -119,7 +120,7 @@ const DEFAULT_ACTION_ITEMS = [
     category: 'Vendor Approval',
     type: 'Memorial Service',
     title: 'Rainbow Bridge Care Services',
-    subtitle: 'Memorial Provider Registration',
+    subtitle: 'Last Ride Partner Registration',
     details: 'Submitted tax registry and service menu for pet cremation & memorial plaques.',
     priority: 'Medium',
     status: 'pending',
@@ -252,7 +253,9 @@ export async function resolveActionItem(actor, actionId, { action = 'approve', n
 
 
 /* ── Dashboard ────────────────────────────────────────────────────── */
-const TYPE_LABEL = { shop: 'Shop', meal_subscription: 'Meal', events: 'Event', clinic: 'Doctor', memorial: 'Memorial' };
+// Shared labels — this map covered only five of the eight vendor types, so
+// grooming, daycare and adoption vendors were reported as "Other".
+const TYPE_LABEL = VENDOR_TYPE_LABEL;
 const startOfDay = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 
 export async function getDashboard() {
@@ -669,21 +672,46 @@ export async function listPublicBanners() {
   return rows.map(serializeBanner);
 }
 
+/**
+ * Create a banner, or overwrite the one already holding that key.
+ *
+ * Upsert rather than insert: the key identifies a fixed slot in the user app,
+ * so "create" from an editor that has lost track of the existing row's id must
+ * update that row instead of adding a rival copy the app might read instead.
+ */
 export async function createBanner(actor, body, ip) {
-  const b = await Banner.create({
-    key: body.key || 'home_hero',
-    title: body.title || '',
-    subtitle: body.subtitle || '',
-    image: body.image || '',
-    link: body.link || '',
-    slot: body.slot || 'Home Hero',
-    btnText: body.btnText || '',
-    bg: body.bg || '',
-    badge: body.badge || '',
-    active: body.active !== false,
-    sort: body.sort || 0,
+  const key = body.key || 'home_hero';
+  const existing = await Banner.findOne({ key });
+  const before = existing ? serializeBanner(existing) : null;
+
+  const b = await Banner.findOneAndUpdate(
+    { key },
+    {
+      $set: {
+        key,
+        title: body.title || '',
+        subtitle: body.subtitle || '',
+        image: body.image || '',
+        link: body.link || '',
+        slot: body.slot || 'Home Hero',
+        btnText: body.btnText || '',
+        bg: body.bg || '',
+        badge: body.badge || '',
+        active: body.active !== false,
+        sort: body.sort || 0,
+      },
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true }
+  );
+
+  await writeAudit(actor, {
+    action: before ? 'banner.update' : 'banner.create',
+    targetType: 'banner',
+    targetId: b._id,
+    before,
+    after: serializeBanner(b),
+    ip,
   });
-  await writeAudit(actor, { action: 'banner.create', targetType: 'banner', targetId: b._id, after: serializeBanner(b), ip });
   return serializeBanner(b);
 }
 

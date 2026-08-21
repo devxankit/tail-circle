@@ -94,7 +94,7 @@ export function MealProviderLayout() {
               </div>
               <div className="overflow-hidden">
                 <p className="text-white text-xs font-bold truncate">{profile.businessName}</p>
-                <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-wider truncate">Meal Provider</p>
+                <p className="text-slate-400 text-[10px] font-semibold uppercase tracking-wider truncate">Fresh Meals Partner</p>
               </div>
             </div>
 

@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Star, MapPin, Scissors, Info, ShowerHead, Flower2, Droplets, SprayCan, Wind, Brush, Sparkles, Check, Plus, Heart, Smile, Shield, Palette, X } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getGroomingShopById } from '../../../../services/groomingApi';
+import { getGroomingShopById, getGroomingSlots } from '../../../../services/groomingApi';
+import { useGroomingStore } from '../../../../store/useGroomingStore';
 
 const ALL_SERVICES = [
   'Bath', 'Shampoo', 'Blow Dry', 'Brush', 'Nail Trim', 'Ear Clean', 
@@ -63,6 +64,104 @@ const getPackageDef = (name) => {
   }
 };
 
+/** Best-guess icon for a service name, shared by package chips and the add-on grid. */
+const iconForService = (name) => {
+  const n = String(name || '').toLowerCase();
+  if (n.includes('bath') || n.includes('wash')) return ShowerHead;
+  if (n.includes('shampoo') || n.includes('perfume') || n.includes('cologne') || n.includes('spray')) return SprayCan;
+  if (n.includes('dry') || n.includes('shed') || n.includes('blow')) return Wind;
+  if (n.includes('brush') && !n.includes('teeth')) return Brush;
+  if (n.includes('teeth') || n.includes('dental')) return Smile;
+  if (n.includes('trim') || n.includes('cut') || n.includes('nail') || n.includes('clip')) return Scissors;
+  if (n.includes('paw') || n.includes('massage')) return Heart;
+  if (n.includes('tick') || n.includes('flea')) return Shield;
+  if (n.includes('color') || n.includes('dye')) return Palette;
+  if (n.includes('facial') || n.includes('blueberry') || n.includes('spa') || n.includes('aroma')) return Flower2;
+  if (n.includes('gland')) return Droplets;
+  return Sparkles;
+};
+
+/**
+ * The services listed under a package.
+ *
+ * Prefers the salon's own `includes` list — that is what the vendor typed into
+ * their dashboard, and it is the whole point of the field. `getPackageDef`
+ * remains as the fallback for seeded packages that never set one, so the
+ * existing shops still render their familiar chips.
+ */
+const resolveIncludes = (pkg) => {
+  if (pkg?.includes?.length) {
+    return pkg.includes.map((name) => ({ name, desc: '', icon: iconForService(name) }));
+  }
+  return getPackageDef(pkg?.name || '').includes;
+};
+
+/**
+ * The salon's photo strip.
+ *
+ * Swipe/scroll driven with CSS snap — no carousel library — but with the
+ * affordances the bare scroll strip was missing: a dot per photo, a counter,
+ * and tappable dots. Without them a multi-photo salon looked identical to a
+ * single-photo one, so nobody knew to swipe.
+ */
+function GalleryStrip({ images, name }) {
+  const trackRef = useRef(null);
+  const [active, setActive] = useState(0);
+
+  const onScroll = () => {
+    const el = trackRef.current;
+    if (!el || !el.clientWidth) return;
+    const index = Math.round(el.scrollLeft / el.clientWidth);
+    setActive(Math.max(0, Math.min(images.length - 1, index)));
+  };
+
+  const goTo = (i) => {
+    const el = trackRef.current;
+    if (!el) return;
+    el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' });
+  };
+
+  return (
+    <>
+      <div
+        ref={trackRef}
+        onScroll={onScroll}
+        className="flex overflow-x-auto snap-x snap-mandatory h-full hide-scrollbar"
+      >
+        {images.map((img, i) => (
+          <img
+            key={`${img}-${i}`}
+            src={img}
+            alt={`${name} photo ${i + 1}`}
+            loading={i === 0 ? 'eager' : 'lazy'}
+            className="w-full h-full object-cover shrink-0 snap-center"
+          />
+        ))}
+      </div>
+
+      {images.length > 1 && (
+        <>
+          <div className="absolute bottom-8 left-0 right-0 flex justify-center gap-1.5 z-10 pointer-events-none">
+            {images.map((img, i) => (
+              <button
+                key={`dot-${img}-${i}`}
+                onClick={() => goTo(i)}
+                aria-label={`Go to photo ${i + 1}`}
+                className={`pointer-events-auto h-1.5 rounded-full transition-all ${
+                  i === active ? 'w-5 bg-white' : 'w-1.5 bg-white/60'
+                }`}
+              />
+            ))}
+          </div>
+          <div className="absolute top-4 right-4 bg-black/45 backdrop-blur-sm text-white text-[11px] font-bold px-2.5 py-1 rounded-full z-10">
+            {active + 1} / {images.length}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 // Helper to generate dates
 const generateDates = () => {
   return Array.from({ length: 6 }).map((_, i) => {
@@ -73,16 +172,12 @@ const generateDates = () => {
       date: d.getDate(),
       month: d.toLocaleDateString('en-US', { month: 'short' }),
       fullDate: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      // The real Date, which is what the slots API and the booking payload need.
+      value: d,
       id: `date_${i}`
     };
   });
 };
-
-const timeSlots = [
-  { id: 't1', period: 'Morning', time: '9:00 AM \u2013 11:00 AM' },
-  { id: 't2', period: 'Afternoon', time: '1:00 PM \u2013 3:00 PM' },
-  { id: 't3', period: 'Evening', time: '5:00 PM \u2013 7:00 PM' },
-];
 
 export function GroomingDetail() {
   const { id } = useParams();
@@ -95,9 +190,18 @@ export function GroomingDetail() {
   const [dates, setDates] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
-  
-  const [showSuccessModal, setShowSuccessModal] = useState(false);
+
+  // Bookable times come from the salon's own slot template, so a shop that
+  // opens at noon no longer advertises a 9 AM slot it cannot honour.
+  const [timeSlots, setTimeSlots] = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+
   const [showCompareModal, setShowCompareModal] = useState(false);
+
+  const setStoreShop = useGroomingStore((s) => s.setShop);
+  const setStorePackage = useGroomingStore((s) => s.setPackage);
+  const setStoreDateTime = useGroomingStore((s) => s.setDateTime);
+  const resetBooking = useGroomingStore((s) => s.resetBooking);
 
   useEffect(() => {
     loadShop();
@@ -106,18 +210,27 @@ export function GroomingDetail() {
     setSelectedDate(generatedDates[0]); // Select Today by default
   }, [id]);
 
+  useEffect(() => {
+    if (!shop || !selectedDate) return;
+    let cancelled = false;
+    setSlotsLoading(true);
+    setSelectedSlot(null);
+    getGroomingSlots(shop.id, selectedDate.value)
+      .then((data) => { if (!cancelled) setTimeSlots(Array.isArray(data) ? data : []); })
+      .catch(() => { if (!cancelled) setTimeSlots([]); })
+      .finally(() => { if (!cancelled) setSlotsLoading(false); });
+    return () => { cancelled = true; };
+  }, [shop, selectedDate]);
+
   const loadShop = async () => {
     setLoading(true);
     try {
       const data = await getGroomingShopById(id);
-      
-      // Fallback: if backend didn't return grouped offerings, guess from legacy servicesList
-      if (!data.packages?.length && !data.addons?.length && data.servicesList?.length > 0) {
-        const packageNames = ['Basic Bath', 'Full Grooming', 'Spa Grooming'];
-        data.packages = data.servicesList.filter(s => packageNames.includes(s.name)).map(s => ({...s, price: s.startsAt}));
-        data.addons = data.servicesList.filter(s => !packageNames.includes(s.name)).map(s => ({...s, price: s.startsAt}));
-      }
 
+      // The old fallback synthesised packages from the display-only
+      // `servicesList` blob when the API returned no offerings. Those synthetic
+      // entries have no catalogue id, so anything picked from them was rejected
+      // at checkout — better to show the salon's real (possibly empty) menu.
       setShop(data);
       if (data.packages?.length > 0) {
         setSelectedPackage(data.packages[0]); // Select first package by default
@@ -137,8 +250,24 @@ export function GroomingDetail() {
     });
   };
 
+  /**
+   * Hand the selection to the real checkout.
+   *
+   * This button used to just pop a "Booking Confirmed!" modal — nothing was
+   * ever sent to the server, so the salon never saw the appointment and the
+   * customer had no booking to cancel or reschedule. The remaining steps
+   * (pet → visit type & address → payment → confirmation) already existed but
+   * nothing navigated into them; seeding the store here connects them.
+   */
   const handleConfirmBooking = () => {
-    setShowSuccessModal(true);
+    resetBooking();
+    setStoreShop(shop);
+    setStorePackage(selectedPackage);
+    useGroomingStore.setState((state) => ({
+      bookingData: { ...state.bookingData, addons: selectedAddons },
+    }));
+    setStoreDateTime(selectedDate.value.toISOString(), selectedSlot.time);
+    navigate('/app/services/grooming/book/pet');
   };
 
   if (loading) {
@@ -159,9 +288,27 @@ export function GroomingDetail() {
   }
 
   const packagePrice = selectedPackage?.price || 0;
-  const addonsPrice = selectedAddons.reduce((sum, item) => sum + (item.price || item.startsAt || 0), 0);
+  const addonsPrice = selectedAddons.reduce((sum, item) => sum + (item.price || 0), 0);
   const totalPrice = packagePrice + addonsPrice;
   const isReadyToBook = selectedPackage && selectedDate && selectedSlot;
+
+  // Cover photo plus whatever else the salon uploaded, already de-duplicated by
+  // the API client. Falls back to a single placeholder so the hero is never a
+  // blank grey box for a salon that has not uploaded anything yet.
+  const heroImages = shop.gallery?.length ? shop.gallery : [shop.image].filter(Boolean);
+
+  // Rows of the comparison table: every service any of this salon's packages
+  // lists, in a stable order. Using the fixed ALL_SERVICES list meant a salon
+  // whose packages included anything unusual had it silently omitted.
+  const comparisonRows = (() => {
+    const seen = new Set();
+    for (const p of shop.packages || []) {
+      for (const inc of resolveIncludes(p)) seen.add(inc.name);
+    }
+    const ordered = ALL_SERVICES.filter((s) => seen.has(s));
+    const extras = [...seen].filter((s) => !ALL_SERVICES.includes(s)).sort();
+    return [...ordered, ...extras];
+  })();
 
   return (
     <div className="h-full bg-[#FAF7F2] absolute inset-0 z-50 flex flex-col text-text-primary animate-in slide-in-from-right">
@@ -171,15 +318,11 @@ export function GroomingDetail() {
         
         {/* Hero Section */}
         <div className="relative h-64 bg-gray-200 shrink-0">
-          <div className="flex overflow-x-auto snap-x snap-mandatory h-full hide-scrollbar">
-            {(shop.gallery && shop.gallery.length > 0 ? shop.gallery : [shop.image]).map((img, i) => (
-              <img key={i} src={img} alt={`Slide ${i+1}`} className="w-full h-full object-cover shrink-0 snap-center" />
-            ))}
-          </div>
+          <GalleryStrip images={heroImages} name={shop.name} />
           <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-black/50 to-transparent pointer-events-none" />
-          <button 
-            onClick={() => navigate('/app/services/grooming')} 
-            className="absolute top-4 left-4 w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-800 shadow-sm active:scale-95 transition-transform"
+          <button
+            onClick={() => navigate('/app/services/grooming')}
+            className="absolute top-4 left-4 w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-800 shadow-sm active:scale-95 transition-transform z-10"
           >
             <ArrowLeft size={24} />
           </button>
@@ -232,7 +375,7 @@ export function GroomingDetail() {
                 
                 const def = getPackageDef(pkg.name);
                 const subtitle = def.subtitle;
-                const includes = def.includes;
+                const includes = resolveIncludes(pkg);
                 const Icon = def.Icon;
                 const iconBg = def.iconBg;
                 const iconColor = def.iconColor;
@@ -250,6 +393,11 @@ export function GroomingDetail() {
                     {isSelected && (
                       <div className="absolute -top-2 -right-2 bg-accent-teal text-white rounded-full p-0.5 z-10 shadow-sm">
                         <Check size={16} strokeWidth={3} />
+                      </div>
+                    )}
+                    {pkg.isPopular && !isSelected && (
+                      <div className="absolute -top-2 left-4 bg-[#F87B68] text-white text-[10px] font-black px-2 py-0.5 rounded-full z-10 shadow-sm">
+                        Most Popular
                       </div>
                     )}
                     
@@ -302,21 +450,10 @@ export function GroomingDetail() {
           </div>
           
           <div className="grid grid-cols-3 gap-3">
-            {(shop.addons || shop.servicesList || []).map((addon, idx) => {
+            {(shop.addons || []).map((addon, idx) => {
               const isSelected = selectedAddons.find(a => a.name === addon.name);
               
-              // Map icon based on addon name
-              let AddonIcon = Sparkles;
-              const nameLower = addon.name.toLowerCase();
-              if (nameLower.includes('perfume')) AddonIcon = SprayCan;
-              else if (nameLower.includes('paw')) AddonIcon = Heart;
-              else if (nameLower.includes('teeth') || nameLower.includes('dental')) AddonIcon = Smile;
-              else if (nameLower.includes('tick')) AddonIcon = Shield;
-              else if (nameLower.includes('de-shed')) AddonIcon = Brush;
-              else if (nameLower.includes('color') || nameLower.includes('dye')) AddonIcon = Palette;
-              else if (nameLower.includes('nail')) AddonIcon = Scissors;
-              else if (nameLower.includes('blueberry') || nameLower.includes('facial')) AddonIcon = Flower2;
-              else if (nameLower.includes('gland')) AddonIcon = Droplets;
+              const AddonIcon = iconForService(addon.name);
 
               return (
                 <button
@@ -341,7 +478,7 @@ export function GroomingDetail() {
                     {addon.name}
                   </span>
                   <span className="text-[11px] font-bold text-[#66B4B1]">
-                    ₹{addon.price || addon.startsAt}
+                    ₹{addon.price}
                   </span>
                 </button>
               );
@@ -383,29 +520,51 @@ export function GroomingDetail() {
         {/* Select Time Slot */}
         <div className="px-4 py-4 mb-8">
           <h2 className="text-[17px] font-black text-gray-900 mb-4">Select Time Slot</h2>
-          <div className="flex overflow-x-auto hide-scrollbar gap-3 pb-2 -mx-4 px-4">
-            {timeSlots.map(slot => {
-              const isSelected = selectedSlot?.id === slot.id;
-              return (
-                <button
-                  key={slot.id}
-                  onClick={() => setSelectedSlot(slot)}
-                  className={`min-w-[140px] flex flex-col items-center justify-center rounded-[16px] py-3 transition-all active:scale-95 border ${
-                    isSelected 
-                      ? 'border-accent-teal bg-[#FAF7F2]' 
-                      : 'border-border-light bg-white'
-                  }`}
-                >
-                  <span className={`text-[14px] font-black mb-1 ${isSelected ? 'text-accent-teal' : 'text-gray-900'}`}>
-                    {slot.period}
-                  </span>
-                  <span className={`text-[11px] ${isSelected ? 'text-accent-teal/80' : 'text-gray-400'}`}>
-                    {slot.time}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          {slotsLoading ? (
+            <div className="flex gap-3 pb-2">
+              {[0, 1, 2].map(i => (
+                <div key={i} className="min-w-[140px] h-[74px] rounded-[16px] bg-gray-100 animate-pulse" />
+              ))}
+            </div>
+          ) : timeSlots.length === 0 ? (
+            <div className="bg-white border border-border-light rounded-[16px] p-4 flex items-start gap-2">
+              <Info size={16} className="text-gray-400 shrink-0 mt-0.5" />
+              <p className="text-[12px] text-gray-500 font-medium leading-relaxed">
+                No slots open on {selectedDate?.fullDate}. Try another date.
+              </p>
+            </div>
+          ) : (
+            <div className="flex overflow-x-auto hide-scrollbar gap-3 pb-2 -mx-4 px-4">
+              {timeSlots.map(slot => {
+                const isSelected = selectedSlot?.time === slot.time;
+                return (
+                  <button
+                    key={slot.time}
+                    disabled={!slot.available}
+                    onClick={() => setSelectedSlot(slot)}
+                    className={`min-w-[140px] flex flex-col items-center justify-center rounded-[16px] py-3 transition-all active:scale-95 border ${
+                      !slot.available
+                        ? 'border-border-light bg-gray-50 opacity-60 cursor-not-allowed'
+                        : isSelected
+                          ? 'border-accent-teal bg-[#FAF7F2]'
+                          : 'border-border-light bg-white'
+                    }`}
+                  >
+                    <span className={`text-[14px] font-black mb-1 ${
+                      !slot.available ? 'text-gray-400' : isSelected ? 'text-accent-teal' : 'text-gray-900'
+                    }`}>
+                      {slot.time}
+                    </span>
+                    <span className={`text-[11px] ${
+                      !slot.available ? 'text-gray-400' : isSelected ? 'text-accent-teal/80' : 'text-gray-400'
+                    }`}>
+                      {slot.available ? slot.period : 'Fully booked'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
       </div>
@@ -429,7 +588,7 @@ export function GroomingDetail() {
               ? 'bg-[#F87B68] text-white hover:bg-[#F87B68] active:scale-[0.98]' 
               : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
         >
-          {isReadyToBook ? `Confirm Booking • ₹${totalPrice}` : 'Select a Slot to Continue'}
+          {isReadyToBook ? `Continue • ₹${totalPrice}` : 'Select a Slot to Continue'}
         </button>
       </div>
 
@@ -449,7 +608,7 @@ export function GroomingDetail() {
                <h3 className="text-[17px] font-black text-accent-teal mb-6 leading-tight">{selectedPackage?.name || 'this Package'}?</h3>
                
                <div className="flex flex-col gap-5 mb-8">
-                  {selectedPackage && getPackageDef(selectedPackage.name).includes.map((inc, i) => {
+                  {selectedPackage && resolveIncludes(selectedPackage).map((inc, i) => {
                      const IncIcon = inc.icon;
                      return (
                        <div key={i} className="flex gap-4">
@@ -458,7 +617,7 @@ export function GroomingDetail() {
                          </div>
                          <div>
                            <h4 className="text-[13px] font-bold text-gray-900 mb-0.5">{inc.name}</h4>
-                           <p className="text-[11px] text-gray-500 leading-tight">{inc.desc}</p>
+                           {inc.desc && <p className="text-[11px] text-gray-500 leading-tight">{inc.desc}</p>}
                          </div>
                        </div>
                      );
@@ -480,12 +639,11 @@ export function GroomingDetail() {
                        </tr>
                      </thead>
                      <tbody className="divide-y divide-gray-100 bg-white">
-                        {ALL_SERVICES.map((service, i) => (
+                        {comparisonRows.map((service, i) => (
                            <tr key={i}>
                              <td className="py-2.5 px-3 text-gray-700 font-medium">{service}</td>
                              {shop.packages.map(p => {
-                               const def = getPackageDef(p.name);
-                               const hasService = def.includes.some(inc => inc.name === service);
+                               const hasService = resolveIncludes(p).some(inc => inc.name === service);
                                return (
                                  <td key={p.name} className="py-2.5 px-1 text-center border-l border-gray-100">
                                    {hasService ? (
@@ -515,56 +673,6 @@ export function GroomingDetail() {
         </div>
       )}
 
-      {/* Success Modal */}
-      {showSuccessModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => navigate('/app/services/grooming', { replace: true })} />
-          <div className="bg-[#FAF7F2] w-full max-w-sm rounded-[32px] p-6 relative z-10 animate-in zoom-in-95 duration-200 shadow-2xl flex flex-col items-center">
-            
-            <div className="w-20 h-20 bg-[#FAF7F2] rounded-full flex items-center justify-center mb-4">
-              <Scissors size={32} className="text-accent-teal" />
-            </div>
-            
-            <h2 className="text-[22px] font-black text-gray-900 mb-2">Booking Confirmed!</h2>
-            <p className="text-center text-[13px] text-gray-500 mb-6 px-4">
-              Your grooming session at {shop.name} is booked!
-            </p>
-
-            <div className="w-full bg-[#FAF7F2] rounded-[16px] border border-[#FAF7F2] overflow-hidden mb-6">
-              <div className="flex justify-between py-3 px-4 border-b border-[#FAF7F2]">
-                <span className="text-[12px] text-gray-400">Salon</span>
-                <span className="text-[12px] font-bold text-gray-900 text-right">{shop.name}</span>
-              </div>
-              <div className="flex justify-between py-3 px-4 border-b border-[#FAF7F2]">
-                <span className="text-[12px] text-gray-400">Date</span>
-                <span className="text-[12px] font-bold text-gray-900 text-right">{selectedDate?.fullDate}</span>
-              </div>
-              <div className="flex justify-between py-3 px-4 border-b border-[#FAF7F2]">
-                <span className="text-[12px] text-gray-400">Slot</span>
-                <span className="text-[12px] font-bold text-gray-900 text-right">{selectedSlot?.time}</span>
-              </div>
-              <div className="flex justify-between py-3 px-4">
-                <span className="text-[12px] text-gray-400 shrink-0 mr-4">Services</span>
-                <span className="text-[12px] font-bold text-gray-900 text-right leading-tight flex flex-col gap-1 items-end">
-                  <span>{selectedPackage?.name}</span>
-                  {selectedAddons.length > 0 && (
-                    <span className="text-[10px] text-gray-500 font-medium leading-tight">
-                      + {selectedAddons.map(a => a.name).join(', ')}
-                    </span>
-                  )}
-                </span>
-              </div>
-            </div>
-
-            <button 
-              onClick={() => navigate('/app/services/grooming', { replace: true })} // Reset route on done
-              className="w-full bg-accent-teal hover:bg-[#599D9A] text-white h-12 rounded-full text-[15px] font-bold transition-all"
-            >
-              Done
-            </button>
-          </div>
-        </div>
-      )}
 
     </div>
   );
