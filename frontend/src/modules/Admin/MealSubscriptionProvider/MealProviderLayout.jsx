@@ -1,10 +1,19 @@
+import { useState } from 'react';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import {
+  LayoutDashboard, Utensils, FileText, CalendarCheck, ListChecks, Truck, Map,
+  MessageSquare, Wallet, Settings, LogOut, Bell, Menu
+} from 'lucide-react';
+import { cn } from '../../user/utils/cn';
+import { vendorLogout, updateVendorProfile } from '../../../services/vendor';
+import { useMealProvider } from './context/MealProviderContext';
 import VerificationBanner from '../components/VerificationBanner';
 
 export function MealProviderLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
-  const { profile } = useMealProvider();
+  const { profile, updateProfile } = useMealProvider();
 
   const menuSections = [
     {

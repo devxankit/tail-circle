@@ -9,6 +9,7 @@ export function MealPlansView() {
   const { mealPlans, addMealPlan, updateMealPlan, deleteMealPlan } = useMealProvider();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('All');
+  const [activeDropdown, setActiveDropdown] = useState(null);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState(null);
