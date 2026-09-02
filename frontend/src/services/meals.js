@@ -11,7 +11,10 @@ import { payWithRazorpay } from './payments';
 export async function fetchMealPlans() {
   const { data } = await api.get('/meals/plans');
   return data.map((p) => ({
-    id: p.legacyId,
+    // `id` is the handle the purchase call sends back. Reading `legacyId` meant
+    // a plan the kitchen published carried `id: undefined` and could never be
+    // bought; the API now serves a stable handle for both.
+    id: p.id || p.legacyId,
     name: p.name,
     mealsCount: p.mealsCount,
     pricePerMonth: p.pricePerMonth,
@@ -31,7 +34,7 @@ export async function fetchMealPlans() {
 export async function fetchMeals() {
   const { data } = await api.get('/meals/recipes');
   return data.map((m) => ({
-    id: m.legacyId,
+    id: m.id || m.legacyId,
     name: m.name,
     description: m.description,
     protein: m.protein,

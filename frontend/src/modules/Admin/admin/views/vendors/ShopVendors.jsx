@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Search, MapPin, Phone, Mail, MoreVertical, X, Edit, Trash2, Ban, Filter, Eye, CheckCircle, FileText, ShoppingBag, Star, AlertTriangle } from 'lucide-react';
 import { StatusBadge, ActionMenu, Pagination } from '../../components/VendorShared';
-import { fetchAdminVendors, approveVendorApi, suspendVendorApi, fetchAdminProducts, fetchVendorDocuments } from '../../../../../services/admin';
+import { fetchAdminVendors, approveVendorApi, approveVendorGuarded, suspendVendorApi, fetchAdminProducts, fetchVendorDocuments } from '../../../../../services/admin';
 
 const STATUS_LABEL = { approved: 'Active', pending: 'Pending', suspended: 'Suspended', rejected: 'Suspended' };
 const DOC_LABEL = { license: 'Business Tax License', owner_id: 'ID Proof', gst: 'GST Certificate' };
@@ -104,9 +104,15 @@ export function ShopVendors() {
 
   const cities = useMemo(() => [...new Set(vendors.map(v => v.city))].sort(), [vendors]);
 
-  const handleStatusChange = (id, newStatus) => {
-    if (newStatus === 'Active') approveVendorApi(id).catch((err) => console.error(err));
-    else if (newStatus === 'Suspended') suspendVendorApi(id).catch((err) => console.error(err));
+  // Only reflect the new status once the server accepted it — approval can be
+  // refused while the vendor's KYC documents are unverified.
+  const handleStatusChange = async (id, newStatus) => {
+    if (newStatus === 'Active') {
+      const name = vendors.find(v => v.id === id)?.shopName;
+      if (!(await approveVendorGuarded(id, name))) return;
+    } else if (newStatus === 'Suspended') {
+      try { await suspendVendorApi(id); } catch (err) { window.alert(err?.message || 'Suspend failed'); return; }
+    }
     setVendors(prev => prev.map(v => v.id === id ? { ...v, status: newStatus } : v));
   };
 
@@ -133,10 +139,18 @@ export function ShopVendors() {
     });
   };
 
-  const handleBulkActivate = () => {
-    [...selectedIds].forEach((id) => approveVendorApi(id).catch(() => {}));
-    setVendors(prev => prev.map(v => selectedIds.has(v.id) ? { ...v, status: 'Active' } : v));
-    setSelectedIds(new Set());
+  // Bulk activation never forces past the KYC gate; refused vendors keep their
+  // current status and stay selected so the reviewer can handle them one by one.
+  const handleBulkActivate = async () => {
+    const ids = [...selectedIds];
+    const results = await Promise.allSettled(ids.map((id) => approveVendorApi(id)));
+    const activated = new Set(ids.filter((_, i) => results[i].status === 'fulfilled'));
+
+    setVendors(prev => prev.map(v => activated.has(v.id) ? { ...v, status: 'Active' } : v));
+    setSelectedIds(new Set(ids.filter((id) => !activated.has(id))));
+    if (activated.size < ids.length) {
+      window.alert(`${activated.size} of ${ids.length} activated — the rest have unverified KYC documents.`);
+    }
   };
 
   const handleBulkSuspend = () => {
@@ -227,7 +241,7 @@ export function ShopVendors() {
       {/* Page Header */}
       <div className="flex flex-row items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
         <div className="flex-1">
-          <h1 className="text-xl sm:text-[28px] font-black text-gray-900 tracking-tight leading-tight">Shop Vendors</h1>
+          <h1 className="text-xl sm:text-[28px] font-black text-gray-900 tracking-tight leading-tight">Shop Partners</h1>
           <p className="hidden sm:block text-sm text-gray-500 font-medium mt-1">{vendors.length} registered shops platform-wide</p>
         </div>
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -265,7 +279,7 @@ export function ShopVendors() {
       {/* Spacious Premium Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 mb-6">
         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-sm col-span-2 md:col-span-1 lg:col-span-1">
-          <p className="text-gray-400 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider mb-1">Total Shop Vendors</p>
+          <p className="text-gray-400 text-[10px] sm:text-[11px] font-bold uppercase tracking-wider mb-1">Total Shop Partners</p>
           <h3 className="text-2xl sm:text-3xl font-black text-gray-900">{vendors.length}</h3>
         </div>
         <div className="bg-white p-4 sm:p-5 rounded-2xl border border-gray-100 shadow-sm">
@@ -714,7 +728,7 @@ export function ShopVendors() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm transition-all duration-300">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden animate-zoomIn border border-gray-100/50">
             <div className="flex items-center justify-between p-5 border-b border-gray-100 bg-gray-50/50 shrink-0">
-              <h3 className="text-lg font-black text-gray-900">{editingVendor ? 'Edit Shop Vendor' : 'Register New Shop Vendor'}</h3>
+              <h3 className="text-lg font-black text-gray-900">{editingVendor ? 'Edit Shop Partner' : 'Register New Shop Partner'}</h3>
               <button onClick={() => { setIsModalOpen(false); setEditingVendor(null); }} className="text-gray-400 hover:bg-gray-100 p-1.5 rounded-lg transition"><X size={20}/></button>
             </div>
             <div className="overflow-y-auto p-5 flex-1">

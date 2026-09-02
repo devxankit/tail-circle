@@ -142,6 +142,27 @@ export async function sendChatMessage(conversationId, { type = 'text', text = ''
   return data;
 }
 
+export async function reactToChatMessage(conversationId, messageId, emoji) {
+  const { data } = await api.post(`/chat/conversations/${conversationId}/messages/${messageId}/react`, { emoji });
+  return data;
+}
+
+export async function deleteChatMessage(conversationId, messageId, mode = 'everyone') {
+  const { data } = await api.delete(`/chat/conversations/${conversationId}/messages/${messageId}?mode=${mode}`);
+  return data;
+}
+
+export async function sendTypingSignal(conversationId, participantIds, isTyping) {
+  try {
+    const { connectSocket } = await import('./socket');
+    const socket = connectSocket();
+    const eventName = isTyping ? 'chat:typing:start' : 'chat:typing:stop';
+    socket.emit(eventName, { conversationId, participantIds });
+  } catch {
+    /* socket fallback */
+  }
+}
+
 /** Mute/unmute — real toggle persisted on the conversation. */
 export async function setConversationMuted(conversationId, muted) {
   const { data } = await api.post(`/chat/conversations/${conversationId}/mute`, { muted });
@@ -166,12 +187,6 @@ export async function fetchConversationPresence(conversationId) {
   return data; // { online, lastSeenAt, source, userId? }
 }
 
-/**
- * Live presence updates over Socket.IO. `onUpdate({ userId, online, lastSeenAt })`
- * fires for ANY user's presence flip (server fans out to everyone rather than
- * tracking per-conversation subscribers) — callers filter to the id they care
- * about. Returns an unsubscribe fn; no-ops if the socket can't be established.
- */
 export async function subscribeToPresence(onUpdate) {
   try {
     const { connectSocket } = await import('./socket');
@@ -183,11 +198,69 @@ export async function subscribeToPresence(onUpdate) {
   }
 }
 
+export async function subscribeToTyping(conversationId, onTyping) {
+  try {
+    const { connectSocket } = await import('./socket');
+    const socket = connectSocket();
+    const handler = (payload) => {
+      if (!payload || String(payload.conversationId) !== String(conversationId)) return;
+      onTyping(payload); // { conversationId, userId, isTyping }
+    };
+    socket.on('chat:typing', handler);
+    return () => socket.off('chat:typing', handler);
+  } catch {
+    return () => {};
+  }
+}
+
+export async function subscribeToReactions(conversationId, onReaction) {
+  try {
+    const { connectSocket } = await import('./socket');
+    const socket = connectSocket();
+    const handler = (payload) => {
+      if (!payload || String(payload.conversationId) !== String(conversationId)) return;
+      onReaction(payload); // { conversationId, messageId, userId, emoji, reactions }
+    };
+    socket.on('chat:message:react', handler);
+    return () => socket.off('chat:message:react', handler);
+  } catch {
+    return () => {};
+  }
+}
+
+export async function subscribeToReadReceipts(conversationId, onRead) {
+  try {
+    const { connectSocket } = await import('./socket');
+    const socket = connectSocket();
+    const handler = (payload) => {
+      if (!payload || String(payload.conversationId) !== String(conversationId)) return;
+      onRead(payload); // { conversationId, userId, readAt }
+    };
+    socket.on('chat:messages:read', handler);
+    return () => socket.off('chat:messages:read', handler);
+  } catch {
+    return () => {};
+  }
+}
+
+export async function subscribeToDeletions(conversationId, onDelete) {
+  try {
+    const { connectSocket } = await import('./socket');
+    const socket = connectSocket();
+    const handler = (payload) => {
+      if (!payload || String(payload.conversationId) !== String(conversationId)) return;
+      onDelete(payload); // { conversationId, messageId, userId, mode }
+    };
+    socket.on('chat:message:delete', handler);
+    return () => socket.off('chat:message:delete', handler);
+  } catch {
+    return () => {};
+  }
+}
+
 /**
  * Live subscription to a conversation over Socket.IO.
  * Calls `onMessage` for each new live message; returns an unsubscribe fn.
- * History is loaded separately via `fetchMessages` (Mongo). Falls back to a
- * no-op if the socket can't be established — the UI still shows REST history.
  */
 export async function subscribeToConversation(conversationId, onMessage) {
   try {
@@ -195,7 +268,7 @@ export async function subscribeToConversation(conversationId, onMessage) {
     const socket = connectSocket();
     const handler = (payload) => {
       if (!payload || String(payload.conversationId) !== String(conversationId)) return;
-      onMessage(payload); // { key, senderId, type, text, mediaUrl, at }
+      onMessage(payload); // { key, senderId, type, text, mediaUrl, meta, reactions, readBy, at }
     };
     socket.on('chat:message:new', handler);
     return () => socket.off('chat:message:new', handler);
@@ -221,8 +294,26 @@ export async function viewStory(storyId) {
   await api.post(`/stories/${storyId}/view`).catch(() => {});
 }
 
-/** Real "Viewed By" list for one of MY stories. */
+/**
+ * Real "Viewed By" list for one of MY stories, plus the like tally shown
+ * beside it. Each viewer carries a `liked` flag so the panel can mark the
+ * people who did both without a second request.
+ */
 export async function fetchStoryViewers(storyId) {
   const { data } = await api.get(`/stories/${storyId}/viewers`);
-  return data;
+  return {
+    viewers: data?.viewers || [],
+    viewsCount: data?.viewsCount || 0,
+    likesCount: data?.likesCount || 0,
+  };
+}
+
+/**
+ * Toggle a like on someone's story. The server notifies the owner in-app and
+ * by push on a new like, and returns the authoritative count so the UI never
+ * has to guess.
+ */
+export async function toggleStoryLike(storyId) {
+  const { data } = await api.post(`/stories/${storyId}/like`);
+  return { liked: Boolean(data?.liked), likesCount: data?.likesCount || 0 };
 }

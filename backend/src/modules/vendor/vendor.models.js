@@ -17,6 +17,9 @@ export const VENDOR_TYPES = [
   // rather than their own catalog models.
   'grooming',
   'daycare',
+  // Shelters, rescues and breeders who list pets for adoption or sale and
+  // review the applications that come in for them.
+  'adoption',
 ];
 export const APPROVAL_STATUSES = ['pending', 'approved', 'rejected', 'suspended'];
 
@@ -41,7 +44,7 @@ const vendorProfileSchema = new mongoose.Schema(
     documents: [
       {
         _id: false,
-        kind: { type: String, enum: ['license', 'owner_id', 'gst'] },
+        kind: { type: String, required: true },
         url: { type: String, default: '' },
         // KYC verification workflow, driven by the admin VendorDocuments screen.
         status: { type: String, enum: ['Pending', 'Verified', 'Rejected', 'Re-upload'], default: 'Pending' },
@@ -65,6 +68,12 @@ const vendorProfileSchema = new mongoose.Schema(
     rejectionReason: { type: String, default: null },
     commissionRate: { type: Number, default: 0.15 }, // platform commission fraction
     rating: { type: Number, default: 0 },
+
+    policies: {
+      codEnabled: { type: Boolean, default: true },
+      returnsEnabled: { type: Boolean, default: true },
+      minOrderValue: { type: Number, default: 0 },
+    },
   },
   { timestamps: true }
 );
@@ -96,7 +105,15 @@ const vendorLedgerEntrySchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-vendorLedgerEntrySchema.index({ refType: 1, refId: 1 }, { unique: true });
+/*
+ * One entry per vendor per reference.
+ *
+ * This was unique on (refType, refId) alone, which meant a single order could
+ * only ever credit one seller — a basket mixing two shops silently dropped the
+ * second one's earnings. Including `vendorId` keeps re-fulfilment (verify +
+ * webhook) idempotent while letting each seller be paid for their own lines.
+ */
+vendorLedgerEntrySchema.index({ vendorId: 1, refType: 1, refId: 1 }, { unique: true });
 vendorLedgerEntrySchema.index({ vendorId: 1, createdAt: -1 });
 
 export const VendorLedgerEntry = mongoose.model('VendorLedgerEntry', vendorLedgerEntrySchema);

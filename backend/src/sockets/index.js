@@ -87,6 +87,24 @@ export function initSocket(httpServer) {
       // conversation room after a participant check) — never blindly here.
     });
 
+    socket.on('chat:typing:start', ({ conversationId, participantIds = [] } = {}) => {
+      if (!conversationId) return;
+      for (const pid of participantIds) {
+        if (String(pid) !== String(userId)) {
+          emitToUser(pid, SOCKET_EVENTS.CHAT_TYPING, { conversationId, userId, isTyping: true });
+        }
+      }
+    });
+
+    socket.on('chat:typing:stop', ({ conversationId, participantIds = [] } = {}) => {
+      if (!conversationId) return;
+      for (const pid of participantIds) {
+        if (String(pid) !== String(userId)) {
+          emitToUser(pid, SOCKET_EVENTS.CHAT_TYPING, { conversationId, userId, isTyping: false });
+        }
+      }
+    });
+
     // Which call rooms (booking ids) this socket has joined — used to settle
     // join/leave timing on disconnect without the client having to say so.
     const activeCalls = new Set();

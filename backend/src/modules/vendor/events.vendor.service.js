@@ -69,7 +69,17 @@ export async function updateEvent(vendorId, id, body) {
   if (body.category != null) event.category = body.category;
   if (body.time != null) event.timeText = body.time;
   if (body.location != null) event.location = body.location;
-  if (body.capacity != null) event.capacity = Number(body.capacity);
+  if (body.capacity != null) {
+    // Capacity cannot drop below what has already been sold, or the event is
+    // instantly oversold and the atomic guard on new sales is meaningless.
+    const next = Number(body.capacity);
+    if (Number.isFinite(next) && next < (event.sold || 0)) {
+      throw ApiError.badRequest(
+        `${event.sold} ticket${event.sold === 1 ? '' : 's'} already sold — capacity cannot go below that`
+      );
+    }
+    event.capacity = next;
+  }
   if (body.price != null) event.price = Number(body.price);
   if (body.image != null) event.img = body.image;
   if (body.description != null) event.desc = body.description;
@@ -94,7 +104,13 @@ const BOOKING_STATUS_MOCK = { confirmed: 'Confirmed', pending_payment: 'Pending'
 
 export async function listEventBookings(vendorId) {
   const eventIds = await Event.find({ vendorId }).distinct('_id');
-  const bookings = await Booking.find({ type: 'event', eventId: { $in: eventIds } })
+  // Abandoned Razorpay checkouts never became tickets — showing them would
+  // overstate the guest list the organiser plans around.
+  const bookings = await Booking.find({
+    type: 'event',
+    eventId: { $in: eventIds },
+    status: { $ne: 'pending_payment' },
+  })
     .sort({ createdAt: -1 })
     .limit(200)
     .populate('userId', 'name')
@@ -119,6 +135,14 @@ export async function checkInBooking(vendorId, id) {
   const eventIds = await Event.find({ vendorId }).distinct('_id');
   const booking = await Booking.findOne({ _id: id, type: 'event', eventId: { $in: eventIds } });
   if (!booking) throw ApiError.notFound('Booking not found');
+  // A cancelled or unpaid ticket is not admissible — checking one in on the
+  // door would let a refunded guest through.
+  if (['cancelled', 'refunded'].includes(booking.status)) {
+    throw ApiError.badRequest('This ticket was cancelled and cannot be checked in');
+  }
+  if (booking.status === 'pending_payment') {
+    throw ApiError.badRequest('This ticket has not been paid for yet');
+  }
   booking.meta = { ...booking.meta, checkedIn: true };
   booking.markModified('meta');
   await booking.save();

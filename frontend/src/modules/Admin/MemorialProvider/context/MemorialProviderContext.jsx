@@ -38,7 +38,7 @@ export const useMemorialProvider = () => {
 const parsePrice = (p) => Number(String(p ?? '').replace(/[^0-9.]/g, '')) || 0;
 
 function toPortalProfile(p) {
-  const base = { businessName: 'Memorial Provider', ownerName: '', email: '', phone: '', address: '', verification: 'Pending', status: 'Online', logo: null, gst: '' };
+  const base = { businessName: 'Last Ride Partner', ownerName: '', email: '', phone: '', address: '', verification: 'Pending', status: 'Online', logo: null, gst: '' };
   if (!p) return base;
   const vmap = { approved: 'Approved', pending: 'Pending', rejected: 'Rejected', suspended: 'Suspended' };
   return { ...base, businessName: p.businessName, ownerName: p.bank?.accountHolder || p.businessName, email: p.email, phone: p.phone, address: p.address, verification: vmap[p.approvalStatus] || 'Pending', status: p.online ? 'Online' : 'Offline', logo: p.logo || null, gst: p.gst?.number || '' };

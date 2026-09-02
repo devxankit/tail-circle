@@ -134,9 +134,13 @@ export function AppointmentDetailView({ appointment, onNavigate }) {
                         placeholder="Enter your diagnosis, symptoms observed, and treatment prescribed..."
                       ></textarea>
                     </div>
-                    <div className="flex gap-4">
-                      <button className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-200 transition flex items-center gap-2">
-                        <FileText size={16} /> Generate Prescription PDF
+                    <div className="flex flex-wrap gap-3 pt-2">
+                      <button 
+                        type="button"
+                        onClick={() => onNavigate('prescriptions')}
+                        className="px-4 py-2 bg-[#F87B68] text-white rounded-lg text-sm font-bold hover:bg-[#e06855] transition flex items-center gap-2 shadow-xs"
+                      >
+                        <FileText size={16} /> Open Prescription Pad (Digital / Photo Upload)
                       </button>
                     </div>
                   </>

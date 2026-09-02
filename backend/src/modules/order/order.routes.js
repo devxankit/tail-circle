@@ -17,6 +17,9 @@ const checkoutSchema = z.object({
         productId: objectId,
         packSizeIndex: z.number().int().min(0).max(20).default(0),
         qty: z.number().int().min(1).max(99),
+        // Grouping marker only -- the discount it earns is looked up from the
+        // breed catalogue server-side, so a forged slug buys nothing.
+        bundleSlug: z.string().trim().max(80).nullish(),
       })
     )
     .min(1)

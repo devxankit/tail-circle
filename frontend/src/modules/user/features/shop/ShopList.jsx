@@ -12,6 +12,49 @@ import { ExpertNutrition } from './ExpertNutrition';
 import dogImgClean from '../../../../assets/dogImg-clean.png';
 import { useVoiceSearch } from '../../../../hooks/useVoiceSearch';
 
+/** Where the "Find products by breed" banner is meant to take you. */
+const SHOP_BY_BREED = '/app/shop?tab=breed';
+
+/**
+ * Resolve an admin-configured banner link into something a shopper can
+ * actually follow.
+ *
+ * The link is a free-text field in the admin panel, and whatever landed in it
+ * used to be handed straight to `window.open()` if it merely started with
+ * "http". The live shop_promotional banner had
+ * `http://localhost:5174/admin/platform/content` saved in it, so tapping
+ * "Browse Breeds" tried to open the admin app in a new tab — a blocked popup
+ * on mobile, which is why the card looked completely dead.
+ *
+ * So: same-origin absolute URLs become in-app routes rather than new tabs,
+ * admin/vendor paths are treated as misconfiguration rather than followed,
+ * and anything unusable falls back to the destination the banner exists to
+ * advertise.
+ */
+function resolveBannerLink(raw, fallback = null) {
+  const toResult = (path) => (path ? { internal: path } : fallback);
+  const link = String(raw || '').trim();
+  if (!link) return fallback;
+
+  // Never route a customer into an operator surface.
+  const isOperatorPath = (path) => /^\/(admin|vendor)(\/|$|\?)/.test(path);
+
+  if (/^https?:\/\//i.test(link)) {
+    let url;
+    try {
+      url = new URL(link);
+    } catch {
+      return fallback;
+    }
+    if (url.origin !== window.location.origin) return { external: link };
+    const path = url.pathname + url.search + url.hash;
+    return isOperatorPath(path) ? fallback : toResult(path);
+  }
+
+  if (!link.startsWith('/')) return fallback;
+  return isOperatorPath(link) ? fallback : toResult(link);
+}
+
 const getBreedSize = (breed) => {
   if (!breed) return 'Medium';
   if (breed.size) return breed.size;
@@ -152,6 +195,9 @@ export function ShopList() {
   const [checkoutStep, setCheckoutStep] = useState(1);
   const [selectedPayment, setSelectedPayment] = useState('upi');
   const [showSuccess, setShowSuccess] = useState(false);
+  // One toast serves both 'added to cart' and 'order placed', so it needs to
+  // say which -- it read "Order Confirmed Successfully!" for a cart add.
+  const [successText, setSuccessText] = useState('Added to your cart');
 
   // --- BREED FIRST SHOPPING EXPERIENCE STATE ---
   const [breeds, setBreeds] = useState([]);
@@ -205,24 +251,59 @@ export function ShopList() {
   }, [breeds, selectedBreed]);
 
   // Cart actions (server cart via the shop service)
-  const handleAddToCart = (product, sizeStr = '') => {
+  const [cartError, setCartError] = useState('');
+
+  const handleAddToCart = async (product, sizeStr = '') => {
     const packSizeIndex = Math.max(
       0,
       sizeStr ? (product.packSizes || []).findIndex((ps) => ps.size === sizeStr) : 0
     );
-    addToCartApi(product, { packSizeIndex, qty: 1 }).catch(() => {});
-    setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 2000);
+    try {
+      await addToCartApi(product, { packSizeIndex, qty: 1 });
+      setCartError('');
+      setSuccessText('Added to your cart');
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 2000);
+    } catch (e) {
+      // The success toast used to fire regardless, so a failed add looked
+      // exactly like one that worked.
+      setCartError(e?.message || 'Could not add that to your cart. Please try again.');
+    }
   };
 
-  // A "bundle" adds each of its component products (real catalog prices).
-  const handleAddBundleToCart = (bundleName, productIds) => {
+  /*
+   * Add every product in a breed's Monthly Essentials Bundle, tagged with the
+   * breed slug.
+   *
+   * The bundle price was advertised but never charged: this added each item at
+   * its catalogue price, so a box shown at ₹4,299 rang up at ₹10,642. The slug
+   * lets the server recognise the complete box and apply the breed's own
+   * bundlePrice -- it is a grouping marker, not a price, so the discount is
+   * still resolved entirely server-side.
+   */
+  const handleAddBundleToCart = async (bundleName, productIds, bundleSlug) => {
     const bundleProducts = (productIds || [])
-      .map((legacyId) => products.find((p) => p.id === legacyId))
+      .map((handle) => products.find((p) => p.id === handle))
       .filter(Boolean);
-    Promise.all(bundleProducts.map((p) => addToCartApi(p, { qty: 1 }))).catch(() => {});
-    setShowSuccess(true);
-    setTimeout(() => setShowSuccess(false), 2000);
+
+    if (bundleProducts.length !== (productIds || []).length) {
+      setCartError('Part of this bundle is unavailable right now, so it cannot be added as a box.');
+      return;
+    }
+
+    try {
+      // Sequential: the server merges lines by (product, pack, bundle), and
+      // parallel adds on one cart document race each other.
+      for (const p of bundleProducts) {
+        await addToCartApi(p, { qty: 1, bundleSlug });
+      }
+      setCartError('');
+      setSuccessText(`${bundleName} added to your cart`);
+      setShowSuccess(true);
+      setTimeout(() => setShowSuccess(false), 2000);
+    } catch (e) {
+      setCartError(e?.message || 'Could not add the bundle. Please try again.');
+    }
   };
 
   const toggleHealthFilter = (filter) => {
@@ -256,6 +337,7 @@ export function ShopList() {
     if (checkoutStep === 1) {
       setCheckoutStep(2);
     } else if (checkoutStep === 2) {
+      setSuccessText('Order Confirmed Successfully!');
       setShowSuccess(true);
       setTimeout(() => {
         setShowSuccess(false);
@@ -271,7 +353,18 @@ export function ShopList() {
       {showSuccess && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[200] bg-[#FAF7F2] text-[#66B4B1] border border-[#FAF7F2] px-6 py-3 rounded-full shadow-lg font-bold text-[14px] flex items-center gap-2 animate-in fade-in slide-in-from-top-10 whitespace-nowrap">
           <CheckCircle2 size={18} />
-          Order Confirmed Successfully!
+          {successText}
+        </div>
+      )}
+
+      {/* A cart write that failed must not look like one that worked. */}
+      {cartError && (
+        <div className="fixed top-20 left-1/2 z-[200] flex w-[92%] max-w-sm -translate-x-1/2 items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 shadow-lg animate-in fade-in slide-in-from-top-10">
+          <ShieldAlert size={18} className="mt-0.5 shrink-0 text-red-500" />
+          <p className="flex-1 text-[13px] font-semibold leading-snug text-red-600">{cartError}</p>
+          <button onClick={() => setCartError('')} className="text-[12px] font-bold text-red-400 hover:text-red-600">
+            Dismiss
+          </button>
         </div>
       )}
 
@@ -334,12 +427,16 @@ export function ShopList() {
           {shopBanners.shop_promotional?.active !== false && shopBanners.shop_promotional?.image && (
           <div className="px-4 mb-4 mt-2">
             <div 
-              onClick={() => { 
-                const link = shopBanners.shop_promotional?.link;
-                if (link) {
-                  if (link.startsWith('http')) window.open(link, '_blank');
-                  else navigate(link);
-                }
+              onClick={() => {
+                // Falls back to the breed directory: this banner is the only
+                // entry point into "Shop by Breed", so a blank or broken link
+                // must not leave the whole flow unreachable.
+                const target = resolveBannerLink(
+                  shopBanners.shop_promotional?.link,
+                  { internal: SHOP_BY_BREED }
+                );
+                if (target?.external) window.open(target.external, '_blank', 'noopener');
+                else if (target?.internal) navigate(target.internal);
               }}
               className="w-full rounded-[24px] overflow-hidden shadow-sm cursor-pointer active:scale-[0.98] transition-transform flex items-center justify-center bg-gray-50 min-h-[120px]"
             >
@@ -909,7 +1006,13 @@ export function ShopList() {
                           </span>
                         </div>
                         <button 
-                          onClick={() => handleAddBundleToCart(selectedBreed.monthlyBundle.name || `${selectedBreed.name} Box`, selectedBreed.monthlyBundle.productIds, selectedBreed.monthlyBundle.bundlePrice)}
+                          onClick={() =>
+                            handleAddBundleToCart(
+                              selectedBreed.monthlyBundle.name || `${selectedBreed.name} Box`,
+                              selectedBreed.monthlyBundle.productIds,
+                              selectedBreed.id
+                            )
+                          }
                           className="bg-[#66B4B1] hover:bg-[#66B4B1] text-white font-black text-[10.5px] px-3 py-1.5 rounded-lg shadow-md active:scale-95 transition-all cursor-pointer"
                         >
                           Add Bundle
@@ -1015,7 +1118,13 @@ export function ShopList() {
                               </span>
                             </div>
                             <button 
-                              onClick={() => handleAddBundleToCart(selectedBreed.monthlyBundle.name || `${selectedBreed.name} Box`, selectedBreed.monthlyBundle.productIds, selectedBreed.monthlyBundle.bundlePrice)}
+                              onClick={() =>
+                            handleAddBundleToCart(
+                              selectedBreed.monthlyBundle.name || `${selectedBreed.name} Box`,
+                              selectedBreed.monthlyBundle.productIds,
+                              selectedBreed.id
+                            )
+                          }
                               className="bg-[#66B4B1] hover:bg-[#66B4B1] text-white font-black text-[10.5px] px-3 py-1.5 rounded-lg shadow-md active:scale-95 transition-all cursor-pointer"
                             >
                               Add Bundle

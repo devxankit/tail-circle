@@ -34,6 +34,16 @@ const CallContext = createContext(null);
 
 export const CALL_PHASES = ['idle', 'incoming', 'outgoing', 'connecting', 'active', 'ended'];
 
+/**
+ * Cadence of the REST polling fallback (see the effect that uses these).
+ *
+ * A hidden tab backs off rather than stopping: the poll exists precisely for
+ * when Socket.IO is down, and a call can arrive at a backgrounded tab, so
+ * stopping would reopen the hole it was added to close.
+ */
+const POLL_VISIBLE_MS = 3500;
+const POLL_HIDDEN_MS = 15000;
+
 export function CallProvider({ children }) {
   const [phase, setPhase] = useState('idle');
   const [call, setCall] = useState(null);        // server ConsultCall payload
@@ -358,11 +368,29 @@ export function CallProvider({ children }) {
     }
   }, []);
 
+  // REST polling fallback for environments where Socket.IO is serverless or
+  // down. Fast while the tab is in front so an incoming call rings promptly,
+  // slower when it is hidden, and an immediate re-sync on returning to the tab
+  // so coming back never waits out the slow interval.
   useEffect(() => {
+    let timer;
+    const schedule = () => {
+      clearInterval(timer);
+      const ms = document.visibilityState === 'hidden' ? POLL_HIDDEN_MS : POLL_VISIBLE_MS;
+      timer = setInterval(syncActiveConsult, ms);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') syncActiveConsult();
+      schedule();
+    };
+
     syncActiveConsult();
-    // 3.5s REST polling fallback for environments where Socket.IO is serverless or down
-    const timer = setInterval(syncActiveConsult, 3500);
-    return () => clearInterval(timer);
+    schedule();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [syncActiveConsult]);
 
   const value = useMemo(() => ({

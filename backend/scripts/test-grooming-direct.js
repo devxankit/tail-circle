@@ -61,7 +61,7 @@ async function testGroomingDirect() {
   console.log('3. Testing User Grooming Discovery GET /providers?type=grooming...');
   const providersRes = await fetch(`${API_URL}/providers?type=grooming`);
   const providersData = await providersRes.json();
-  console.log(`   Status: ${providersRes.status} | Found ${providersData.data?.length || 0} Grooming Salons.`);
+  console.log(`   Status: ${providersRes.status} | Found ${providersData.data?.length || 0} Grooming Partners.`);
 
   console.log('4. Testing Vendor Bookings GET /vendor/grooming/bookings...');
   const bookRes = await fetch(`${API_URL}/vendor/grooming/bookings`, {

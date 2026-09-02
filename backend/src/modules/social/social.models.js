@@ -170,15 +170,28 @@ const messageSchema = new mongoose.Schema(
       required: true,
     },
     senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    type: { type: String, enum: ['text', 'image', 'location'], default: 'text' },
+    type: { type: String, enum: ['text', 'image', 'location', 'document', 'story_reply'], default: 'text' },
     text: { type: String, default: '', maxlength: 2000 },
     mediaUrl: { type: String, default: null },
-    // Real coordinates for type 'location' — from navigator.geolocation, not
-    // a fixed "Central Park Dog Run" string.
     meta: {
       lat: { type: Number, default: null },
       lng: { type: Number, default: null },
+      fileName: { type: String, default: null },
+      fileSize: { type: Number, default: null },
+      fileType: { type: String, default: null },
+      storyMediaUrl: { type: String, default: null },
+      storyCaption: { type: String, default: null },
     },
+    reactions: [
+      {
+        _id: false,
+        userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+        emoji: { type: String, required: true },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
+    readBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    deletedFor: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   },
   { timestamps: true }
 );
@@ -203,6 +216,10 @@ const storySchema = new mongoose.Schema(
     mediaUrl: { type: String, required: true },
     caption: { type: String, default: '' },
     expiresAt: { type: Date, required: true },
+    // Denormalised so the rail and the viewer can show a count without a
+    // per-story aggregate. StoryLike rows stay the source of truth; the
+    // counter is only ever moved by the same $inc that inserts/removes one.
+    likesCount: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true }
 );
@@ -221,3 +238,20 @@ const storyViewSchema = new mongoose.Schema(
 );
 storyViewSchema.index({ storyId: 1, viewerId: 1 }, { unique: true });
 export const StoryView = mongoose.model('StoryView', storyViewSchema);
+
+/**
+ * One row per (story, liker). The unique index is what makes the like toggle
+ * idempotent under a double-tap: a duplicate insert throws E11000 rather than
+ * double-counting, so the counter can never drift from the rows that exist.
+ */
+const storyLikeSchema = new mongoose.Schema(
+  {
+    storyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Story', required: true, index: true },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    userName: { type: String, default: '' },
+    userAvatar: { type: String, default: null },
+  },
+  { timestamps: true }
+);
+storyLikeSchema.index({ storyId: 1, userId: 1 }, { unique: true });
+export const StoryLike = mongoose.model('StoryLike', storyLikeSchema);

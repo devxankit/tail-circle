@@ -4,7 +4,7 @@ import { useShopVendor } from '../context/ShopVendorContext';
 import { useNavigate } from 'react-router-dom';
 
 export function GlobalSearch({ disabled }) {
-  const { orders, products, services } = useShopVendor();
+  const { orders = [], products = [], services = [] } = useShopVendor();
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
@@ -24,15 +24,15 @@ export function GlobalSearch({ disabled }) {
   const q = query.toLowerCase().trim();
 
   const matchedOrders = q.length > 0
-    ? orders.filter(o => o.id.toLowerCase().includes(q) || o.customer.toLowerCase().includes(q)).slice(0, 3)
+    ? (orders || []).filter(o => (o.id || '').toLowerCase().includes(q) || (o.customer || '').toLowerCase().includes(q)).slice(0, 3)
     : [];
 
   const matchedProducts = q.length > 0
-    ? products.filter(p => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q)).slice(0, 3)
+    ? (products || []).filter(p => (p.name || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q)).slice(0, 3)
     : [];
 
   const matchedServices = q.length > 0
-    ? services.filter(s => s.customer.toLowerCase().includes(q) || s.petName.toLowerCase().includes(q)).slice(0, 2)
+    ? (services || []).filter(s => (s.customer || '').toLowerCase().includes(q) || (s.petName || '').toLowerCase().includes(q)).slice(0, 2)
     : [];
 
   const hasResults = matchedOrders.length > 0 || matchedProducts.length > 0 || matchedServices.length > 0;

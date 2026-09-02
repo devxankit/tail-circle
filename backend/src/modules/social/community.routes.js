@@ -89,15 +89,35 @@ router.post(
     const post = await Post.findOne({ _id: req.params.id, status: 'visible' });
     if (!post) throw ApiError.notFound('Post not found');
 
+    /*
+     * Toggle on the unique (postId, userId) index rather than read-then-write.
+     *
+     * The old read/branch/write let a double-tap — or a retried request — run
+     * twice: two unlikes both found the row, both deleted (the second a no-op)
+     * and both decremented, pushing `likesCount` negative; two likes raced into
+     * a duplicate-key 500. The counter now only moves when the row genuinely
+     * appeared or disappeared, so repeats are harmless.
+     */
     const existing = await PostLike.findOne({ postId: post.id, userId: req.user.id });
     let liked;
     if (existing) {
-      await PostLike.deleteOne({ _id: existing.id });
-      await Post.updateOne({ _id: post.id }, { $inc: { likesCount: -1 } });
+      const removed = await PostLike.deleteOne({ postId: post.id, userId: req.user.id });
+      if (removed.deletedCount) {
+        await Post.updateOne(
+          { _id: post.id, likesCount: { $gt: 0 } },
+          { $inc: { likesCount: -1 } }
+        );
+      }
       liked = false;
     } else {
-      await PostLike.create({ postId: post.id, userId: req.user.id });
-      await Post.updateOne({ _id: post.id }, { $inc: { likesCount: 1 } });
+      const added = await PostLike.updateOne(
+        { postId: post.id, userId: req.user.id },
+        { $setOnInsert: { postId: post.id, userId: req.user.id } },
+        { upsert: true }
+      );
+      if (added.upsertedCount) {
+        await Post.updateOne({ _id: post.id }, { $inc: { likesCount: 1 } });
+      }
       liked = true;
     }
     await invalidate('community:*');

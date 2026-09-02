@@ -1,5 +1,6 @@
 import { Cart } from './cart.model.js';
 import { Product } from '../shop/product.model.js';
+import { resolveBundleDiscounts } from '../shop/bundle.service.js';
 
 /**
  * Hydrate a cart into the display shape the UI renders:
@@ -8,7 +9,9 @@ import { Product } from '../shop/product.model.js';
  */
 export async function getHydratedCart(userId) {
   const cart = await Cart.findOne({ userId });
-  if (!cart || !cart.items.length) return { items: [], subtotal: 0 };
+  if (!cart || !cart.items.length) {
+    return { items: [], subtotal: 0, bundleDiscount: 0, bundles: [], total: 0 };
+  }
 
   const products = await Product.find({
     _id: { $in: cart.items.map((i) => i.productId) },
@@ -33,12 +36,31 @@ export async function getHydratedCart(userId) {
       mrp: pack.mrp,
       quantity: item.qty,
       packSizeIndex: item.packSizeIndex,
+      bundleSlug: item.bundleSlug || null,
       inStock: pack.stock >= item.qty,
     });
   }
 
   const subtotal = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
-  return { items, subtotal };
+  // Line prices stay at catalogue value so the cart still shows what each
+  // item is worth; the box discount is a separate line, exactly as the breed
+  // screen presents it ("Buy Separately" struck through above the bundle price).
+  const { discount: bundleDiscount, bundles } = await resolveBundleDiscounts(
+    cart.items.map((i) => ({
+      productId: i.productId,
+      packSizeIndex: i.packSizeIndex,
+      qty: i.qty,
+      bundleSlug: i.bundleSlug || null,
+    }))
+  );
+
+  return {
+    items,
+    subtotal,
+    bundleDiscount,
+    bundles,
+    total: Math.max(0, subtotal - bundleDiscount),
+  };
 }
 
 /** Replace the whole cart (client sends its current list). */
@@ -52,13 +74,19 @@ export async function replaceCart(userId, items) {
 }
 
 /** Add/increment one line (productId + packSizeIndex identify a line). */
-export async function addItem(userId, { productId, packSizeIndex = 0, qty = 1 }) {
+export async function addItem(userId, { productId, packSizeIndex = 0, qty = 1, bundleSlug = null }) {
   const cart = (await Cart.findOne({ userId })) || new Cart({ userId, items: [] });
+  // bundleSlug is part of a line's identity: buying the same product loose
+  // must not silently join it to a bundle (and inflate that bundle's discount),
+  // nor the other way round.
   const line = cart.items.find(
-    (i) => String(i.productId) === String(productId) && i.packSizeIndex === packSizeIndex
+    (i) =>
+      String(i.productId) === String(productId) &&
+      i.packSizeIndex === packSizeIndex &&
+      (i.bundleSlug || null) === (bundleSlug || null)
   );
   if (line) line.qty = Math.min(99, line.qty + qty);
-  else cart.items.push({ productId, packSizeIndex, qty });
+  else cart.items.push({ productId, packSizeIndex, qty, bundleSlug: bundleSlug || null });
   await cart.save();
   return getHydratedCart(userId);
 }

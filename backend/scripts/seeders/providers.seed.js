@@ -45,7 +45,12 @@ const MOCK_DAYCARES = [
     about: "Your pet's second home. We specialize in small breeds and provide special dietary meals.",
     rules: ['Vaccination is mandatory', 'Bring your own leash'],
     badge: 'Premium', allowedPets: ['Dogs', 'Cats'],
-    gallery: ['https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=600&q=80'],
+    gallery: [
+      'https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1450778869180-41d0601e046e?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1587764379873-97837921fd44?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=800&q=80',
+    ],
   },
   {
     id: 'dc_3', name: 'Happy Tails Daycare', verified: true, rating: 4.6, reviews: 98,
@@ -56,7 +61,12 @@ const MOCK_DAYCARES = [
     about: 'Premium daycare facility with overnight boarding options and 24/7 vet access.',
     rules: ['All ages accepted', 'Mandatory tick treatment'],
     badge: 'Budget Friendly', allowedPets: ['Dogs', 'Cats'],
-    gallery: ['https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&w=600&q=80'],
+    gallery: [
+      'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1518717758536-85ae29035b6d?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1560807707-8cc77767d783?auto=format&fit=crop&w=800&q=80',
+    ],
   },
 ];
 
@@ -79,6 +89,12 @@ const MOCK_GROOMING_SHOPS = [
     id: 'gshop_1', name: 'ClipPaw Grooming Studio', rating: 4.9, reviews: 341,
     distance: 'Bandra West, Mumbai', visitTypes: ['Salon Visit'], startingPrice: 499, availability: 'Open Now',
     image: 'https://images.unsplash.com/photo-1583337130417-3346a1be7dee?auto=format&fit=crop&w=600&q=80',
+    gallery: [
+      'https://images.unsplash.com/photo-1583337130417-3346a1be7dee?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1591946614720-90a587da4a36?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=800&q=80',
+    ],
     about: 'Award-winning grooming studio with certified breed specialists. Stress-free environment with no kennels between appointments.',
     experience: '7+ Years', hygiene: '100% Sanitized Tools, UV sterilization',
     cancellation: 'Free cancellation up to 4 hours before slot.', supportedPets: ['Dogs', 'Cats'],
@@ -91,6 +107,12 @@ const MOCK_GROOMING_SHOPS = [
     id: 'gshop_2', name: 'Fancy Furz', rating: 4.7, reviews: 218,
     distance: 'Andheri West, Mumbai', visitTypes: ['Home Visit', 'Salon Visit'], startingPrice: 399, availability: 'Open Now',
     image: 'https://images.unsplash.com/photo-1593134257782-e89567b7718a?auto=format&fit=crop&w=600&q=80',
+    gallery: [
+      'https://images.unsplash.com/photo-1593134257782-e89567b7718a?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1560807707-8cc77767d783?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1601758228041-f3b2795255f1?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1591160690555-5debfba289f0?auto=format&fit=crop&w=800&q=80',
+    ],
     about: 'Specialized in home visits and quick salon trims. We bring the luxury right to your doorstep for a stress-free grooming experience.',
     experience: '5+ Years', hygiene: 'Disposable Towels Used, Fresh water supply',
     cancellation: 'Free cancellation up to 2 hours before slot.', supportedPets: ['Dogs', 'Cats'],
@@ -103,6 +125,12 @@ const MOCK_GROOMING_SHOPS = [
     id: 'gshop_3', name: 'Bark & Bubbles Luxury Spa', rating: 4.9, reviews: 521,
     distance: 'Juhu, Mumbai', visitTypes: ['Salon Visit'], startingPrice: 899, availability: 'Closes at 9 PM',
     image: 'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&w=600&q=80',
+    gallery: [
+      'https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1518717758536-85ae29035b6d?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1535294435445-d7249524ef2e?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1568572933382-74d440642117?auto=format&fit=crop&w=800&q=80',
+    ],
     about: 'Luxury pet spa offering aromatherapy, blueberry facials, and premium coat treatments for your furry VIPs.',
     experience: '10+ Years', hygiene: 'Hospital-grade Disinfectant',
     cancellation: 'Free cancellation up to 12 hours before slot.', supportedPets: ['Dogs'],
@@ -114,6 +142,12 @@ const MOCK_GROOMING_SHOPS = [
     id: 'gshop_4', name: 'The Happy Hound Groomers', rating: 4.5, reviews: 89,
     distance: 'Powai, Mumbai', visitTypes: ['Salon Visit', 'Home Visit'], startingPrice: 399, availability: 'Open Now',
     image: 'https://images.unsplash.com/photo-1517849845537-4d257902454a?auto=format&fit=crop&w=600&q=80',
+    gallery: [
+      'https://images.unsplash.com/photo-1517849845537-4d257902454a?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?auto=format&fit=crop&w=800&q=80',
+    ],
     about: 'Affordable and reliable grooming services. We love what we do, and it shows in every wagging tail!',
     experience: '3+ Years', hygiene: 'Daily Deep Cleaning',
     cancellation: 'Free cancellation up to 24 hours before slot.', supportedPets: ['Dogs'],
@@ -125,6 +159,12 @@ const MOCK_GROOMING_SHOPS = [
     id: 'gshop_5', name: 'Purrfect Paws Cat Salon', rating: 4.8, reviews: 210,
     distance: 'Colaba, Mumbai', visitTypes: ['Salon Visit'], startingPrice: 549, availability: 'Closes at 8 PM',
     image: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&w=600&q=80',
+    gallery: [
+      'https://images.unsplash.com/photo-1587300003388-59208cc962cb?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1495360010541-f48722b34f7d?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1573865526739-10659fec78a5?auto=format&fit=crop&w=800&q=80',
+      'https://images.unsplash.com/photo-1526336024174-e58f5cdd8e13?auto=format&fit=crop&w=800&q=80',
+    ],
     about: 'Specialized grooming exclusively for cats. Quiet zones for felines to reduce stress.',
     experience: '8+ Years', hygiene: 'Feline-friendly sanitizers used',
     cancellation: 'Free cancellation up to 4 hours before slot.', supportedPets: ['Cats'],
@@ -301,15 +341,34 @@ export async function seedProviders() {
     );
     providers++;
   }
-  // Daycare plans + addons are platform-wide in the mock.
-  for (const p of MOCK_DAYCARE_PLANS) {
-    await upsertOffering({
-      legacyId: p.id, providerId: null, providerType: 'daycare', kind: 'plan',
-      name: p.name, price: p.price, unit: p.unit, description: p.description || '',
-      includes: p.includes || [], badge: p.badge || null,
-    });
-    offerings++;
+  /*
+   * Each centre gets its own plans, priced from its own pricePerDay/Week/Month.
+   *
+   * These used to be seeded once as platform-wide rows (`providerId: null`), so
+   * every centre advertised — and was charged at — the same ₹499/₹2499/₹7999
+   * regardless of its real rates, while its card displayed its own prices. A
+   * plan is the thing a centre delivers at its price, so it belongs to it.
+   */
+  for (const d of MOCK_DAYCARES) {
+    const centre = await Provider.findOne({ legacyId: d.id });
+    if (!centre) continue;
+    const priceFor = (unit) => (
+      unit === 'day' ? d.pricePerDay
+        : unit === 'week' ? d.pricePerWeek
+          : d.pricePerMonth
+    );
+    for (const p of MOCK_DAYCARE_PLANS) {
+      await upsertOffering({
+        legacyId: `${d.id}_${p.id}`, providerId: centre._id, providerType: 'daycare', kind: 'plan',
+        name: p.name, price: priceFor(p.unit) || p.price, unit: p.unit,
+        description: p.description || '', includes: p.includes || [], badge: p.badge || null,
+      });
+      offerings++;
+    }
   }
+
+  // Add-ons stay platform-wide — they are a shared extras list every centre
+  // may offer, and the vendor portal can add centre-specific ones alongside.
   for (const a of MOCK_DAYCARE_ADDONS) {
     await upsertOffering({
       legacyId: a.id, providerId: null, providerType: 'daycare', kind: 'addon',
@@ -330,6 +389,7 @@ export async function seedProviders() {
           rating: s.rating,
           ratingCount: s.reviews,
           image: s.image,
+          gallery: s.gallery || [],
           about: s.about || '',
           startingPrice: s.startingPrice,
           supportedPets: s.supportedPets || [],

@@ -72,16 +72,55 @@ export function providerVendorRouter(providerType) {
         visitTypes: z.array(z.string().max(40)).max(10).optional(),
         distanceText: z.string().max(120).optional(),
         isOpen: z.boolean().optional(),
+        // Grooming: the travel fee charged on home visits and the promo
+        // discount, both of which the customer's price summary displays.
+        groomingFees: z
+          .object({
+            travelFee: z.number().min(0).max(5000).optional(),
+            discount: z.number().min(0).max(5000).optional(),
+          })
+          .optional(),
+        // Daycare: the platform fee and promo discount its price summary shows.
+        daycareFees: z
+          .object({
+            platformFee: z.number().min(0).max(5000).optional(),
+            discount: z.number().min(0).max(5000).optional(),
+          })
+          .optional(),
+        // Daycare: how many pets the centre can board on any one day.
+        dailyCapacity: z.number().int().min(1).max(500).optional(),
+        // Daycare: per-day / per-week / per-month headline prices.
+        pricing: z
+          .object({
+            pricePerDay: z.number().min(0).max(1000000).optional(),
+            pricePerWeek: z.number().min(0).max(1000000).optional(),
+            pricePerMonth: z.number().min(0).max(1000000).optional(),
+          })
+          .optional(),
         details: z.record(z.string(), z.unknown()).optional(),
       })
     ),
     asyncHandler(async (req, res) => {
       const provider = await ownProvider(req, providerType);
-      const { details, ...rest } = req.body;
+      const { details, groomingFees, daycareFees, dailyCapacity, pricing, ...rest } = req.body;
       Object.assign(provider, rest);
       // `details` is a free-form blob per vertical — merge, never replace, so a
-      // partial save cannot wipe the slot template.
-      if (details) provider.details = { ...(provider.details || {}), ...details };
+      // partial save cannot wipe the slot template or the day capacity.
+      if (details || groomingFees || daycareFees || pricing || dailyCapacity !== undefined) {
+        provider.details = {
+          ...(provider.details || {}),
+          ...(details || {}),
+          ...(groomingFees
+            ? { groomingFees: { ...(provider.details?.groomingFees || {}), ...groomingFees } }
+            : {}),
+          ...(daycareFees
+            ? { daycareFees: { ...(provider.details?.daycareFees || {}), ...daycareFees } }
+            : {}),
+          ...(pricing || {}),
+          ...(dailyCapacity !== undefined ? { dailyCapacity } : {}),
+        };
+        provider.markModified('details');
+      }
       await provider.save();
       await dropPublicCache();
       sendSuccess(res, { message: 'Profile updated', data: provider });
@@ -96,26 +135,26 @@ export function providerVendorRouter(providerType) {
     sendSuccess(res, { data: services });
   }));
 
+  // Mirrors ServiceOffering exactly — anything else is silently dropped by
+  // Mongoose, which is how the old grooming screen "saved" mrp/durationMin
+  // that never existed.
+  const serviceFields = {
+    name: z.string().trim().min(2).max(120),
+    description: z.string().max(1000).optional(),
+    price: z.number().min(0),
+    kind: z.enum(['plan', 'package', 'addon', 'menu_item']).optional(),
+    unit: z.enum(['day', 'week', 'month']).nullable().optional(),
+    category: z.string().max(60).nullable().optional(),
+    includes: z.array(z.string().max(120)).max(20).optional(),
+    isPopular: z.boolean().optional(),
+    badge: z.string().max(40).nullable().optional(),
+    active: z.boolean().optional(),
+  };
+
   router.post(
     '/services',
     ...guard,
-    validate(
-      // Mirrors ServiceOffering exactly — anything else is silently dropped by
-      // Mongoose, which is how the old grooming screen "saved" mrp/durationMin
-      // that never existed.
-      z.object({
-        name: z.string().trim().min(2).max(120),
-        description: z.string().max(1000).optional(),
-        price: z.number().min(0),
-        kind: z.enum(['plan', 'package', 'addon', 'menu_item']).optional(),
-        unit: z.enum(['day', 'week', 'month']).nullable().optional(),
-        category: z.string().max(60).nullable().optional(),
-        includes: z.array(z.string().max(120)).max(20).optional(),
-        isPopular: z.boolean().optional(),
-        badge: z.string().max(40).nullable().optional(),
-        active: z.boolean().optional(),
-      })
-    ),
+    validate(z.object(serviceFields)),
     asyncHandler(async (req, res) => {
       const provider = await ownProvider(req, providerType);
       const service = await ServiceOffering.create({
@@ -130,7 +169,10 @@ export function providerVendorRouter(providerType) {
     })
   );
 
-  router.patch('/services/:id', ...guard, asyncHandler(async (req, res) => {
+  // The update body is validated too. Without it the raw `req.body` went
+  // straight into `findOneAndUpdate`, so a vendor could send `providerId` and
+  // hand their own service over to another salon.
+  router.patch('/services/:id', ...guard, validate(z.object(serviceFields).partial()), asyncHandler(async (req, res) => {
     const provider = await ownProvider(req, providerType);
     if (!mongoose.isValidObjectId(req.params.id)) throw ApiError.badRequest('Invalid service id');
     const service = await ServiceOffering.findOneAndUpdate(
@@ -191,12 +233,28 @@ export function providerVendorRouter(providerType) {
     const provider = await ownProvider(req, providerType);
     const filter = { providerId: provider._id, type: providerType };
     if (req.query.status) filter.status = req.query.status;
+    // `date=YYYY-MM-DD` powers the day sheet — the vendor's view of the same
+    // grid the customer booked from. A daycare stay spans several days and has
+    // to appear on every one of them, not just its start date, or a centre
+    // looks empty in the middle of a week-long boarding.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(req.query.date || '')) {
+      if (providerType === 'daycare') {
+        filter.$or = [
+          { 'meta.dates': req.query.date },
+          { 'meta.dates': { $size: 0 }, 'schedule.startDate': req.query.date },
+          { 'meta.dates': { $exists: false }, 'schedule.startDate': req.query.date },
+        ];
+      } else {
+        filter['schedule.startDate'] = req.query.date;
+      }
+    }
+    if (req.query.visitType) filter.visitType = req.query.visitType;
 
     const bookings = await Booking.find(filter)
-      .sort({ createdAt: -1 })
+      .sort(filter['schedule.startDate'] ? { 'schedule.time': 1 } : { createdAt: -1 })
       .limit(200)
       .populate('userId', 'name phone avatarUrl')
-      .populate('petId', 'name breed species avatarUrl');
+      .populate('petId', 'name breed species avatarUrl age gender');
     sendSuccess(res, { data: bookings });
   }));
 
@@ -224,28 +282,64 @@ export function providerVendorRouter(providerType) {
     const provider = await ownProvider(req, providerType);
     const today = new Date().toISOString().slice(0, 10);
 
-    const [total, upcoming, completed, todays, services, revenue] = await Promise.all([
-      Booking.countDocuments({ providerId: provider._id, type: providerType }),
-      Booking.countDocuments({ providerId: provider._id, type: providerType, status: { $in: ['confirmed', 'in_progress'] } }),
-      Booking.countDocuments({ providerId: provider._id, type: providerType, status: 'completed' }),
-      Booking.countDocuments({ providerId: provider._id, type: providerType, 'schedule.startDate': today }),
-      ServiceOffering.countDocuments({ providerId: provider._id, active: true }),
+    const mine = { providerId: provider._id, type: providerType };
+    const [total, upcoming, completed, todays, byKind, revenue, homeVisits] = await Promise.all([
+      Booking.countDocuments(mine),
+      Booking.countDocuments({ ...mine, status: { $in: ['confirmed', 'in_progress'] } }),
+      Booking.countDocuments({ ...mine, status: 'completed' }),
+      Booking.countDocuments({ ...mine, 'schedule.startDate': today }),
+      // Broken out per kind so the dashboard can say "3 packages, 6 add-ons"
+      // — the two things the customer's booking screen actually shows.
+      ServiceOffering.aggregate([
+        { $match: { providerId: provider._id, active: true } },
+        { $group: { _id: '$kind', count: { $sum: 1 } } },
+      ]),
       Booking.aggregate([
-        { $match: { providerId: provider._id, type: providerType, status: { $in: ['confirmed', 'in_progress', 'completed'] } } },
+        { $match: { ...mine, status: { $in: ['confirmed', 'in_progress', 'completed'] } } },
         { $group: { _id: null, total: { $sum: '$amounts.total' } } },
       ]),
+      Booking.countDocuments({ ...mine, visitType: 'home', status: { $in: ['confirmed', 'in_progress'] } }),
     ]);
+
+    const kinds = Object.fromEntries(byKind.map((k) => [k._id, k.count]));
+    const slotTemplate = provider.details?.slotTemplate || [];
+
+    // Daycare measures itself in pets-per-day, not in appointment slots.
+    const isDaycare = providerType === 'daycare';
+    const dailyCapacity = Number(provider.details?.dailyCapacity) || 20;
+    const occupiedToday = isDaycare
+      ? await SlotBooking.findOne({ providerId: provider._id, doctorId: null, time: '__day__', date: today })
+      : null;
 
     sendSuccess(res, {
       data: {
         providerName: provider.name,
         approvalStatus: provider.approvalStatus,
         listedPublicly: provider.active && provider.approvalStatus === 'approved',
+        acceptingBookings: provider.isOpen !== false,
         totalBookings: total,
         upcomingBookings: upcoming,
         completedBookings: completed,
         todaysBookings: todays,
-        activeServices: services,
+        upcomingHomeVisits: homeVisits,
+        activeServices: byKind.reduce((s, k) => s + k.count, 0),
+        packageCount: kinds[providerType === 'daycare' ? 'plan' : 'package'] || 0,
+        addonCount: kinds.addon || 0,
+        menuItemCount: kinds.menu_item || 0,
+        slotCount: slotTemplate.length,
+        dailyCapacity: isDaycare
+          ? dailyCapacity
+          : slotTemplate.reduce((s, t) => s + (Number(t.capacity) || 1), 0),
+        ...(isDaycare
+          ? {
+              occupiedToday: occupiedToday?.booked || 0,
+              placesFreeToday: Math.max(0, dailyCapacity - (occupiedToday?.booked || 0)),
+              pricePerDay: provider.details?.pricePerDay || 0,
+              pricePerWeek: provider.details?.pricePerWeek || 0,
+              pricePerMonth: provider.details?.pricePerMonth || 0,
+            }
+          : {}),
+        visitTypes: provider.visitTypes || [],
         // paise, matching every other money figure in the API
         grossRevenue: revenue[0]?.total || 0,
         rating: provider.rating,

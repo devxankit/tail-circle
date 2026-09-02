@@ -7,6 +7,7 @@ import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { cacheResponse } from '../../services/cache.service.js';
+import { notify } from '../../services/notify.js';
 import {
   registerPurposeHandler,
   createOrder as createPaymentOrder,
@@ -132,9 +133,13 @@ router.post(
       contactEmail: req.body.contactEmail || req.user.email || '',
       shelter: {
         name: req.user.name || 'Pet Parent',
-        verified: true,
+        // An individual rehoming their own pet is not a verified shelter. This
+        // was hard-coded `true`, so every listing wore a trust badge nobody had
+        // earned. Only an approved adoption vendor's listings carry it.
+        verified: false,
         image: req.user.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80',
       },
+      sourceType: 'owner',
     });
 
     // Ensure breed entry exists so rail cards reflect count dynamically
@@ -215,6 +220,9 @@ router.post(
     const application = await AdoptionApplication.create({
       userId: req.user.id,
       listingId: listing.id,
+      // Captured now so the shelter's inbox can query directly, and so an old
+      // application never re-points at a different shelter later.
+      vendorId: listing.vendorId || null,
       form: req.body.form,
       feePaise: Math.round(listing.price * 100),
       timeline: [{ status: 'submitted', note: 'Application submitted' }],
@@ -240,11 +248,89 @@ router.get(
  * moderation of approvals lands in Phase 11 — until then the walkthrough
  * mirrors the mock's self-serve flow.)
  */
+/**
+ * Who may drive which step.
+ *
+ * The whole pipeline used to be `userId: req.user.id`, so an applicant
+ * scheduled their own home check and then **approved their own adoption** —
+ * the person rehoming the animal had no say at all. Vetting steps now belong to
+ * the lister; the adopter only submits, signs and pays.
+ */
+export const ADOPTER_STEPS = ['agreement_signed'];
+export const LISTER_STEPS = ['home_check_scheduled', 'approved', 'meet_scheduled'];
+
+/**
+ * Move an application exactly one step along, applying the side effects that
+ * step carries. Shared so the adopter route and the shelter portal can never
+ * disagree about the order.
+ */
+export async function advanceApplication(application, step, { scheduledAt, notes, actorId } = {}) {
+  const currentIdx = APPLICATION_STEPS.indexOf(application.status);
+  const nextIdx = APPLICATION_STEPS.indexOf(step);
+  if (nextIdx !== currentIdx + 1) {
+    throw ApiError.badRequest(`Cannot move from ${application.status} to ${step}`);
+  }
+
+  if (step === 'approved') {
+    /*
+     * Approving reserves the animal. The guarded update is the reservation: only
+     * one application can take a listing out of `Available`, so two shelters
+     * (or two staff) approving different applicants for the same pet cannot
+     * both succeed.
+     */
+    const reserved = await AdoptionListing.updateOne(
+      { _id: application.listingId, status: 'Available' },
+      { $set: { status: 'Pending' } }
+    );
+    if (reserved.modifiedCount === 0) {
+      throw ApiError.badRequest('This pet is already reserved for another applicant');
+    }
+  }
+
+  application.status = step;
+  if (step === 'home_check_scheduled') {
+    application.homeCheck = { scheduledAt: scheduledAt || null, notes: notes || '' };
+  }
+  if (step === 'meet_scheduled') {
+    application.meet = { scheduledAt: scheduledAt || null };
+  }
+  if (step === 'agreement_signed') {
+    application.agreementAcceptedAt = new Date();
+  }
+  if (actorId) {
+    application.decision = { by: actorId, at: new Date(), reason: notes || '' };
+  }
+  application.timeline.push({ status: step, note: notes || '' });
+  await application.save();
+  return application;
+}
+
+/** Decline an application and free the animal if it was holding the reservation. */
+export async function rejectApplication(application, reason, actorId) {
+  if (['completed', 'rejected', 'cancelled'].includes(application.status)) {
+    throw ApiError.badRequest('This application is already closed');
+  }
+  const wasHolding = application.status !== 'submitted';
+  application.status = 'rejected';
+  application.decision = { by: actorId || null, at: new Date(), reason: reason || '' };
+  application.timeline.push({ status: 'rejected', note: reason || 'Application declined' });
+  await application.save();
+
+  // Put the pet back on the market if this application had reserved it.
+  if (wasHolding) {
+    await AdoptionListing.updateOne(
+      { _id: application.listingId, status: 'Pending' },
+      { $set: { status: 'Available' } }
+    );
+  }
+  return application;
+}
+
 router.post(
   '/applications/:id/advance',
   validate(
     z.object({
-      step: z.enum(['home_check_scheduled', 'approved', 'meet_scheduled', 'agreement_signed']),
+      step: z.enum(ADOPTER_STEPS),
       scheduledAt: z.string().max(60).optional(),
       notes: z.string().max(500).optional(),
     })
@@ -256,32 +342,10 @@ router.post(
     });
     if (!application) throw ApiError.notFound('Application not found');
 
-    const currentIdx = APPLICATION_STEPS.indexOf(application.status);
-    const nextIdx = APPLICATION_STEPS.indexOf(req.body.step);
-    if (nextIdx !== currentIdx + 1) {
-      throw ApiError.badRequest(`Cannot move from ${application.status} to ${req.body.step}`);
-    }
-
-    application.status = req.body.step;
-    if (req.body.step === 'home_check_scheduled') {
-      application.homeCheck = { scheduledAt: req.body.scheduledAt || null, notes: req.body.notes || '' };
-    }
-    if (req.body.step === 'meet_scheduled') {
-      application.meet = { scheduledAt: req.body.scheduledAt || null };
-    }
-    if (req.body.step === 'agreement_signed') {
-      application.agreementAcceptedAt = new Date();
-    }
-    application.timeline.push({ status: req.body.step, note: req.body.notes || '' });
-    await application.save();
-
-    // Lock the listing once an application passes approval.
-    if (req.body.step === 'approved') {
-      await AdoptionListing.updateOne(
-        { _id: application.listingId, status: 'Available' },
-        { $set: { status: 'Pending' } }
-      );
-    }
+    await advanceApplication(application, req.body.step, {
+      scheduledAt: req.body.scheduledAt,
+      notes: req.body.notes,
+    });
     sendSuccess(res, { message: 'Application updated', data: application });
   })
 );
@@ -318,6 +382,54 @@ async function completeAdoption(application) {
   application.timeline.push({ status: 'completed', note: 'Adoption complete — welcome home!' });
   await application.save();
   await AdoptionListing.updateOne({ _id: application.listingId }, { $set: { status: 'Adopted' } });
+
+  /*
+   * The animal has gone home, so every other open application for it is moot.
+   * These used to be left hanging: other applicants kept an "in progress"
+   * adoption for a pet that no longer existed to adopt, and — because each of
+   * them could self-approve — could drive it all the way to completed too.
+   */
+  const others = await AdoptionApplication.find({
+    listingId: application.listingId,
+    _id: { $ne: application._id },
+    status: { $nin: ['completed', 'rejected', 'cancelled'] },
+  });
+  for (const other of others) {
+    other.status = 'rejected';
+    other.decision = { by: null, at: new Date(), reason: 'This pet has been adopted by someone else' };
+    other.timeline.push({ status: 'rejected', note: 'Pet adopted by another applicant' });
+    await other.save().catch(() => {});
+    await notify(other.userId, {
+      title: 'Pet already adopted',
+      body: 'The pet you applied for has found a home with another adopter. Your application has been closed.',
+      type: 'system',
+      link: '/app/adopt/my-adoptions',
+    }).catch(() => {});
+  }
+
+  await creditAdoptionVendor(application);
+}
+
+/** Credit the shelter's ledger for a completed, paid adoption. */
+async function creditAdoptionVendor(application) {
+  if (!application.feePaise) return;
+  try {
+    const listing = await AdoptionListing.findById(application.listingId).select('vendorId name');
+    if (!listing?.vendorId) return; // an owner rehoming privately — nothing to settle
+    const { postLedgerEntry } = await import('../vendor/vendor.service.js');
+    const { VendorProfile } = await import('../vendor/vendor.models.js');
+    const profile = await VendorProfile.findOne({ userId: listing.vendorId });
+    await postLedgerEntry({
+      vendorId: listing.vendorId,
+      refType: 'booking',
+      refId: application._id,
+      label: `Adoption ${application.applicationNo} — ${listing.name}`,
+      gross: application.feePaise,
+      commissionRate: profile?.commissionRate ?? 0.15,
+    });
+  } catch {
+    // ledger is best-effort — never block a completed adoption
+  }
 }
 
 registerPurposeHandler('adoption_fee', {

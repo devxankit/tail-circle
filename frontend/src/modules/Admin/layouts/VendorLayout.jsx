@@ -14,6 +14,7 @@ const TYPE_TO_SLUG = {
   memorial: 'memorial',
   grooming: 'grooming',
   daycare: 'daycare',
+  adoption: 'adoption',
 };
 
 export function VendorLayout() {
@@ -81,24 +82,26 @@ export function VendorLayout() {
       ];
     }
 
-    // Grooming salon and daycare centre — both Provider-backed, same shape.
-    if (vendorRole === 'grooming' || vendorRole === 'daycare') {
-      const base = vendorRole === 'grooming' ? '/vendor/grooming-provider' : '/vendor/daycare-provider';
-      const serviceLabel = vendorRole === 'grooming' ? 'Packages & Add-ons' : 'Plans & Add-ons';
+    // Grooming salons get their own portal, whose tabs mirror the customer's
+    // booking screens (packages / add-ons are separate steps there, so they are
+    // separate tabs here). Daycare keeps the generic Provider portal.
+    if (vendorRole === 'grooming') {
+      const base = '/vendor/grooming-provider';
       return [
         {
           title: 'MAIN',
           items: [
             { label: 'Dashboard', path: base, icon: LayoutDashboard },
-            { label: 'Bookings', path: base, search: '?view=bookings', icon: ClipboardList },
-            { label: serviceLabel, path: base, search: '?view=services', icon: Store },
+            { label: 'Appointments', path: base, search: '?view=bookings', icon: ClipboardList },
+            { label: 'Packages', path: base, search: '?view=packages', icon: Store },
+            { label: 'Add-ons', path: base, search: '?view=addons', icon: Store },
             { label: 'Time Slots', path: base, search: '?view=slots', icon: Clock },
           ],
         },
         {
           title: 'ACCOUNT',
           items: [
-            { label: vendorRole === 'grooming' ? 'Salon Profile' : 'Centre Profile', path: base, search: '?view=profile', icon: User },
+            { label: 'Salon Profile', path: base, search: '?view=profile', icon: User },
             { label: 'Earnings & Payouts', path: '/vendor/payouts', icon: CreditCard },
             { label: 'Client Support', path: '/vendor/support', icon: HelpCircle },
             { label: 'Settings', path: '/vendor/settings', icon: Settings },
@@ -107,13 +110,64 @@ export function VendorLayout() {
       ];
     }
 
-    // Default generic / Shop Vendor menus
+    // Daycare is boarding by the day, so its portal is built around capacity and
+    // occupancy rather than the grooming-style time-slot editor it used to show.
+    // Shelters, rescues and breeders. Their whole job is reviewing who applies
+    // for the pets they list, so applications lead the menu.
+    if (vendorRole === 'adoption') {
+      const base = '/vendor/adoption-partner';
+      return [
+        {
+          title: 'MAIN',
+          items: [
+            { label: 'Dashboard', path: base, icon: LayoutDashboard },
+            { label: 'Applications', path: base, search: '?view=applications', icon: ClipboardList },
+            { label: 'Pets', path: base, search: '?view=listings', icon: Store },
+          ],
+        },
+        {
+          title: 'ACCOUNT',
+          items: [
+            { label: 'Earnings & Payouts', path: '/vendor/payouts', icon: CreditCard },
+            { label: 'Client Support', path: '/vendor/support', icon: HelpCircle },
+            { label: 'Settings', path: '/vendor/settings', icon: Settings },
+          ],
+        },
+      ];
+    }
+
+    if (vendorRole === 'daycare') {
+      const base = '/vendor/daycare-provider';
+      return [
+        {
+          title: 'MAIN',
+          items: [
+            { label: 'Dashboard', path: base, icon: LayoutDashboard },
+            { label: 'Bookings', path: base, search: '?view=bookings', icon: ClipboardList },
+            { label: 'Plans', path: base, search: '?view=plans', icon: Store },
+            { label: 'Add-ons', path: base, search: '?view=addons', icon: Store },
+            { label: 'Capacity & Rates', path: base, search: '?view=capacity', icon: Clock },
+          ],
+        },
+        {
+          title: 'ACCOUNT',
+          items: [
+            { label: 'Centre Profile', path: base, search: '?view=profile', icon: User },
+            { label: 'Earnings & Payouts', path: '/vendor/payouts', icon: CreditCard },
+            { label: 'Client Support', path: '/vendor/support', icon: HelpCircle },
+            { label: 'Settings', path: '/vendor/settings', icon: Settings },
+          ],
+        },
+      ];
+    }
+
+    // Default generic / Shop Partner menus
     return [
       {
         title: 'MAIN',
         items: [
           ...(vendorRole === 'shop' ? [{ label: 'Shop Operations Portal', path: '/vendor/shop-provider', icon: Store }] : []),
-          ...(vendorRole === 'meal' ? [{ label: 'Meal Provider Portal', path: '/vendor/meal-provider/dashboard', icon: Heart }] : []),
+          ...(vendorRole === 'meal' ? [{ label: 'Fresh Meals Partner Portal', path: '/vendor/meal-provider/dashboard', icon: Heart }] : []),
           ...(vendorRole === 'event' ? [{ label: 'Events Portal', path: '/vendor/events-organizer', icon: Calendar }] : []),
           ...(vendorRole === 'memorial' ? [{ label: 'Memorial Portal', path: '/vendor/memorial-provider', icon: ShieldAlert }] : []),
         ]

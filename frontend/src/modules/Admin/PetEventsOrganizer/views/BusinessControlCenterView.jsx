@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { usePetEvents } from '../context/PetEventsContext';
-import { updateVendorProfile, changeVendorPassword, uploadVendorFile } from '../../../../services/vendor';
+import { updateVendorProfile, changeVendorPassword, uploadVendorFile, addVendorDocument, removeVendorDocument } from '../../../../services/vendor';
 import {
   Building2, ShieldCheck,
-  Upload, Save, CheckCircle, Loader2
+  Upload, Save, CheckCircle, Loader2, CreditCard, Trash2
 } from 'lucide-react';
 import { cn } from '../../../user/utils/cn';
 
@@ -18,10 +18,50 @@ export function BusinessControlCenterView() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const logoInputRef = React.useRef(null);
 
+  // Bank & GST details state
+  const [bankData, setBankData] = useState({
+    bankName: profile?.bank?.bankName || '',
+    accountHolder: profile?.bank?.accountHolder || profile?.businessName || '',
+    accountNumber: '',
+    ifsc: profile?.bank?.ifsc || '',
+    accountType: profile?.bank?.accountType || 'Saving',
+  });
+  const [gstData, setGstData] = useState({
+    hasGst: profile?.gst?.hasGst || false,
+    number: profile?.gst?.number || '',
+  });
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [docKind, setDocKind] = useState('license');
+
   const [passwords, setPasswords] = useState({ current: '', next: '' });
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordDone, setPasswordDone] = useState(false);
   const [passwordError, setPasswordError] = useState('');
+
+  const handleDocUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = null;
+    if (!file) return;
+    setUploadingDoc(true);
+    try {
+      const url = await uploadVendorFile(file, 'events-kyc');
+      await addVendorDocument(docKind, url);
+      await refresh();
+    } catch (err) {
+      setSaveError(err?.response?.data?.message || 'Could not upload document');
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
+  const handleDocRemove = async (index) => {
+    try {
+      await removeVendorDocument(index);
+      await refresh();
+    } catch (err) {
+      setSaveError(err?.response?.data?.message || 'Could not remove document');
+    }
+  };
 
   const handleLogoUpload = async (e) => {
     const file = e.target.files[0];
@@ -39,7 +79,7 @@ export function BusinessControlCenterView() {
   };
 
   const handleSaveProfile = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     setIsSaving(true);
     setSaveError('');
     try {
@@ -48,6 +88,8 @@ export function BusinessControlCenterView() {
         phone: formData.phone,
         address: formData.address,
         logo: formData.logo,
+        bank: bankData,
+        gst: gstData,
       });
       updateProfile({ businessName: updated.businessName, phone: updated.phone, address: updated.address, logo: updated.logo });
       await refresh();
@@ -81,6 +123,7 @@ export function BusinessControlCenterView() {
 
   const tabs = [
     { id: 'profile', label: 'Business Profile', icon: Building2 },
+    { id: 'bank_kyc', label: 'Bank & KYC Verification', icon: CreditCard },
     { id: 'security', label: 'Security', icon: ShieldCheck },
   ];
 
@@ -201,6 +244,99 @@ export function BusinessControlCenterView() {
                 </button>
               </div>
             </form>
+          </div>
+        )}
+
+        {/* BANK & KYC TAB */}
+        {activeTab === 'bank_kyc' && (
+          <div className="max-w-2xl animate-in slide-in-from-right-4 space-y-8">
+            <div>
+              <h3 className="text-xl font-black text-slate-900 mb-1">Bank Account & Payout Details</h3>
+              <p className="text-xs font-semibold text-slate-500 mb-4">Required to receive ticket sales and event earnings settlements.</p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Bank Name</label>
+                  <input type="text" placeholder="e.g. HDFC Bank" value={bankData.bankName} onChange={e => setBankData({...bankData, bankName: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Account Holder Name</label>
+                  <input type="text" placeholder="Full name on bank account" value={bankData.accountHolder} onChange={e => setBankData({...bankData, accountHolder: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Account Number</label>
+                  <input type="text" placeholder="Enter account number" value={bankData.accountNumber} onChange={e => setBankData({...bankData, accountNumber: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900" />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">IFSC Code</label>
+                  <input type="text" placeholder="HDFC0001234" value={bankData.ifsc} onChange={e => setBankData({...bankData, ifsc: e.target.value.toUpperCase()})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-900" />
+                </div>
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-4">
+                <label className="flex items-center gap-2 text-sm font-bold text-slate-700 cursor-pointer">
+                  <input type="checkbox" checked={gstData.hasGst} onChange={e => setGstData({...gstData, hasGst: e.target.checked})} className="accent-slate-900 w-4 h-4" />
+                  GSTIN Registered
+                </label>
+                {gstData.hasGst && (
+                  <input type="text" placeholder="GSTIN Number (15 digits)" value={gstData.number} onChange={e => setGstData({...gstData, number: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 flex-1" />
+                )}
+              </div>
+
+              <div className="pt-4">
+                <button type="button" onClick={handleSaveProfile} disabled={isSaving} className="px-6 py-2.5 bg-[#F87B68] text-white text-sm font-bold rounded-xl flex items-center gap-2">
+                  {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save Bank Details
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-6 border-t border-slate-100 space-y-4">
+              <div>
+                <h3 className="text-xl font-black text-slate-900 mb-1">Required KYC Documents</h3>
+                <p className="text-xs font-semibold text-slate-500">Upload Event Trade License & Owner ID Proof for Super Admin verification.</p>
+              </div>
+
+              <div className="space-y-3">
+                {(profile.documents || []).map((doc, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <span className="font-bold text-sm text-slate-900 uppercase tracking-wide">
+                        {doc.kind === 'license' ? 'Event Agency / Trade License' : doc.kind === 'owner_id' ? 'Owner Identity Card' : doc.kind === 'gst' ? 'GST Certificate' : doc.kind}
+                      </span>
+                      <a href={doc.url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-blue-600 hover:underline truncate max-w-[180px]">View Document</a>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className={cn(
+                        "px-2.5 py-1 text-[10px] font-extrabold uppercase rounded-md",
+                        doc.status === 'Verified' ? "bg-emerald-100 text-emerald-800" : doc.status === 'Rejected' ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"
+                      )}>
+                        {doc.status || 'Pending'}
+                      </span>
+                      <button onClick={() => handleDocRemove(idx)} className="text-slate-400 hover:text-red-600 transition">
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                {(!profile.documents || profile.documents.length === 0) && (
+                  <p className="text-xs text-slate-400 font-medium py-2">No KYC documents uploaded yet.</p>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <select value={docKind} onChange={e => setDocKind(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-800">
+                  <option value="license">Event Agency Trade License</option>
+                  <option value="owner_id">Owner ID Proof (Aadhaar/PAN)</option>
+                  <option value="gst">GST Registration Certificate</option>
+                </select>
+
+                <input type="file" id="eventDocInput" accept="image/*,application/pdf" className="hidden" onChange={handleDocUpload} />
+                <button onClick={() => document.getElementById('eventDocInput').click()} disabled={uploadingDoc} className="px-5 py-2.5 bg-slate-900 hover:bg-black text-white text-xs font-bold rounded-xl transition flex items-center gap-2 disabled:opacity-50">
+                  {uploadingDoc ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {uploadingDoc ? 'Uploading...' : 'Upload File'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

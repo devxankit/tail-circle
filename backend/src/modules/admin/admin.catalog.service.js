@@ -7,6 +7,8 @@ import { MealPlan } from '../meal/meal.models.js';
 import { Doctor } from '../provider/doctor.model.js';
 import { EventMeta } from '../provider/event.model.js';
 import { ServiceOffering } from '../provider/serviceOffering.model.js';
+import { Provider } from '../provider/provider.model.js';
+import { Booking } from '../booking/booking.model.js';
 import { MemorialService } from '../vendor/memorial.models.js';
 import { invalidate } from '../../services/cache.service.js';
 import { writeAudit } from './admin.service.js';
@@ -270,9 +272,102 @@ export async function listMemorialPackages() {
 
 /* ── Grooming / daycare offerings ─────────────────────────────────── */
 export async function listGroomingDaycare() {
-  const rows = await ServiceOffering.find({ providerType: { $in: ['grooming', 'daycare'] } }).sort({ providerType: 1 }).limit(400);
-  return rows.map((o) => ({ id: String(o._id), name: o.name, type: o.providerType, kind: o.kind, price: o.price, active: o.active !== false }));
+  const rows = await ServiceOffering.find({ providerType: { $in: ['grooming', 'daycare'] } })
+    .sort({ providerType: 1 })
+    .limit(400)
+    .populate('providerId', 'name');
+  return rows.map((o) => ({
+    id: String(o._id),
+    name: o.name,
+    type: o.providerType,
+    kind: o.kind,
+    price: o.price,
+    facilityName: o.providerId?.name || 'All facilities',
+    active: o.active !== false,
+    status: o.active !== false ? 'Active' : 'Inactive',
+  }));
 }
+
+/** Toggle a grooming/daycare offering on or off across the platform. */
+export async function updateGroomingDaycare(actor, id, patch, ip) {
+  if (!idOk(id)) throw ApiError.badRequest('Invalid service id');
+  const update = {};
+  if (patch.status) update.active = patch.status === 'Active';
+  if (typeof patch.active === 'boolean') update.active = patch.active;
+  if (typeof patch.price === 'number') update.price = patch.price;
+  const o = await ServiceOffering.findByIdAndUpdate(id, { $set: update }, { new: true });
+  if (!o) throw ApiError.notFound('Service not found');
+  await bust('providers');
+  await writeAudit(actor, { action: 'grooming.service.update', targetType: 'service_offering', targetId: id, ip });
+  return { id: String(o._id), name: o.name, active: o.active, status: o.active ? 'Active' : 'Inactive' };
+}
+
+/**
+ * The real partner facilities behind the grooming / daycare admin screen, plus
+ * month-to-date volume. The screen previously showed hard-coded counters and a
+ * list of free-form config rows, so it could not tell an admin which salons
+ * actually existed or how busy they were.
+ */
+export async function listGroomingFacilities() {
+  const providers = await Provider.find({ type: { $in: ['grooming', 'daycare'] } })
+    .sort({ type: 1, rating: -1 })
+    .limit(200);
+  if (!providers.length) return { facilities: [], stats: emptyGroomingStats() };
+
+  const ids = providers.map((p) => p._id);
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  const [offerings, activeCounts, mtd] = await Promise.all([
+    ServiceOffering.aggregate([
+      { $match: { providerId: { $in: ids }, active: true } },
+      { $group: { _id: '$providerId', count: { $sum: 1 } } },
+    ]),
+    Booking.aggregate([
+      { $match: { providerId: { $in: ids }, status: { $in: ['confirmed', 'in_progress'] } } },
+      { $group: { _id: '$providerId', count: { $sum: 1 } } },
+    ]),
+    Booking.aggregate([
+      { $match: { providerId: { $in: ids }, createdAt: { $gte: monthStart } } },
+      { $group: { _id: '$type', count: { $sum: 1 }, days: { $sum: { $ifNull: ['$schedule.durationDays', 1] } } } },
+    ]),
+  ]);
+
+  const services = Object.fromEntries(offerings.map((o) => [String(o._id), o.count]));
+  const active = Object.fromEntries(activeCounts.map((o) => [String(o._id), o.count]));
+  const monthly = Object.fromEntries(mtd.map((m) => [m._id, m]));
+
+  const facilities = providers.map((p) => ({
+    id: String(p._id),
+    name: p.name,
+    type: p.type,
+    city: p.distanceText || '—',
+    rating: p.rating || 0,
+    services: services[String(p._id)] || 0,
+    activeBookings: active[String(p._id)] || 0,
+    approvalStatus: p.approvalStatus,
+    status: p.active && p.approvalStatus === 'approved' ? 'Active' : 'Inactive',
+  }));
+
+  const rated = providers.filter((p) => p.ratingCount > 0);
+  return {
+    facilities,
+    stats: {
+      activeFacilities: facilities.filter((f) => f.status === 'Active').length,
+      totalFacilities: facilities.length,
+      groomingBookingsMtd: monthly.grooming?.count || 0,
+      daycareDaysMtd: monthly.daycare?.days || 0,
+      avgRating: rated.length
+        ? Number((rated.reduce((s, p) => s + p.rating, 0) / rated.length).toFixed(1))
+        : 0,
+    },
+  };
+}
+
+const emptyGroomingStats = () => ({
+  activeFacilities: 0, totalFacilities: 0, groomingBookingsMtd: 0, daycareDaysMtd: 0, avgRating: 0,
+});
 
 /* ── Add-ons & amenities ──────────────────────────────────────────── */
 const serAddon = (o) => ({ id: String(o._id), name: o.name, category: o.category, price: o.price, type: o.providerType, active: o.active !== false });

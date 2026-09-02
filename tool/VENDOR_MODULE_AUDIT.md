@@ -1,6 +1,6 @@
 # Vendor Module Audit — TailCircle
 
-**Scope:** every vendor-facing panel in the platform — Shop, Clinic/Vet Doctor, Grooming, Daycare, Meal Subscription (cloud kitchen), Memorial, Pet Events Organizer.
+**Scope:** every vendor-facing panel in the platform — Shop, Clinic/Vet Doctor, Grooming, Daycare, Meal Subscription (cloud kitchen), Memorial, Events Partner.
 
 **Status as of 2026-07-28: remediation complete.** This file originally recorded a ~62% audit (every gap below the "Original audit" line is preserved for history). Every gap identified in that pass has since been closed — real backend endpoints where one was missing, real frontend wiring everywhere a view was mutating local state instead of calling the already-correct API, and honest removal (not fake UI) wherever no backend concept exists at all and none was worth building for this pass.
 
@@ -19,7 +19,7 @@
 
 ---
 
-## 1. Shop Vendor — Done
+## 1. Shop Partner — Done
 
 | # | Area | Status | Notes |
 |---|---|---|---|
@@ -50,7 +50,7 @@ All other rows unchanged from the original audit (already real).
 
 ---
 
-## 3. Grooming & Daycare Vendor — Done
+## 3. Grooming & Day Care Partner — Done
 
 | # | Area | Status | Notes |
 |---|---|---|---|
@@ -75,7 +75,7 @@ All other rows unchanged from the original audit (already real).
 
 ---
 
-## 5. Memorial Provider Vendor — Done
+## 5. Last Ride Partner Vendor — Done
 
 | # | Area | Status | Notes |
 |---|---|---|---|
@@ -90,7 +90,7 @@ All other rows unchanged from the original audit (already real).
 
 ---
 
-## 6. Pet Events Organizer Vendor — Done
+## 6. Events Partner Vendor — Done
 
 | # | Area | Status | Notes |
 |---|---|---|---|

@@ -11,7 +11,7 @@ async function testGroomingFlow() {
   console.log('--- STARTING GROOMING END-TO-END VERIFICATION ---');
   await mongoose.connect(process.env.MONGODB_URI);
 
-  // 1. Find or create a Grooming Vendor user
+  // 1. Find or create a Grooming Partner user
   let vendor = await User.findOne({ email: 'grooming.vendor@tailcircle.com' });
   if (!vendor) {
     vendor = await User.create({
@@ -58,7 +58,7 @@ async function testGroomingFlow() {
   console.log('3. Testing User Grooming Discovery GET /providers?type=grooming...');
   const providersRes = await fetch(`${API_URL}/providers?type=grooming`);
   const providersData = await providersRes.json();
-  console.log(`   Status: ${providersRes.status} | Found ${providersData.data?.length || 0} Grooming Salons.`);
+  console.log(`   Status: ${providersRes.status} | Found ${providersData.data?.length || 0} Grooming Partners.`);
 
   console.log('4. Testing Vendor Bookings GET /vendor/grooming/bookings...');
   const bookRes = await fetch(`${API_URL}/vendor/grooming/bookings`, {

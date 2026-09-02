@@ -10,7 +10,8 @@ import { Provider } from '../../src/modules/provider/provider.model.js';
 import { encryptField } from '../../src/utils/fieldCrypto.js';
 
 /**
- * One approved vendor of each type so the portals run against real accounts.
+ * One approved vendor of each of the eight partner types, so every portal runs
+ * against a real account.
  * All share the demo password `vendor123`; each has a stable phone for the
  * registration-no + OTP login path. The shop vendor owns a slice of the
  * Phase 3 catalog so its dashboard/products views show real numbers.
@@ -23,6 +24,7 @@ const VENDORS = [
   { key: 'memorial', vendorType: 'memorial', businessName: 'Rainbow Bridge Memorials', email: 'partner@rainbowbridge.com', phone: '+919000001004', regNo: 'TCV-MEMO01', city: 'Indore' },
   { key: 'clinic', vendorType: 'clinic', businessName: 'Happy Paws Veterinary Clinic', email: 'partner@happypaws.com', phone: '+919000001005', regNo: 'TCV-CLIN01', city: 'Indore' },
   { key: 'daycare', vendorType: 'daycare', businessName: 'Happy Tails Daycare', email: 'partner@happytails.com', phone: '+919000001007', regNo: 'TCV-DAYC01', city: 'Indore', logo: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=200&auto=format&fit=crop&q=60' },
+  { key: 'adoption', vendorType: 'adoption', businessName: 'Second Chance Pet Rescue', email: 'partner@secondchance.com', phone: '+919000001008', regNo: 'TCV-ADOP01', city: 'Indore', logo: 'https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=200&auto=format&fit=crop&q=60' },
 ];
 
 /**

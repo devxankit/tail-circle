@@ -72,7 +72,57 @@ export function BookingDetail() {
             </div>
           </div>
 
-          {/* Payment Info */}
+          {/* Prescription Card if issued */}
+          {booking.prescription && (
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-border-light">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-text-primary flex items-center gap-2">
+                  <FileText size={18} className="text-primary-main" /> Medical Prescription
+                </h3>
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-primary-light/20 text-primary-dark px-2 py-0.5 rounded-full">
+                  {booking.prescription.type === 'photo' || booking.prescription.prescriptionUrl ? '📷 Photo Rx' : '📝 Digital Rx'}
+                </span>
+              </div>
+
+              {booking.prescription.type === 'photo' || booking.prescription.prescriptionUrl ? (
+                <div className="space-y-3">
+                  <div className="rounded-xl overflow-hidden border border-border-light bg-slate-900 max-h-48 flex items-center justify-center p-2">
+                    <img 
+                      src={booking.prescription.prescriptionUrl} 
+                      alt="Doctor Prescription" 
+                      className="max-h-44 object-contain rounded" 
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <a 
+                      href={booking.prescription.prescriptionUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex-1 text-center py-2 bg-primary-main text-white font-bold rounded-xl text-xs shadow-xs hover:bg-primary-dark transition"
+                    >
+                      View Full Prescription Photo
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2 text-xs">
+                  <p className="text-text-secondary"><strong className="text-text-primary">Diagnosis:</strong> {booking.prescription.diagnosis || 'General Prescription'}</p>
+                  {booking.prescription.items && booking.prescription.items.length > 0 && (
+                    <div className="bg-bg-secondary p-3 rounded-xl border border-border-light space-y-1">
+                      {booking.prescription.items.map((m, i) => (
+                        <p key={i} className="font-medium text-text-primary">
+                          • {m.name} {m.dosage ? `(${m.dosage})` : ''} - {m.frequency} for {m.duration}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                  {booking.prescription.notes && (
+                    <p className="text-text-secondary italic">"{booking.prescription.notes}"</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-border-light">
             <h3 className="font-bold text-text-primary mb-4 flex items-center gap-2">
               <FileText size={18} className="text-primary-main" /> Payment Details

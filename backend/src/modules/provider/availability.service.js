@@ -83,14 +83,21 @@ export function defaultAvailability(doctorId) {
       day,
       enabled: day !== 0, // closed Sundays
       blocks: day === 0 ? [] : [
-        { start: '00:00', end: '23:59', modes: ['inClinic', 'video'], capacity: 1 },
+        // Morning and evening consulting hours, in-clinic only. This was a
+        // single `00:00–23:59` block serving both inClinic and video with a
+        // zero lead time, so a vet who had never opened the scheduler was
+        // advertised as bookable around the clock — a customer could book a
+        // 3 AM video consult starting a minute from now.
+        { start: '10:00', end: '13:00', modes: ['inClinic'], capacity: 1 },
+        { start: '17:00', end: '20:00', modes: ['inClinic'], capacity: 1 },
       ],
     })),
     slotMinutes: 15,
     bufferMinutes: 0,
     emergency: { enabled: false, alwaysOn: false, blocks: [] },
     blackouts: [],
-    leadTimeMinutes: 0,
+    // An hour's notice, so the next slot is never one the vet cannot reach.
+    leadTimeMinutes: 60,
     horizonDays: 30,
     timezone: 'Asia/Kolkata',
     active: true,

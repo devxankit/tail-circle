@@ -108,8 +108,18 @@ async function main() {
     followUpDate: '2026-05-31',
   });
   ok(rx.petName === 'Max' && rx.items.length === 1, 'prescription resolves patient + drops blank medicine rows');
+
+  const photoRx = await clinic.createPrescription(cid, {
+    patientId: String(maxPatient.id),
+    diagnosis: 'Ear Infection',
+    type: 'photo',
+    prescriptionUrl: 'https://res.cloudinary.com/test/image/upload/rx_sample.jpg',
+    notes: 'Uploaded photo prescription',
+  });
+  ok(photoRx.type === 'photo' && photoRx.prescriptionUrl.includes('rx_sample.jpg'), 'photo prescription saves and serializes image URL');
+
   const rxList = await clinic.listPrescriptions(cid);
-  ok(rxList.some((r) => r.id === rx.id), 'new prescription appears in history');
+  ok(rxList.some((r) => r.id === rx.id) && rxList.some((r) => r.id === photoRx.id), 'new digital and photo prescriptions appear in history');
 
   console.log('\n— Lab reports —');
   const labs = await clinic.listLabReports(cid);
@@ -186,7 +196,7 @@ async function main() {
     Booking.deleteOne({ bookingNo: 'TCGCLINTEST' }),
     MedicalRecord.deleteMany({ petName: 'ZZTest' }),
     MedicalRecord.deleteMany({ appointmentId: null, treatment: /kennel cough/ }),
-    Prescription.deleteMany({ _id: rx.id }),
+    Prescription.deleteMany({ _id: { $in: [rx.id, photoRx.id] } }),
     FollowUp.deleteMany({ petName: 'ZZTest' }),
     EmergencyRequest.deleteMany({ _id: reported._id }),
 

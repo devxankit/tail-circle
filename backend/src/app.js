@@ -68,7 +68,20 @@ app.post(
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(cookieParser());
-if (!env.isProd) app.use(morgan('dev'));
+/**
+ * Endpoints the clients poll on a timer — the call-context fallback and the
+ * connectivity probe. Left in, they bury every real request in the dev log.
+ * Only *successful* polls are skipped, so a route that starts failing still
+ * shows up.
+ */
+const POLLED_ROUTES = new Set([`${env.apiPrefix}/consults/active`, '/health']);
+if (!env.isProd) {
+  app.use(
+    morgan('dev', {
+      skip: (req, res) => res.statusCode < 400 && POLLED_ROUTES.has(req.path),
+    })
+  );
+}
 
 // Liveness probe — process is up. Cheap, never touches dependencies.
 app.get('/health', (_req, res) => {

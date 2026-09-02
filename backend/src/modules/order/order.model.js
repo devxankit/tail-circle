@@ -31,11 +31,21 @@ const orderSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    /**
+     * Set only when every line in the order belongs to the same seller. An
+     * order can mix one shop's products with the platform's own, so the
+     * authoritative owner of a line is `items[].vendorId` — that is what the
+     * vendor portal queries and what the ledger settles against.
+     */
     vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     items: [
       {
         _id: false,
         productId: { type: mongoose.Schema.Types.ObjectId, ref: 'Product', required: true },
+        // Who sells this line (null = the platform's own catalogue). Captured
+        // at checkout so a later change of product ownership cannot rewrite
+        // who an existing order belongs to.
+        vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
         legacyId: { type: Number, default: null },
         name: { type: String, required: true },
         img: { type: String, default: '' },
@@ -44,6 +54,9 @@ const orderSchema = new mongoose.Schema(
         qty: { type: Number, required: true, min: 1 },
         unitPrice: { type: Number, required: true }, // rupees
         total: { type: Number, required: true }, // rupees
+        // Which breed Monthly Essentials Bundle this line was bought as part
+        // of, so the discount on the order can be explained after the fact.
+        bundleSlug: { type: String, default: null },
       },
     ],
     amounts: {

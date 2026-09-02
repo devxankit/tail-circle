@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate } from '../../middleware/auth.js';
+import { authenticate, authorize } from '../../middleware/auth.js';
 import { validate } from '../../middleware/validate.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
@@ -8,7 +8,7 @@ import { ApiError } from '../../utils/ApiError.js';
 import { emitToUser } from '../../sockets/index.js';
 import { SOCKET_EVENTS } from '../../sockets/events.js';
 import { notify } from '../../services/notify.js';
-import { MatchProfile, Swipe, Match, Conversation, Message, Story, StoryView, ProfileReport } from './social.models.js';
+import { MatchProfile, Swipe, Match, Conversation, Message, Story, StoryView, StoryLike, ProfileReport } from './social.models.js';
 import { AdoptionListing } from '../adoption/adoption.models.js';
 import {
   ensureConversation,
@@ -18,6 +18,9 @@ import {
   setConversationMuted,
   clearConversationForUser,
   reportAndBlockConversation,
+  reactToMessage,
+  deleteMessage,
+  markMessagesAsRead,
 } from './chat.service.js';
 
 import { getMatchDeck, processSwipe, MATCH_ENGINE_CONFIG, updateEngineConfig } from './matchEngine.service.js';
@@ -32,11 +35,33 @@ matchRouter.get('/engine/config', (_req, res) => {
   sendSuccess(res, { data: MATCH_ENGINE_CONFIG });
 });
 
-/** PATCH /matches/engine/config — update engine parameters. */
-matchRouter.patch('/engine/config', (req, res) => {
-  const updated = updateEngineConfig(req.body);
-  sendSuccess(res, { message: 'Match engine updated', data: updated });
-});
+/**
+ * PATCH /matches/engine/config — retune the engine. Admins only.
+ *
+ * This sat behind `authenticate` alone, so any signed-in pet owner could
+ * rewrite the scoring weights, the distance ceiling, or switch off reciprocity
+ * — for every user on the platform, since the config is a single module-level
+ * object. The body was passed through unvalidated too, so arbitrary keys landed
+ * in it.
+ */
+matchRouter.patch(
+  '/engine/config',
+  authorize('admin', 'super_admin'),
+  validate(
+    z.object({
+      weightProximity: z.number().min(0).max(100).optional(),
+      weightTemperament: z.number().min(0).max(100).optional(),
+      weightPurpose: z.number().min(0).max(100).optional(),
+      weightActivity: z.number().min(0).max(100).optional(),
+      defaultMaxDistanceKm: z.number().min(1).max(1000).optional(),
+      enableAutoReciprocity: z.boolean().optional(),
+    }).strict()
+  ),
+  (req, res) => {
+    const updated = updateEngineConfig(req.body);
+    sendSuccess(res, { message: 'Match engine updated', data: updated });
+  }
+);
 
 /** GET /matches/deck — profiles not yet swiped (with match score & query filters). */
 matchRouter.get(
@@ -130,69 +155,88 @@ chatRouter.get(
   })
 );
 
-/** POST /chat/conversations/:id/read — clears my unread count on open. */
+/** POST /chat/conversations/:id/read — clears my unread count & updates readBy on messages. */
 chatRouter.post(
   '/conversations/:id/read',
   asyncHandler(async (req, res) => {
-    const conversation = await getOwnedConversation(req.user.id, req.params.id);
-    conversation.unread.set(String(req.user.id), 0);
-    await conversation.save();
-    sendSuccess(res, { data: { unreadCount: 0 } });
+    const data = await markMessagesAsRead(req.user.id, req.params.id);
+    sendSuccess(res, { data });
   })
 );
 
-/** POST /chat/conversations — ensure one for an adoption listing (ShelterChat). */
+/** POST /chat/conversations — ensure one for an adoption listing (ShelterChat) or general counterpart. */
 chatRouter.post(
   '/conversations',
   validate(
     z.object({
-      context: z.enum(['adoption']),
-      listingId: z.string().max(60),
+      context: z.enum(['adoption', 'match', 'support', 'vendor']).default('match'),
+      listingId: z.string().max(60).optional(),
+      counterpartId: z.string().max(60).optional(),
     })
   ),
   asyncHandler(async (req, res) => {
-    const or = [{ legacyId: req.body.listingId }];
-    if (/^[0-9a-f]{24}$/i.test(req.body.listingId)) or.push({ _id: req.body.listingId });
-    const listing = await AdoptionListing.findOne({ $or: or });
-    if (!listing) throw ApiError.notFound('Listing not found');
+    if (req.body.context === 'adoption' && req.body.listingId) {
+      const or = [{ legacyId: req.body.listingId }];
+      if (/^[0-9a-f]{24}$/i.test(req.body.listingId)) or.push({ _id: req.body.listingId });
+      const listing = await AdoptionListing.findOne({ $or: or });
+      if (!listing) throw ApiError.notFound('Listing not found');
+
+      const conversation = await ensureConversation({
+        userId: req.user.id,
+        context: 'adoption',
+        refId: listing.id,
+        counterpart: {
+          name: listing.shelter?.name || 'Shelter',
+          image: listing.shelter?.image || '',
+          subtitle: `About ${listing.name}`,
+        },
+      });
+      return sendSuccess(res, { data: conversation });
+    }
 
     const conversation = await ensureConversation({
       userId: req.user.id,
-      context: 'adoption',
-      refId: listing.id,
-      counterpart: {
-        name: listing.shelter?.name || 'Shelter',
-        image: listing.shelter?.image || '',
-        subtitle: `About ${listing.name}`,
-      },
+      context: req.body.context || 'match',
+      refId: req.body.counterpartId || null,
     });
     sendSuccess(res, { data: conversation });
   })
 );
 
-/** GET /chat/conversations/:id/messages — history from the Mongo mirror, minus anything I've "cleared". */
+/** GET /chat/conversations/:id/messages — history from Mongo, excluding cleared/deleted for me. */
 chatRouter.get(
   '/conversations/:id/messages',
   asyncHandler(async (req, res) => {
     const conversation = await getOwnedConversation(req.user.id, req.params.id);
     const clearedAt = conversation.clearedAt.get(String(req.user.id));
-    const query = { conversationId: req.params.id };
+    const query = { 
+      conversationId: req.params.id,
+      deletedFor: { $ne: req.user.id }
+    };
     if (clearedAt) query.createdAt = { $gt: clearedAt };
     const messages = await Message.find(query).sort({ createdAt: 1 }).limit(200);
     sendSuccess(res, { data: messages });
   })
 );
 
-/** POST /chat/conversations/:id/messages — send (Mongo + RTDB live). */
+/** POST /chat/conversations/:id/messages — send (text, image, location, document, story_reply). */
 chatRouter.post(
   '/conversations/:id/messages',
   validate(
     z.object({
-      type: z.enum(['text', 'image', 'location']).default('text'),
+      type: z.enum(['text', 'image', 'location', 'document', 'story_reply']).default('text'),
       text: z.string().trim().max(2000).default(''),
       mediaUrl: z.string().max(1_000_000).nullable().optional(),
       meta: z
-        .object({ lat: z.number(), lng: z.number() })
+        .object({ 
+          lat: z.number().optional(), 
+          lng: z.number().optional(),
+          fileName: z.string().optional(),
+          fileSize: z.number().optional(),
+          fileType: z.string().optional(),
+          storyMediaUrl: z.string().optional(),
+          storyCaption: z.string().optional()
+        })
         .nullable()
         .optional(),
     })
@@ -202,6 +246,26 @@ chatRouter.post(
     if (req.body.type === 'location' && !req.body.meta) throw ApiError.badRequest('Location coordinates required');
     const message = await sendMessage(req.user, req.params.id, req.body);
     sendSuccess(res, { statusCode: 201, data: message });
+  })
+);
+
+/** POST /chat/conversations/:id/messages/:messageId/react — toggle emoji reaction. */
+chatRouter.post(
+  '/conversations/:id/messages/:messageId/react',
+  validate(z.object({ emoji: z.string().min(1).max(10) })),
+  asyncHandler(async (req, res) => {
+    const result = await reactToMessage(req.user.id, req.params.id, req.params.messageId, req.body.emoji);
+    sendSuccess(res, { data: result });
+  })
+);
+
+/** DELETE /chat/conversations/:id/messages/:messageId — delete message. */
+chatRouter.delete(
+  '/conversations/:id/messages/:messageId',
+  asyncHandler(async (req, res) => {
+    const mode = req.query.mode === 'me' ? 'me' : 'everyone';
+    const result = await deleteMessage(req.user.id, req.params.id, req.params.messageId, mode);
+    sendSuccess(res, { data: result });
   })
 );
 
@@ -261,9 +325,16 @@ storyRouter.get(
       storyId: { $in: stories.map((s) => s._id) },
     }).distinct('storyId');
     const viewedSet = new Set(viewedIds.map(String));
+    const likedIds = await StoryLike.find({
+      userId: req.user.id,
+      storyId: { $in: stories.map((s) => s._id) },
+    }).distinct('storyId');
+    const likedSet = new Set(likedIds.map(String));
     const data = stories.map((s) => ({
       ...s,
       viewed: viewedSet.has(String(s._id)) || String(s.userId) === String(req.user.id),
+      likesCount: s.likesCount || 0,
+      likedByMe: likedSet.has(String(s._id)),
     }));
     sendSuccess(res, { data });
   })
@@ -293,8 +364,103 @@ storyRouter.get(
     const story = await Story.findById(req.params.id);
     if (!story) throw ApiError.notFound('Story not found');
     if (String(story.userId) !== String(req.user.id)) throw ApiError.forbidden('Not your story');
-    const viewers = await StoryView.find({ storyId: story.id }).sort({ createdAt: -1 });
-    sendSuccess(res, { data: viewers });
+    const [viewers, likes] = await Promise.all([
+      StoryView.find({ storyId: story.id }).sort({ createdAt: -1 }).lean(),
+      StoryLike.find({ storyId: story.id }).sort({ createdAt: -1 }).lean(),
+    ]);
+    // A like can only come from someone who opened the story, so flag the
+    // viewer rows rather than making the UI cross-reference two lists.
+    const likerIds = new Set(likes.map((l) => String(l.userId)));
+    sendSuccess(res, {
+      data: {
+        viewers: viewers.map((v) => ({ ...v, liked: likerIds.has(String(v.viewerId)) })),
+        viewsCount: viewers.length,
+        likesCount: story.likesCount || 0,
+      },
+    });
+  })
+);
+
+/**
+ * POST /stories/:id/like — toggle a like, and tell the owner about it.
+ *
+ * The unique (storyId, userId) index is the concurrency guard: a racing
+ * double-tap makes the second insert throw E11000 instead of inserting a
+ * second row, so `likesCount` can never run ahead of the rows. The owner is
+ * notified only on a genuine new like — never on an unlike, and never when
+ * someone likes their own story.
+ */
+storyRouter.post(
+  '/:id/like',
+  asyncHandler(async (req, res) => {
+    const story = await Story.findById(req.params.id);
+    if (!story) throw ApiError.notFound('Story not found');
+    // Self-likes inflated the owner's own tally and, since we never record a
+    // view for your own story, left a like with nobody behind it in the
+    // "Viewed By" panel. The UI doesn't offer the button on your own story
+    // either — this closes the API behind it.
+    if (String(story.userId) === String(req.user.id)) {
+      throw ApiError.badRequest('You cannot like your own story');
+    }
+
+    const existing = await StoryLike.findOneAndDelete({ storyId: story.id, userId: req.user.id });
+
+    if (existing) {
+      // Guard the decrement so an already-zero counter cannot go negative.
+      await Story.updateOne({ _id: story.id, likesCount: { $gt: 0 } }, { $inc: { likesCount: -1 } });
+      const fresh = await Story.findById(story.id).select('likesCount').lean();
+      return sendSuccess(res, { data: { liked: false, likesCount: fresh?.likesCount || 0 } });
+    }
+
+    // Liking implies watching. Recording the view here as well keeps the
+    // owner's panel coherent: every liker is guaranteed to appear in the
+    // "Viewed By" list they are flagged inside, rather than only counting
+    // toward a total with no row behind it.
+    await StoryView.updateOne(
+      { storyId: story.id, viewerId: req.user.id },
+      { $setOnInsert: { viewerName: req.user.name || 'Pet Parent', viewerAvatar: req.user.avatarUrl || null } },
+      { upsert: true }
+    );
+
+    let inserted = true;
+    try {
+      await StoryLike.create({
+        storyId: story.id,
+        userId: req.user.id,
+        userName: req.user.name || 'Pet Parent',
+        userAvatar: req.user.avatarUrl || null,
+      });
+    } catch (err) {
+      if (err?.code !== 11000) throw err;
+      inserted = false; // lost the race against another tap; the row already exists
+    }
+
+    if (inserted) {
+      await Story.updateOne({ _id: story.id }, { $inc: { likesCount: 1 } });
+
+      // notify() is one call for all three channels: it writes the in-app
+      // Notification row, emits `notification:new` to any open tab, and fires
+      // the FCM push. Best-effort by design — a push failure must not fail the
+      // like, so it is never awaited into the response.
+      notify(story.userId, {
+        title: 'New story like',
+        body: `${req.user.name || 'Someone'} liked your story`,
+        type: 'match',
+        link: '/app/chat',
+        data: { storyId: String(story._id), likedBy: String(req.user.id), kind: 'story_like' },
+      }).catch(() => {});
+
+      // Live badge on the story itself for an owner who is watching it now.
+      emitToUser(story.userId, SOCKET_EVENTS.STORY_LIKED, {
+        storyId: String(story._id),
+        userId: String(req.user.id),
+        userName: req.user.name || 'Pet Parent',
+        userAvatar: req.user.avatarUrl || null,
+      });
+    }
+
+    const fresh = await Story.findById(story.id).select('likesCount').lean();
+    sendSuccess(res, { data: { liked: true, likesCount: fresh?.likesCount || 0 } });
   })
 );
 

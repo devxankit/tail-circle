@@ -41,6 +41,12 @@ const bannerSchema = new mongoose.Schema(
 );
 bannerSchema.index({ seedKey: 1 }, { unique: true, partialFilterExpression: { seedKey: { $type: 'string' } } });
 bannerSchema.index({ active: 1, sort: 1 });
+// One banner per slot key. Without this the admin panel could create a second
+// row for a key it had already saved (a stale editor, two tabs, a failed
+// initial load), and the user app -- which reduces the list into a map by key
+// -- would then read whichever copy happened to sort last while the operator
+// kept editing the other one. shop_promotional had drifted exactly that way.
+bannerSchema.index({ key: 1 }, { unique: true });
 
 const platformSettingSchema = new mongoose.Schema(
   {
@@ -73,7 +79,31 @@ const adminConfigSchema = new mongoose.Schema(
 adminConfigSchema.index({ group: 1, sort: 1 });
 adminConfigSchema.index({ seedKey: 1 }, { unique: true, partialFilterExpression: { seedKey: { $type: 'string' } } });
 
+const actionItemSchema = new mongoose.Schema(
+  {
+    category: { type: String, required: true }, // 'Vendor Approval' | 'Refund Request' | 'Moderation'
+    type: { type: String, required: true }, // 'Veterinarian Partner', 'Fresh Meals Partner', 'Event Refund', 'Spam Feed Report', etc.
+    title: { type: String, required: true },
+    subtitle: { type: String, default: '' },
+    details: { type: String, default: '' },
+    priority: { type: String, enum: ['Urgent', 'High', 'Medium', 'Normal'], default: 'Medium' },
+    status: { type: String, enum: ['pending', 'approved', 'rejected', 'resolved'], default: 'pending' },
+    targetId: { type: String, default: '' },
+    navPath: { type: String, default: '' },
+    docName: { type: String, default: '' },
+    applicant: { type: String, default: '' },
+    amount: { type: String, default: '' },
+    resolvedBy: { type: String, default: '' },
+    resolvedAt: { type: Date, default: null },
+    note: { type: String, default: '' },
+    seedKey: { type: String },
+  },
+  { timestamps: true }
+);
+actionItemSchema.index({ status: 1, createdAt: -1 });
+
 export const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 export const Banner = mongoose.model('Banner', bannerSchema);
 export const PlatformSetting = mongoose.model('PlatformSetting', platformSettingSchema);
 export const AdminConfig = mongoose.model('AdminConfig', adminConfigSchema);
+export const AdminActionItem = mongoose.model('AdminActionItem', actionItemSchema);

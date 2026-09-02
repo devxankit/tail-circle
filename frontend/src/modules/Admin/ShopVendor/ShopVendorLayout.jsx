@@ -10,6 +10,10 @@ import {
 } from 'lucide-react';
 import { cn } from '../../user/utils/cn';
 
+import { updateVendorProfile } from '../../../services/vendor';
+
+import VerificationBanner from '../components/VerificationBanner';
+
 export function ShopVendorLayout() {
   const { profile, setProfile, notifications, setNotifications } = useShopVendor();
   const navigate = useNavigate();
@@ -18,6 +22,7 @@ export function ShopVendorLayout() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
+  const [togglingStore, setTogglingStore] = useState(false);
 
   // Refs for outside-click detection
   const notifRef = useRef(null);
@@ -36,12 +41,22 @@ export function ShopVendorLayout() {
   }, []);
 
   const storeOpen = profile.status === 'Online';
-  const toggleStoreOpen = () => {
-    setProfile(prev => ({ ...prev, status: storeOpen ? 'Offline' : 'Online' }));
+  const toggleStoreOpen = async () => {
+    if (togglingStore) return;
+    const nextOnline = !storeOpen;
+    setTogglingStore(true);
+    setProfile(prev => ({ ...prev, status: nextOnline ? 'Online' : 'Offline' }));
+    try {
+      await updateVendorProfile({ online: nextOnline });
+    } catch (err) {
+      setProfile(prev => ({ ...prev, status: storeOpen ? 'Online' : 'Offline' }));
+    } finally {
+      setTogglingStore(false);
+    }
   };
 
   const isVerified = profile.verification === 'Approved';
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = (notifications || []).filter(n => !n.read).length;
 
   const handleMarkAllRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
@@ -74,7 +89,6 @@ export function ShopVendorLayout() {
     {
       title: 'MANAGEMENT',
       items: [
-        { name: 'Banners', path: '/vendor/shop-provider/banners', icon: ImageIcon },
         { name: 'Customer Feedback', path: '/vendor/shop-provider/feedback', icon: Star },
         { name: 'Finance Center', path: '/vendor/shop-provider/finance', icon: Wallet },
         { name: 'Business Control Center', path: '/vendor/shop-provider/settings', icon: Settings },
@@ -87,7 +101,6 @@ export function ShopVendorLayout() {
     const path = location.pathname;
     if (path === '/vendor/shop-provider') return 'Dashboard';
     if (path.includes('/products')) return 'Product Management';
-    if (path.includes('/banners')) return 'Banners';
     if (path.includes('/orders')) return 'Orders';
     if (path.includes('/inventory')) return 'Inventory & Stock';
     if (path.includes('/returns')) return 'Returns & Refunds';
@@ -359,43 +372,13 @@ export function ShopVendorLayout() {
 
           {/* Scrollable Content Area */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-10 relative custom-scrollbar">
-            {!isVerified ? (
-              <div className="absolute inset-0 bg-[#FAF7F2] z-20 flex flex-col items-center justify-center p-6 text-center animate-in fade-in zoom-in duration-500">
-                <div className="w-24 h-24 bg-orange-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
-                  <Store size={40} className="text-[#F87B68]" />
-                </div>
-                <h2 className="text-3xl font-black text-slate-900 mb-2">Shop Account Pending Verification</h2>
-                <p className="text-slate-500 font-medium max-w-md mb-8">
-                  Your Store Vendor account is currently under review by our admin team. Once approved, you will have access to the full SaaS suite.
-                </p>
-                
-                <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm w-full max-w-md text-left mb-8">
-                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider mb-4 border-b border-slate-100 pb-3">Verification Status</h3>
-                  <ul className="space-y-4">
-                    <li className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-slate-600">Business Registration Details</span>
-                      <CheckCircle size={18} className="text-emerald-500" />
-                    </li>
-                    <li className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-slate-600">Owner Identity Documents</span>
-                      <CheckCircle size={18} className="text-emerald-500" />
-                    </li>
-                    <li className="flex items-center justify-between">
-                      <span className="text-sm font-semibold text-slate-900">Admin Quality Approval</span>
-                      <span className="px-2 py-1 bg-orange-100 text-orange-700 text-[10px] font-bold uppercase rounded border border-orange-200 animate-pulse">Pending</span>
-                    </li>
-                  </ul>
-                </div>
-
-                <button onClick={handleLogout} className="px-6 py-3 bg-slate-900 hover:bg-black text-white rounded-xl font-bold text-sm transition shadow-lg cursor-pointer">
-                  Log Out
-                </button>
-              </div>
-            ) : (
-              <div className="max-w-7xl mx-auto min-h-full">
-                <Outlet />
-              </div>
-            )}
+            <div className="max-w-7xl mx-auto min-h-full">
+              <VerificationBanner
+                approvalStatus={profile?.approvalStatus || 'pending'}
+                kycPath="/vendor/shop-provider/settings"
+              />
+              <Outlet />
+            </div>
           </div>
 
         </main>

@@ -25,11 +25,11 @@ const navigationGroups = [
     subItems: [
       { label: 'All Vendors', path: '/admin/vendors' },
       { label: 'Pending Approvals', path: '/admin/vendors/pending' },
-      { label: 'Shop Vendors', path: '/admin/vendors/shop' },
-      { label: 'Meal Providers', path: '/admin/vendors/meal' },
-      { label: 'Event Organizers', path: '/admin/vendors/event' },
+      { label: 'Shop Partners', path: '/admin/vendors/shop' },
+      { label: 'Fresh Meals Partners', path: '/admin/vendors/meal' },
+      { label: 'Events Partners', path: '/admin/vendors/event' },
       { label: 'Doctors / Clinics', path: '/admin/vendors/doctors' },
-      { label: 'Memorial Providers', path: '/admin/vendors/memorial' },
+      { label: 'Last Ride Partners', path: '/admin/vendors/memorial' },
       { label: 'Vendor Documents', path: '/admin/vendors/documents' },
       { label: 'Vendor Performance', path: '/admin/vendors/performance' },
     ]

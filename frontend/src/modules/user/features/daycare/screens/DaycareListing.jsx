@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ChevronLeft, SlidersHorizontal, MapPin, Star, Heart, Search, Calendar, Headphones, ArrowRight, X, Check, Plus, Loader2, Mic } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getDaycares, createBooking } from '../../../../../services/daycareApi';
+import { useQuickBooking } from '../useQuickBooking';
 import { fetchPublicBanners } from '../../../../../services/admin';
 import { fetchMyPets, petAgeText } from '../../../../../services/pets';
 import { api } from '../../../../../services/api';
@@ -70,79 +71,33 @@ export function DaycareListing() {
       .catch(() => setMyPets([]));
   }, []);
 
-  const getCustomDays = () => {
-    return customDates.length;
-  };
-
-  // Pricing calculations
-  const getPlanPrice = (planId) => {
-    if (!bookingCenter) return 0;
-    const base = bookingCenter.pricePerDay || 499;
-    if (planId === 'plan_day') return base;
-    if (planId === 'plan_week') return Math.round(base * 5.2);
-    if (planId === 'plan_month') return Math.round(base * 20);
-    if (planId === 'custom') {
-      return base * getCustomDays();
-    }
-    return base;
-  };
-
-  const getPlanDuration = (planId) => {
-    if (planId === 'plan_day') return 1;
-    if (planId === 'plan_week') return 6;
-    if (planId === 'plan_month') return 30;
-    if (planId === 'custom') return getCustomDays();
-    return 1;
-  };
-
-  const planSubtotal = getPlanPrice(selectedPlanId);
-  const durationDays = getPlanDuration(selectedPlanId);
-  
-  const addonCost = 
-    (isPickupChecked ? 150 * durationDays : 0) + 
-    (isMealsChecked ? 100 * durationDays : 0);
-
-  const platformFee = 49;
-  const totalPrice = planSubtotal + addonCost + platformFee;
-
-  const calculateEndDate = (startStr, days) => {
-    const d = new Date(startStr);
-    d.setDate(d.getDate() + days - 1);
-    return d.toISOString().split('T')[0];
-  };
+  // Plans, add-ons and fees come from the centre's own catalogue via the shared
+  // quick-booking hook — see useQuickBooking.js for what this replaced.
+  const {
+    planCards, activeCard, priceOf, stayDays, stayDates,
+    pickupAddon, mealsAddon, selectedAddons,
+    planSubtotal, addonCost, platformFee, discount: quickDiscount, totalPrice,
+    dateTypeFor,
+  } = useQuickBooking(bookingCenter, {
+    selectedPlanId, customDates, startDate, isPickupChecked, isMealsChecked,
+  });
 
   const handleConfirmBooking = async () => {
     if (!bookingCenter) return;
     setIsBookingLoading(true);
     setBookingError('');
 
-    let planName = 'Day Pass';
-    let planUnit = 'day';
-    let datesArr = [startDate];
-    let dateTypeStr = 'Single Day';
-
-    if (selectedPlanId === 'plan_day') {
-      planName = 'Day Pass';
-      planUnit = 'day';
-      datesArr = [startDate];
-      dateTypeStr = 'Single Day';
-    } else if (selectedPlanId === 'plan_week') {
-      planName = 'Weekly Care';
-      planUnit = '6 days';
-      datesArr = [startDate, calculateEndDate(startDate, 6)];
-      dateTypeStr = 'Multiple Days';
-    } else if (selectedPlanId === 'plan_month') {
-      planName = 'Monthly Care';
-      planUnit = '30 days';
-      datesArr = [startDate, calculateEndDate(startDate, 30)];
-      dateTypeStr = 'Monthly';
-    } else if (selectedPlanId === 'custom') {
-      const days = getCustomDays();
-      planName = 'Custom Days';
-      planUnit = `${days} days`;
-      datesArr = customDates;
-      dateTypeStr = 'Multiple Days';
+    if (!activeCard?.offering) {
+      setBookingError('This centre has not published a bookable plan yet.');
+      setIsBookingLoading(false);
+      return;
     }
+
+    // Every calendar day of the stay. The weekly and monthly options used to
+    // send `[startDate, endDate]` — two entries — so a 6-day stay reserved and
+    // was billed for 2 days while the panel displayed 6.
+    const datesArr = stayDates();
+    const dateTypeStr = dateTypeFor(selectedPlanId);
 
     const selectedPet = selectedPetId !== 'other' ? myPets.find((p) => p._id === selectedPetId) : null;
     const petName = selectedPet ? selectedPet.name : (customPetName || 'My Pet');
@@ -151,16 +106,13 @@ export function DaycareListing() {
     const bookingPayload = {
       center: {
         id: bookingCenter.id,
+        _id: bookingCenter._id,
         name: bookingCenter.name,
         image: bookingCenter.image,
         pricePerDay: bookingCenter.pricePerDay
       },
-      plan: {
-        id: selectedPlanId,
-        name: planName,
-        price: planSubtotal,
-        unit: planUnit
-      },
+      // The real catalogue entry, so the server can resolve and re-price it.
+      plan: activeCard.offering,
       dates: datesArr,
       dateType: dateTypeStr,
       dropoffTime: '8:00 AM',
@@ -182,10 +134,7 @@ export function DaycareListing() {
         separationAnxiety: false,
         instructions: ''
       },
-      addons: [
-        ...(isPickupChecked ? [{ id: 'addon_1', name: 'Pickup & Drop', price: 150 }] : []),
-        ...(isMealsChecked ? [{ id: 'addon_2', name: 'Meal', price: 100 }] : [])
-      ],
+      addons: selectedAddons,
       totalPrice: totalPrice,
       totalPaid: totalPrice,
       // Pay-later keeps this a single-tap flow (matches the existing UI, no
@@ -707,31 +656,26 @@ export function DaycareListing() {
               <div>
                 <label className="text-[12.5px] font-bold text-gray-800 block mb-2">Select Plan</label>
                 <div className="grid grid-cols-4 gap-1.5">
-                  {[
-                    { id: 'plan_day', name: 'Day Pass', desc: '1 Day' },
-                    { id: 'plan_week', name: '6 Days', desc: 'Weekly' },
-                    { id: 'plan_month', name: '30 Days', desc: 'Monthly' },
-                    { id: 'custom', name: 'Custom', desc: 'Pick Range' }
-                  ].map(p => {
-                    const isSel = selectedPlanId === p.id;
-                    const price = getPlanPrice(p.id);
+                  {planCards.map(p => {
+                    const isSel = selectedPlanId === p.key;
+                    const price = priceOf(p);
                     return (
                       <button
-                        key={p.id}
+                        key={p.key}
                         type="button"
-                        onClick={() => setSelectedPlanId(p.id)}
+                        onClick={() => setSelectedPlanId(p.key)}
                         className={`flex flex-col items-center justify-center py-3.5 px-2 rounded-[20px] border transition-all cursor-pointer w-full ${
                           isSel 
                             ? 'border-[#66B4B1] bg-white text-[#66B4B1] shadow-sm' 
                             : 'border-gray-100 bg-[#FAF7F2] hover:border-gray-200'
                         }`}
                       >
-                        <span className={`text-[11px] font-extrabold whitespace-nowrap ${isSel ? 'text-[#66B4B1]' : 'text-gray-500'}`}>{p.name}</span>
+                        <span className={`text-[11px] font-extrabold whitespace-nowrap ${isSel ? 'text-[#66B4B1]' : 'text-gray-500'}`}>{p.label}</span>
                         <span className={`text-[14.5px] font-black mt-1 ${isSel ? 'text-[#66B4B1]' : 'text-gray-800'}`}>
-                          {p.id === 'custom' ? `₹${bookingCenter.pricePerDay}` : `₹${price}`}
+                          {p.key === 'custom' ? `₹${p.offering.price}` : `₹${price}`}
                         </span>
                         <span className="text-[9px] font-bold text-gray-400 mt-1 whitespace-nowrap">
-                          {p.id === 'custom' ? '/ Day' : p.desc}
+                          {p.key === 'custom' ? '/ Day' : p.desc}
                         </span>
                       </button>
                     );
@@ -850,7 +794,7 @@ export function DaycareListing() {
               <div>
                 <label className="text-[12.5px] font-bold text-gray-800 block mb-2">Add-ons (Optional)</label>
                 <div className="space-y-2.5">
-                  <button 
+                  {pickupAddon && <button 
                     type="button"
                     onClick={() => setIsPickupChecked(!isPickupChecked)}
                     className={`w-full flex items-center justify-between p-4 rounded-[18px] border cursor-pointer transition-all duration-200 ${
@@ -864,13 +808,13 @@ export function DaycareListing() {
                         {isPickupChecked && <Check size={12} className="text-white" strokeWidth={3.5} />}
                       </div>
                       <span className={`text-[13px] font-bold ${isPickupChecked ? 'text-gray-900' : 'text-gray-700'}`}>
-                        Pickup & Drop Service
+                        {pickupAddon.name}
                       </span>
                     </div>
-                    <span className="text-[13.5px] font-extrabold text-gray-900">₹150<span className="text-[10px] text-gray-400 font-medium font-sans">/day</span></span>
-                  </button>
+                    <span className="text-[13.5px] font-extrabold text-gray-900">₹{pickupAddon.price}<span className="text-[10px] text-gray-400 font-medium font-sans">{pickupAddon.unit === 'day' ? '/day' : ''}</span></span>
+                  </button>}
                   
-                  <button 
+                  {mealsAddon && <button 
                     type="button"
                     onClick={() => setIsMealsChecked(!isMealsChecked)}
                     className={`w-full flex items-center justify-between p-4 rounded-[18px] border cursor-pointer transition-all duration-200 ${
@@ -884,11 +828,11 @@ export function DaycareListing() {
                         {isMealsChecked && <Check size={12} className="text-white" strokeWidth={3.5} />}
                       </div>
                       <span className={`text-[13px] font-bold ${isMealsChecked ? 'text-gray-900' : 'text-gray-700'}`}>
-                        Nutritious Meals
+                        {mealsAddon.name}
                       </span>
                     </div>
-                    <span className="text-[13.5px] font-extrabold text-gray-900">₹100<span className="text-[10px] text-gray-400 font-medium font-sans">/day</span></span>
-                  </button>
+                    <span className="text-[13.5px] font-extrabold text-gray-900">₹{mealsAddon.price}<span className="text-[10px] text-gray-400 font-medium font-sans">{mealsAddon.unit === 'day' ? '/day' : ''}</span></span>
+                  </button>}
                 </div>
               </div>
 
@@ -896,7 +840,7 @@ export function DaycareListing() {
               <div className="bg-gray-50/40 rounded-[20px] p-5 space-y-3.5 mt-2 border border-gray-100/30">
                 <div className="flex justify-between items-center text-[13px] font-medium text-gray-500">
                   <span>
-                    Plan cost ({selectedPlanId === 'plan_day' ? '1 Day' : selectedPlanId === 'plan_week' ? '6 Days' : selectedPlanId === 'plan_month' ? '30 Days' : `${getPlanDuration('custom')} Days`})
+                    Plan cost ({stayDays} Day{stayDays === 1 ? '' : 's'})
                   </span>
                   <span className="font-extrabold text-gray-800">₹{planSubtotal}</span>
                 </div>
@@ -910,6 +854,12 @@ export function DaycareListing() {
                   <span>Platform fee</span>
                   <span className="font-extrabold text-gray-800">₹{platformFee}</span>
                 </div>
+                {quickDiscount > 0 && (
+                  <div className="flex justify-between items-center text-[13px] font-medium text-gray-500">
+                    <span>Discount</span>
+                    <span className="font-extrabold text-[#66B4B1]">- ₹{quickDiscount}</span>
+                  </div>
+                )}
                 <div className="h-px bg-gray-100/80 w-full my-1"></div>
                 <div className="flex justify-between items-center">
                   <span className="text-[14.5px] font-black text-gray-900">Total Amount</span>

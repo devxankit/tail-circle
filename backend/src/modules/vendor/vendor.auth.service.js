@@ -6,16 +6,22 @@ import { issueTokens, requestOtp, verifyOtp } from '../auth/auth.service.js';
 import { User } from '../user/user.model.js';
 import { Doctor } from '../provider/doctor.model.js';
 import { VendorProfile } from './vendor.models.js';
+import { vendorTypeLabel } from './vendorTypeLabels.js';
 
 /** Frontend role slug → User/VendorProfile vendorType. */
 const TYPE_MAP = {
   shop: 'shop',
   doctor: 'clinic',
+  clinic: 'clinic',
   meal: 'meal_subscription',
+  meal_subscription: 'meal_subscription',
   event: 'events',
+  events: 'events',
   memorial: 'memorial',
   grooming: 'grooming',
   daycare: 'daycare',
+  adopt: 'adoption',
+  adoption: 'adoption',
 };
 
 /**
@@ -108,6 +114,11 @@ async function createProviderForVendor(user, providerType, payload) {
   const { Provider } = await import('../provider/provider.model.js');
 
   const isDaycare = providerType === 'daycare';
+  // Only grooming offers a salon/home choice. Daycare and memorial were both
+  // handled by the same `isDaycare` ternary, so memorial providers were created
+  // advertising "Salon Visit / Home Visit" — options that mean nothing for an
+  // end-of-life service.
+  const isGrooming = providerType === 'grooming';
   return Provider.create({
     vendorUserId: user._id,
     type: providerType,
@@ -116,7 +127,7 @@ async function createProviderForVendor(user, providerType, payload) {
     image: payload.logoUrl || '',
     startingPrice: Number(payload.startingPrice) || 0,
     supportedPets: payload.supportedPets || ['Dogs', 'Cats'],
-    visitTypes: isDaycare ? [] : ['Salon Visit', 'Home Visit'],
+    visitTypes: isGrooming ? ['Salon Visit', 'Home Visit'] : [],
     openTime: payload.openTime || '09:00',
     closeTime: payload.closeTime || '20:00',
     distanceText: payload.city || '',
@@ -191,22 +202,21 @@ async function createVetProfile(user, payload) {
   });
 }
 
-/** Approval-gated: only approved vendors receive tokens. */
+/** Approval-gated: approved and pending vendors receive tokens. */
 function assertApproved(profile) {
   if (!profile) throw ApiError.forbidden('No vendor profile found');
-  if (profile.approvalStatus === 'approved') return;
+  if (profile.approvalStatus === 'approved' || profile.approvalStatus === 'pending') return;
   const messages = {
-    pending: 'Your application is under review. We will email you within 24–48 hours.',
     rejected: 'Your vendor application was rejected.',
     suspended: 'Your vendor account is suspended. Contact support.',
   };
-  throw new ApiError(403, messages[profile.approvalStatus] || 'Vendor not approved', {
+  throw new ApiError(403, messages[profile.approvalStatus] || 'Vendor account inactive', {
     details: { approvalStatus: profile.approvalStatus },
   });
 }
 
 /** Email + password login (role vendor only). */
-export async function vendorPasswordLogin(email, password) {
+export async function vendorPasswordLogin(email, password, expectedRoleOrType = null) {
   const user = await User.findOne({ email: email.toLowerCase().trim(), role: 'vendor' }).select('+passwordHash');
   if (!user || !user.passwordHash) throw ApiError.unauthorized('Invalid email or password');
   if (!(await bcrypt.compare(password, user.passwordHash))) {
@@ -215,28 +225,136 @@ export async function vendorPasswordLogin(email, password) {
   const profile = await VendorProfile.findOne({ userId: user._id }).select('+bank.accountNumberEnc');
   assertApproved(profile);
 
+  if (expectedRoleOrType) {
+    const expectedVendorType = resolveVendorType(expectedRoleOrType);
+    const actualType = user.vendorType || profile?.vendorType;
+    if (actualType && actualType !== expectedVendorType) {
+      throw ApiError.forbidden(
+        `This account is registered under ${vendorTypeLabel(actualType)}, not ${vendorTypeLabel(expectedVendorType)}. Please select your correct vendor category.`
+      );
+    }
+  }
+
   user.lastLoginAt = new Date();
   await user.save();
   const tokens = await issueTokens(user);
   return { user, profile, tokens };
 }
 
-/** Registration-no → send OTP to the vendor's registered phone. */
-export async function vendorRequestOtp(registrationNo) {
-  const profile = await VendorProfile.findOne({ registrationNo: registrationNo.trim().toUpperCase() });
-  if (!profile) throw ApiError.notFound('No vendor with that registration number');
-  await requestOtp(profile.phone);
+/** Registration-no OR registered Mobile Number → send OTP to the vendor's registered phone. */
+export async function vendorRequestOtp(identifier, expectedRoleOrType = null) {
+  const trimmed = identifier.trim();
+  const rawDigits = trimmed.replace(/\D/g, '');
+  
+  let profile = await VendorProfile.findOne({ registrationNo: trimmed.toUpperCase() });
+  
+  if (!profile && rawDigits.length >= 7) {
+    const normalized = normalizePhone(trimmed);
+    const last10 = rawDigits.slice(-10);
+    const phoneRegex = new RegExp(last10 + '$');
+    
+    profile = await VendorProfile.findOne({
+      $or: [
+        { phone: normalized },
+        { phone: trimmed },
+        { phone: phoneRegex }
+      ]
+    });
+    
+    if (!profile) {
+      const user = await User.findOne({
+        role: 'vendor',
+        $or: [
+          { phone: normalized },
+          { phone: trimmed },
+          { phone: phoneRegex }
+        ]
+      });
+      if (user) {
+        profile = await VendorProfile.findOne({ userId: user._id });
+      }
+    }
+  }
+  
+  if (!profile) throw ApiError.notFound('No vendor found with that registration number or mobile number');
+
+  if (expectedRoleOrType) {
+    const expectedVendorType = resolveVendorType(expectedRoleOrType);
+    const actualType = profile.vendorType;
+    if (actualType && actualType !== expectedVendorType) {
+      throw ApiError.forbidden(
+        `This account is registered under ${vendorTypeLabel(actualType)}, not ${vendorTypeLabel(expectedVendorType)}. Please select your correct vendor category.`
+      );
+    }
+  }
+  
+  const vendorUser = await User.findById(profile.userId);
+  const phoneToUse = (rawDigits.length >= 7 ? normalizePhone(trimmed) : (profile.phone || vendorUser?.phone));
+  await requestOtp(phoneToUse);
   return { expiresInMinutes: 5 };
 }
 
-/** Registration-no + OTP login. */
-export async function vendorVerifyOtp(registrationNo, code) {
-  const profile = await VendorProfile.findOne({ registrationNo: registrationNo.trim().toUpperCase() }).select('+bank.accountNumberEnc');
-  if (!profile) throw ApiError.notFound('No vendor with that registration number');
+/** Registration-no OR registered Mobile Number + OTP login. */
+export async function vendorVerifyOtp(identifier, code, expectedRoleOrType = null) {
+  const trimmed = identifier.trim();
+  const rawDigits = trimmed.replace(/\D/g, '');
+
+  let profile = await VendorProfile.findOne({ registrationNo: trimmed.toUpperCase() }).select('+bank.accountNumberEnc');
+
+  if (!profile && rawDigits.length >= 7) {
+    const normalized = normalizePhone(trimmed);
+    const last10 = rawDigits.slice(-10);
+    const phoneRegex = new RegExp(last10 + '$');
+
+    profile = await VendorProfile.findOne({
+      $or: [
+        { phone: normalized },
+        { phone: trimmed },
+        { phone: phoneRegex }
+      ]
+    }).select('+bank.accountNumberEnc');
+
+    if (!profile) {
+      const user = await User.findOne({
+        role: 'vendor',
+        $or: [
+          { phone: normalized },
+          { phone: trimmed },
+          { phone: phoneRegex }
+        ]
+      });
+      if (user) {
+        profile = await VendorProfile.findOne({ userId: user._id }).select('+bank.accountNumberEnc');
+      }
+    }
+  }
+
+  if (!profile) throw ApiError.notFound('No vendor found with that registration number or mobile number');
   assertApproved(profile);
-  // Reuse the phone-OTP verifier; it logs in the user that owns this phone.
-  const { user, tokens } = await verifyOtp(profile.phone, code);
-  if (user.role !== 'vendor') throw ApiError.forbidden('Not a vendor account');
+
+  if (expectedRoleOrType) {
+    const expectedVendorType = resolveVendorType(expectedRoleOrType);
+    const actualType = profile.vendorType;
+    if (actualType && actualType !== expectedVendorType) {
+      throw ApiError.forbidden(
+        `This account is registered under ${vendorTypeLabel(actualType)}, not ${vendorTypeLabel(expectedVendorType)}. Please select your correct vendor category.`
+      );
+    }
+  }
+
+  // Find the exact User owning this vendor profile
+  let vendorUser = await User.findById(profile.userId);
+  const phoneToUse = (rawDigits.length >= 7 ? normalizePhone(trimmed) : (profile.phone || vendorUser?.phone));
+
+  const { user, tokens } = await verifyOtp(phoneToUse, code);
+
+  // If user account wasn't set to vendor, set it now
+  if (user.role !== 'vendor') {
+    user.role = 'vendor';
+    if (profile.vendorType) user.vendorType = profile.vendorType;
+    await user.save();
+  }
+
   return { user, profile, tokens };
 }
 

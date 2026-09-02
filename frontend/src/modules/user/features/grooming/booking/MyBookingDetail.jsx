@@ -1,7 +1,7 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { ArrowLeft, MessageCircle, Phone } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getBookingById, updateBookingStatus, rescheduleBooking } from '../../../../../services/groomingApi';
+import { getBookingById, updateBookingStatus, rescheduleBooking, getGroomingSlots } from '../../../../../services/groomingApi';
 
 export function MyBookingDetail() {
   const { id } = useParams();
@@ -15,10 +15,31 @@ export function MyBookingDetail() {
   const [actionError, setActionError] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTime, setSelectedTime] = useState('');
+  // Reschedule times come from the salon's live slot template. The dropdown was
+  // a fixed list of five times that most salons never offer, so confirming it
+  // moved the appointment to a slot nobody works.
+  const [rescheduleSlots, setRescheduleSlots] = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
 
   useEffect(() => {
     loadBooking();
   }, [id]);
+
+  useEffect(() => {
+    if (!showRescheduleModal || !booking?.shopId || !selectedDate) return;
+    let cancelled = false;
+    setSlotsLoading(true);
+    getGroomingSlots(booking.shopId, selectedDate)
+      .then((data) => {
+        if (cancelled) return;
+        const open = (Array.isArray(data) ? data : []).filter((s) => s.available);
+        setRescheduleSlots(open);
+        if (!open.some((s) => s.time === selectedTime)) setSelectedTime(open[0]?.time || '');
+      })
+      .catch(() => { if (!cancelled) setRescheduleSlots([]); })
+      .finally(() => { if (!cancelled) setSlotsLoading(false); });
+    return () => { cancelled = true; };
+  }, [showRescheduleModal, booking?.shopId, selectedDate]);
 
   const loadBooking = async () => {
     setLoading(true);
@@ -28,7 +49,7 @@ export function MyBookingDetail() {
 
       if (b) {
         setSelectedDate(b.date);
-        setSelectedTime(b.timeSlot || '10:00 AM');
+        setSelectedTime(b.timeSlot || '');
       }
     } catch (e) {
       console.error(e);
@@ -130,7 +151,7 @@ export function MyBookingDetail() {
             <img src={pet?.image || "https://images.unsplash.com/photo-1583337130417-3346a1be7dee?auto=format&fit=crop&w=600&q=80"} alt={pet?.name} className="w-10 h-10 rounded-full object-cover" />
             <div>
               <p className="text-[14px] font-bold text-gray-900">{pet?.name}</p>
-              <p className="text-[12px] text-gray-500 font-medium capitalize">{pet?.type} • {pet?.breed || 'Mixed'}</p>
+              <p className="text-[12px] text-gray-500 font-medium capitalize">{pet?.breed || 'Mixed'}</p>
             </div>
           </div>
         </div>
@@ -150,6 +171,20 @@ export function MyBookingDetail() {
             <div className="flex justify-between items-center">
               <span className="text-[14px] font-bold text-gray-700">Add-ons<br/><span className="font-medium text-gray-500 text-[12px]">{addonsData.map(a => a.name).join(', ')}</span></span>
               <span className="text-[14px] font-bold text-gray-900">₹{addonsData.reduce((s, a) => s + a.price, 0)}</span>
+            </div>
+          )}
+
+          {(booking.fees || []).map((fee) => (
+            <div key={fee.name} className="flex justify-between items-center">
+              <span className="text-[14px] font-medium text-gray-600">{fee.name}</span>
+              <span className="text-[14px] font-bold text-gray-900">₹{fee.price}</span>
+            </div>
+          ))}
+
+          {booking.discount > 0 && (
+            <div className="flex justify-between items-center">
+              <span className="text-[14px] font-medium text-gray-600">Discount</span>
+              <span className="text-[14px] font-bold text-[#66B4B1]">- ₹{booking.discount}</span>
             </div>
           )}
 
@@ -243,13 +278,18 @@ export function MyBookingDetail() {
                 <select 
                   value={selectedTime}
                   onChange={(e) => setSelectedTime(e.target.value)}
-                  className="w-full border border-gray-200 rounded-[12px] p-3 text-[14px] font-medium outline-none focus:border-[#66B4B1]"
+                  disabled={slotsLoading || rescheduleSlots.length === 0}
+                  className="w-full border border-gray-200 rounded-[12px] p-3 text-[14px] font-medium outline-none focus:border-[#66B4B1] disabled:bg-gray-50 disabled:text-gray-400"
                 >
-                  <option value="10:00 AM">10:00 AM</option>
-                  <option value="11:30 AM">11:30 AM</option>
-                  <option value="01:00 PM">01:00 PM</option>
-                  <option value="03:00 PM">03:00 PM</option>
-                  <option value="05:00 PM">05:00 PM</option>
+                  {slotsLoading && <option value="">Loading slots…</option>}
+                  {!slotsLoading && rescheduleSlots.length === 0 && (
+                    <option value="">No slots free on this date</option>
+                  )}
+                  {rescheduleSlots.map((s) => (
+                    <option key={s.time} value={s.time}>
+                      {s.time}{s.period ? ` · ${s.period}` : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
@@ -264,7 +304,7 @@ export function MyBookingDetail() {
               </button>
               <button 
                 onClick={handleReschedule}
-                disabled={isProcessing}
+                disabled={isProcessing || !selectedTime}
                 className="flex-1 py-3.5 rounded-[12px] font-bold text-[14px] bg-[#66B4B1] text-white shadow-lg shadow-[#66B4B1]/20 active:scale-95 transition-all disabled:opacity-70"
               >
                 {isProcessing ? 'Saving...' : 'Confirm'}

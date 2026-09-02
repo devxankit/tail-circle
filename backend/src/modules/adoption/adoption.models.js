@@ -30,6 +30,12 @@ const adoptionListingSchema = new mongoose.Schema(
     about: { type: String, default: '' },
     traits: { type: [String], default: [] },
     postedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+    /**
+     * The shelter / rescue / breeder who owns this listing and reviews its
+     * applications. Null for a pet an individual owner is rehoming themselves.
+     */
+    vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+    sourceType: { type: String, enum: ['vendor', 'owner'], default: 'owner', index: true },
     contactPhone: { type: String, default: '' },
     contactEmail: { type: String, default: '' },
     shelter: {
@@ -78,7 +84,18 @@ const adoptionApplicationSchema = new mongoose.Schema(
       ref: 'AdoptionListing',
       required: true,
     },
+    /**
+     * Denormalised from the listing at submission so the shelter's inbox can be
+     * queried directly, and so re-homing a pet later never re-points an old
+     * application at a different shelter.
+     */
+    vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
     form: { type: Object, default: {} }, // application questionnaire
+    decision: {
+      by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      at: { type: Date, default: null },
+      reason: { type: String, default: '' },
+    },
     homeCheck: { scheduledAt: { type: String, default: null }, notes: { type: String, default: '' } },
     meet: { scheduledAt: { type: String, default: null } },
     agreementAcceptedAt: { type: Date, default: null },

@@ -6,9 +6,9 @@ import { ApiError } from '../../utils/ApiError.js';
 import { cacheResponse } from '../../services/cache.service.js';
 import { Provider, PROVIDER_TYPES } from './provider.model.js';
 import { ServiceOffering } from './serviceOffering.model.js';
-import { Doctor, PUBLIC_DOCTOR_PROJECTION } from './doctor.model.js';
+import { Doctor, PUBLIC_DOCTOR_PROJECTION, modeForVisitType } from './doctor.model.js';
 import { Event, EventMeta } from './event.model.js';
-import { getSlots } from '../booking/booking.service.js';
+import { getSlots, getDayAvailability, quoteConsult } from '../booking/booking.service.js';
 import { getDoctorSlots } from './availability.service.js';
 import { authenticate } from '../../middleware/auth.js';
 import { reportEmergency } from '../vendor/clinic.vendor.service.js';
@@ -20,6 +20,33 @@ function idOrLegacy(id) {
   const or = [{ legacyId: String(id) }];
   if (mongoose.isValidObjectId(id)) or.push({ _id: id });
   return { $or: or };
+}
+
+/**
+ * Public shape of a bookable item.
+ *
+ * `id` is the handle the booking screens send back as `items[].refId`. Seeded
+ * offerings carry a mock `legacyId` ('pkg_2'); anything a vendor creates from
+ * their dashboard has none, so its Mongo id is the handle. `resolveOfferings`
+ * in booking.service.js accepts either, which is what lets a salon's own
+ * packages actually be booked — previously only legacyId resolved, so nothing
+ * a vendor added was ever purchasable.
+ */
+function publicOffering(o) {
+  return {
+    id: o.legacyId || String(o._id),
+    _id: String(o._id),
+    legacyId: o.legacyId || null,
+    kind: o.kind,
+    name: o.name,
+    description: o.description || '',
+    price: o.price,
+    unit: o.unit || null,
+    includes: o.includes || [],
+    category: o.category || null,
+    isPopular: Boolean(o.isPopular),
+    badge: o.badge || null,
+  };
 }
 
 /** GET /providers?type=daycare — public listing (cached). */
@@ -51,63 +78,53 @@ router.get(
       $or: [{ providerId: provider.id }, { providerId: null }],
     }).sort({ price: 1 });
 
+    /*
+     * Platform-wide rows (`providerId: null`) are a shared extras list. They
+     * may contribute add-ons and menu items to any provider, but never plans or
+     * packages: a plan is the thing this centre delivers at its own price, so
+     * serving the shared demo plans made every daycare centre advertise
+     * "Day Pass ₹499" no matter what it actually charges — and charge that.
+     *
+     * A provider with no plans of its own still falls back to the shared list,
+     * so a centre that has not published one yet is not left unbookable.
+     */
     const grouped = { plans: [], packages: [], addons: [], menu: [] };
+    const ownFixed = { plan: [], package: [] };
+    const sharedFixed = { plan: [], package: [] };
+
     for (const o of offerings) {
-      if (o.kind === 'plan') grouped.plans.push(o);
-      else if (o.kind === 'package') grouped.packages.push(o);
-      else if (o.kind === 'addon') grouped.addons.push(o);
-      else grouped.menu.push(o);
+      const item = publicOffering(o);
+      const isOwn = String(o.providerId || '') === String(provider.id);
+      if (o.kind === 'plan' || o.kind === 'package') {
+        (isOwn ? ownFixed : sharedFixed)[o.kind].push(item);
+      } else if (o.kind === 'addon') {
+        grouped.addons.push(item);
+      } else {
+        grouped.menu.push(item);
+      }
     }
 
-    // Standardize Grooming Packages across all shops
-    if (provider.type === 'grooming') {
-      const basePrice = provider.startingPrice || 499;
-      
-      const getPrice = (name, defPrice) => {
-        // Try exact name match
-        const exact = grouped.packages.find(p => p.name === name);
-        if (exact) return exact.price;
-        
-        // Try fallback based on keywords if exact match fails
-        const lowerName = name.toLowerCase();
-        if (lowerName.includes('basic')) {
-          const fallback = grouped.packages.find(p => p.name.toLowerCase().includes('basic'));
-          if (fallback) return fallback.price;
-        } else if (lowerName.includes('standard') || lowerName.includes('full')) {
-          const fallback = grouped.packages.find(p => p.name.toLowerCase().includes('full'));
-          if (fallback) return fallback.price;
-        } else if (lowerName.includes('premium') || lowerName.includes('spa')) {
-          const fallback = grouped.packages.find(p => p.name.toLowerCase().includes('spa'));
-          if (fallback) return fallback.price;
-        }
-        
-        return defPrice;
-      };
-
-      grouped.packages = [
-        {
-          id: grouped.packages.find(p => p.name === 'Basic Bath & Brush')?.id || 'standard_1',
-          name: 'Basic Bath & Brush',
-          price: getPrice('Basic Bath & Brush', basePrice),
-          includes: ['Organic Bath', 'Blow Dry', 'Nail Trim', 'Ear Cleaning']
-        },
-        {
-          id: grouped.packages.find(p => p.name === 'Standard Full Grooming')?.id || 'standard_2',
-          name: 'Standard Full Grooming',
-          price: getPrice('Standard Full Grooming', basePrice + 500),
-          includes: ['Organic Bath', 'Breed Specific Haircut', 'Nail Trim', 'Ear Cleaning', 'Paw Balm'],
-          isPopular: true
-        },
-        {
-          id: grouped.packages.find(p => p.name === 'Premium De-shedding Spa')?.id || 'standard_3',
-          name: 'Premium De-shedding Spa',
-          price: getPrice('Premium De-shedding Spa', basePrice + 1000),
-          includes: ['Deshedding Shampoo', 'Deep Brushing', 'Haircut', 'Paw Massage', 'Teeth Brushing', 'Perfume']
-        }
-      ];
-    }
+    grouped.plans = ownFixed.plan.length ? ownFixed.plan : sharedFixed.plan;
+    grouped.packages = ownFixed.package.length ? ownFixed.package : sharedFixed.package;
 
     sendSuccess(res, { data: { provider, offerings: grouped } });
+  })
+);
+
+/**
+ * GET /providers/:id/availability?from=YYYY-MM-DD&days=60 — daycare day grid.
+ *
+ * Daycare is booked by the day, not by time slot, so its calendar asks here
+ * rather than `/slots` (which is driven by a grooming-style slot template a
+ * centre never has).
+ */
+router.get(
+  '/:id/availability',
+  asyncHandler(async (req, res) => {
+    const from = req.query.from || new Date().toISOString().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) throw ApiError.badRequest('from=YYYY-MM-DD is required');
+    const data = await getDayAvailability({ providerId: req.params.id, from, days: req.query.days });
+    sendSuccess(res, { data });
   })
 );
 
@@ -172,6 +189,40 @@ doctorRouter.get(
       includeFull: req.query.includeFull === 'true',
     });
     sendSuccess(res, { data: slots, meta });
+  })
+);
+
+/**
+ * GET /doctors/:id/quote?visitType=&petId=&paymentMethod= (auth)
+ *
+ * What this consultation will actually cost this customer, follow-up rate
+ * included. The checkout screen priced from the public slots endpoint, which
+ * has no idea who is asking and so always quoted the standard fee — a returning
+ * customer was shown the full price and billed the follow-up one.
+ */
+doctorRouter.get(
+  '/:id/quote',
+  authenticate,
+  asyncHandler(async (req, res) => {
+    const or = [{ legacyId: Number(req.params.id) || -1 }];
+    if (mongoose.isValidObjectId(req.params.id)) or.push({ _id: req.params.id });
+    const doctor = await Doctor.findOne({ $or: or, active: true });
+    if (!doctor) throw ApiError.notFound('Doctor not found');
+
+    const mode = modeForVisitType(req.query.visitType || 'clinic');
+    if (!mode) throw ApiError.badRequest('Invalid consultation type');
+    if (!doctor.offersMode(mode)) {
+      throw ApiError.badRequest(`${doctor.name} does not offer this consultation type`);
+    }
+
+    const quote = await quoteConsult({
+      userId: req.user.id,
+      doctor,
+      mode,
+      petId: mongoose.isValidObjectId(req.query.petId) ? req.query.petId : null,
+      paymentMethod: req.query.paymentMethod === 'pay_later' ? 'pay_later' : 'razorpay',
+    });
+    sendSuccess(res, { data: quote });
   })
 );
 

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Search, MapPin, Phone, Mail, MoreVertical, CheckCircle, AlertTriangle, X, Edit, Trash2, Ban, Eye, ClipboardList } from 'lucide-react';
-import { fetchAdminVendors, approveVendorApi, suspendVendorApi } from '../../../../../services/admin';
+import { fetchAdminVendors, approveVendorGuarded, suspendVendorApi } from '../../../../../services/admin';
 
 const MP_STATUS = { approved: 'Active', pending: 'Pending', suspended: 'Suspended', rejected: 'Suspended' };
 function mealProviderRow(v) {
@@ -67,9 +67,15 @@ export function MealProviders() {
 
   const cities = [...new Set(providers.map(v => v.city))].sort();
 
-  const handleStatusChange = (id, newStatus) => {
-    if (newStatus === 'Active') approveVendorApi(id).catch((err) => console.error(err));
-    else if (newStatus === 'Suspended') suspendVendorApi(id).catch((err) => console.error(err));
+  // Only reflect the new status once the server accepted it — approval can be
+  // refused while the vendor's KYC documents are unverified.
+  const handleStatusChange = async (id, newStatus) => {
+    if (newStatus === 'Active') {
+      const name = providers.find(v => v.id === id)?.name;
+      if (!(await approveVendorGuarded(id, name))) return;
+    } else if (newStatus === 'Suspended') {
+      try { await suspendVendorApi(id); } catch (err) { window.alert(err?.message || 'Suspend failed'); return; }
+    }
     setProviders(prev => prev.map(v => v.id === id ? { ...v, status: newStatus } : v));
   };
 
@@ -158,7 +164,7 @@ export function MealProviders() {
       {/* Page Header */}
       <div className="flex flex-row items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
         <div className="flex-1">
-          <h1 className="text-xl sm:text-[28px] font-black text-gray-900 tracking-tight leading-tight">Meal Providers</h1>
+          <h1 className="text-xl sm:text-[28px] font-black text-gray-900 tracking-tight leading-tight">Fresh Meals Partners</h1>
           <p className="hidden sm:block text-sm text-gray-500 font-medium mt-1">{providers.length} registered kitchens</p>
         </div>
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -456,7 +462,7 @@ export function MealProviders() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm transition-all duration-300">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden border border-gray-100/50">
             <div className="flex items-center justify-between p-5 border-b border-gray-100 shrink-0">
-              <h3 className="text-lg font-bold text-gray-900">{editingVendor ? 'Edit Meal Provider' : 'Add Meal Provider'}</h3>
+              <h3 className="text-lg font-bold text-gray-900">{editingVendor ? 'Edit Fresh Meals Partner' : 'Add Fresh Meals Partner'}</h3>
               <button onClick={() => { setIsModalOpen(false); setEditingVendor(null); }} className="text-gray-400 hover:bg-gray-100 p-1.5 rounded-lg transition"><X size={20}/></button>
             </div>
             <div className="overflow-y-auto p-5 flex-1">
@@ -508,7 +514,7 @@ export function MealProviders() {
         </div>
       )}
 
-      {/* Side-Drawer for Meal Provider Profile Details */}
+      {/* Side-Drawer for Fresh Meals Partner Profile Details */}
       {selectedProviderForView && (
         <div className="fixed inset-0 z-50 flex justify-end bg-gray-900/40 backdrop-blur-sm transition-all duration-300">
           <div className="absolute inset-0" onClick={() => setSelectedProviderForView(null)} />

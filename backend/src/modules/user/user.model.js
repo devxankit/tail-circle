@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { VENDOR_TYPES } from '../vendor/vendor.models.js';
 
 const { Schema } = mongoose;
 
@@ -31,20 +32,21 @@ const userSchema = new Schema(
       default: 'user',
       index: true,
     },
-    // Fine-grained vendor type, mirrors the frontend admin portals.
+    /**
+     * Fine-grained vendor type.
+     *
+     * Derived from `VENDOR_TYPES` rather than listed again here. This used to be
+     * a second hand-written copy of the same enum, and it fell behind: adding
+     * the adoption partner type updated VendorProfile but not this, so an
+     * adoption vendor could be created yet could never log in — saving the user
+     * threw "`adoption` is not a valid enum value for path `vendorType`".
+     *
+     * `meal_portal` is a retired value kept only so any historical row still
+     * validates; nothing writes it any more.
+     */
     vendorType: {
       type: String,
-      enum: [
-        'clinic',
-        'meal_portal',
-        'meal_subscription',
-        'memorial',
-        'events',
-        'shop',
-        'grooming',
-        'daycare',
-        null,
-      ],
+      enum: [...VENDOR_TYPES, 'meal_portal', null],
       default: null,
     },
 

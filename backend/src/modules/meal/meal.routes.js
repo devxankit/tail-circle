@@ -13,7 +13,9 @@ const router = Router();
 const linesSchema = z
   .array(
     z.object({
-      mealId: z.string().max(20),
+      // A legacyId ('c1') or a 24-character Mongo id, for kitchen-made recipes.
+      // The 20-char cap rejected every vendor-created meal outright.
+      mealId: z.string().trim().min(1).max(40),
       qty: z.number().int().min(1).max(20),
       customisationId: z.string().max(20).optional(),
     })
@@ -23,12 +25,27 @@ const linesSchema = z
 
 /* ── public catalog ───────────────────────────────────── */
 
+/**
+ * The handle the ordering screens send back.
+ *
+ * Seeded catalogue rows carry a mock `legacyId` ('starter', 'c1'); anything a
+ * kitchen publishes from its dashboard has none, so its Mongo id is the handle.
+ * Serving only `legacyId` meant every vendor-created plan reached the customer
+ * with `id: undefined` and could never be purchased.
+ */
+const withPublicId = (doc) => ({
+  ...doc.toObject(),
+  id: doc.legacyId || String(doc._id),
+});
+
 router.get(
   '/plans',
   cacheResponse('meals', 300),
   asyncHandler(async (_req, res) => {
-    const plans = await MealPlan.find({ active: true }).sort({ sort: 1 });
-    sendSuccess(res, { data: plans });
+    // `deletedAt` as well as `active`: a plan the kitchen removed and later
+    // reactivated would otherwise reappear in the public catalogue.
+    const plans = await MealPlan.find({ active: true, deletedAt: null }).sort({ sort: 1 });
+    sendSuccess(res, { data: plans.map(withPublicId) });
   })
 );
 
@@ -39,7 +56,7 @@ router.get(
     const filter = { active: true };
     if (req.query.category) filter.category = req.query.category;
     const meals = await Meal.find(filter).sort({ legacyId: 1 });
-    sendSuccess(res, { data: meals });
+    sendSuccess(res, { data: meals.map(withPublicId) });
   })
 );
 
@@ -56,7 +73,8 @@ router.get(
 
 router.post(
   '/purchase-package',
-  validate(z.object({ planId: z.string().max(30) })),
+  // A legacyId ('starter') or a 24-character Mongo id, for vendor-made plans.
+  validate(z.object({ planId: z.string().trim().min(1).max(40) })),
   asyncHandler(async (req, res) => {
     const data = await mealService.purchasePackage(req.user, req.body.planId);
     sendSuccess(res, { statusCode: 201, message: 'Package order created', data });

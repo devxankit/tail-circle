@@ -21,10 +21,12 @@ export function DaycarePriceSummary() {
   const daysCount = getNumDays();
   const planTotal = (selectedPlan?.price || 0) * (selectedPlan?.unit === 'day' ? daysCount : 1);
   const addonsTotal = selectedAddons.reduce((sum, a) => sum + (a.price * (a.unit === 'day' ? daysCount : 1)), 0);
-  const discount = 300; // As per the screenshot design
-  const subtotal = planTotal + addonsTotal;
-  const platformFee = 49; // As per the screenshot design
-  const grandTotal = subtotal - discount + platformFee;
+  // The centre's own fee and discount. These were hard-coded here and applied
+  // nowhere server-side, so the total shown was never the total billed.
+  const platformFee = selectedCenter?.fees?.platformFee ?? 49;
+  const subtotal = planTotal + addonsTotal + platformFee;
+  const discount = Math.min(selectedCenter?.fees?.discount ?? 300, subtotal);
+  const grandTotal = Math.max(0, subtotal - discount);
 
   if (!selectedCenter || !selectedPlan) {
     return <div className="p-4 text-center mt-20">No booking details found. Please start over.</div>;
@@ -73,7 +75,7 @@ export function DaycarePriceSummary() {
             
             <div className="flex justify-between items-center">
               <span className="text-[15px] font-bold text-gray-900">Subtotal</span>
-              <span className="text-[15px] font-bold text-gray-900">₹{subtotal.toLocaleString()}</span>
+              <span className="text-[15px] font-bold text-gray-900">₹{(planTotal + addonsTotal).toLocaleString()}</span>
             </div>
             
             <div className="flex justify-between items-start">

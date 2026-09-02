@@ -9,6 +9,8 @@ import { ApiError } from '../../utils/ApiError.js';
 import { adminPasswordLogin } from './admin.auth.service.js';
 import {
   getDashboard,
+  listActionItems,
+  resolveActionItem,
   listUsers,
   setUserBlocked,
   listPets,
@@ -62,6 +64,8 @@ import {
   listEventCategories,
   listMemorialPackages,
   listGroomingDaycare,
+  updateGroomingDaycare,
+  listGroomingFacilities,
   listAddons,
   updateAddon,
 } from './admin.catalog.service.js';
@@ -125,6 +129,26 @@ router.get('/dashboard', asyncHandler(async (_req, res) => {
   sendSuccess(res, { data: await getDashboard() });
 }));
 
+router.get('/action-items', asyncHandler(async (req, res) => {
+  sendSuccess(res, {
+    data: await listActionItems({
+      status: req.query.status,
+      category: req.query.category,
+      priority: req.query.priority,
+    }),
+  });
+}));
+
+router.post(
+  '/action-items/:id/resolve',
+  validate(z.object({ action: z.enum(['approve', 'reject']).optional(), note: z.string().optional() })),
+  asyncHandler(async (req, res) => {
+    sendSuccess(res, {
+      data: await resolveActionItem(req.user, req.params.id, { action: req.body.action, note: req.body.note }, req.ip),
+    });
+  })
+);
+
 /* Users & pets */
 router.get('/users', asyncHandler(async (req, res) => {
   sendSuccess(res, { data: await listUsers({ search: req.query.search }) });
@@ -164,9 +188,15 @@ router.post(
 router.get('/vendors/:id/documents', asyncHandler(async (req, res) => {
   sendSuccess(res, { data: await getVendorDocuments(req.params.id) });
 }));
-router.post('/vendors/:id/approve', asyncHandler(async (req, res) => {
-  sendSuccess(res, { data: await approveVendor(req.user, req.params.id, req.ip) });
-}));
+/* `force` waves a pending vendor through with unverified KYC documents — a
+   deliberate override, recorded in the audit trail. */
+router.post(
+  '/vendors/:id/approve',
+  validate(z.object({ force: z.boolean().optional() })),
+  asyncHandler(async (req, res) => {
+    sendSuccess(res, { data: await approveVendor(req.user, req.params.id, req.ip, { force: req.body.force }) });
+  })
+);
 router.post('/vendors/:id/reject', asyncHandler(async (req, res) => {
   sendSuccess(res, { data: await rejectVendor(req.user, req.params.id, req.ip) });
 }));
@@ -311,6 +341,8 @@ router.patch(
 router.get('/event-categories', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listEventCategories() })));
 router.get('/memorial-packages', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listMemorialPackages() })));
 router.get('/grooming-daycare', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listGroomingDaycare() })));
+router.patch('/grooming-daycare/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateGroomingDaycare(req.user, req.params.id, req.body, req.ip) })));
+router.get('/grooming-facilities', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listGroomingFacilities() })));
 router.get('/addons', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listAddons() })));
 router.patch('/addons/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateAddon(req.user, req.params.id, req.body, req.ip) })));
 

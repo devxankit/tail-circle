@@ -1,5 +1,6 @@
 import { api } from './api';
 import { payWithRazorpay } from './payments';
+import { dedupePhotos } from './groomingApi';
 
 /**
  * Real daycare API — same exports the old `mockDaycareApi.js` had, so the
@@ -27,15 +28,28 @@ function toLegacyDaycare(p) {
     rules: p.details?.rules || [],
     badge: p.badge,
     allowedPets: p.supportedPets || [],
-    gallery: p.gallery || [],
+    // Cover photo first, then the rest, de-duplicated on the URL path so the
+    // same picture at two CDN widths does not become two identical slides.
+    gallery: dedupePhotos([p.image, ...(p.gallery || [])]),
     host: p.details?.host,
     stats: p.details?.stats || [],
     activities: p.details?.activities || [],
+    dailyCapacity: Number(p.details?.dailyCapacity) || 20,
+    // Platform fee / promo discount the centre set. These were hard-coded in
+    // the price summary and charged nowhere, so the displayed total was not the
+    // billed total.
+    fees: {
+      platformFee: Number(p.details?.daycareFees?.platformFee ?? 49),
+      discount: Number(p.details?.daycareFees?.discount ?? 300),
+    },
   };
 }
 
 const toLegacyOffering = (o) => ({
-  id: o.legacyId,
+  // `id` is the handle the booking API resolves. Reading `legacyId` meant
+  // anything a centre created from its own dashboard came through with
+  // `id: undefined` and was rejected at checkout.
+  id: o.id,
   name: o.name,
   price: o.price,
   unit: o.unit,
@@ -51,7 +65,10 @@ export async function getDaycares() {
 
 export async function getDaycareById(id) {
   const { data } = await api.get(`/providers/${id}`);
-  return toLegacyDaycare(data.provider);
+  const centre = toLegacyDaycare(data.provider);
+  centre.plans = (data.offerings?.plans || []).map(toLegacyOffering);
+  centre.addons = (data.offerings?.addons || []).map(toLegacyOffering);
+  return centre;
 }
 
 // Plans/addons are scoped to the specific centre the customer is booking —
@@ -69,17 +86,33 @@ export async function getPlans(providerId) {
 
 export async function getAddons(providerId) {
   return (await getDaycareOfferings(providerId)).addons.map((o) => ({
-    id: o.legacyId,
+    id: o.id,
     name: o.name,
     price: o.price,
     unit: o.unit || 'day',
   }));
 }
 
+/**
+ * YYYY-MM-DD in the user's own timezone. `toISOString()` converts to UTC first,
+ * which in IST (UTC+5:30) rolls any time before 05:30 back to the previous day.
+ * Strings that are already YYYY-MM-DD pass through untouched.
+ */
 const toYMD = (d) => {
+  if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
   const date = d instanceof Date ? d : new Date(d);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
+  if (Number.isNaN(date.getTime())) return null;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
+
+/** Day-by-day availability for the booking calendar. */
+export async function getDaycareAvailability(providerId, from, days = 60) {
+  const { data } = await api.get(`/providers/${providerId}/availability`, {
+    params: { from: toYMD(from), days },
+  });
+  return data;
+}
 
 /**
  * Create the daycare booking. Online methods run the Razorpay sheet; "Cash"
@@ -95,20 +128,31 @@ export async function createBooking(payload) {
     ...(payload.addons || []).map((a) => ({ refId: a.id })),
   ];
 
+  const dates = [...new Set((payload.dates || []).map(toYMD).filter(Boolean))].sort();
+
   const body = {
     type: 'daycare',
-    providerId: String(payload.center.id),
-    ...(payload.pet?._id || payload.pet?.id?.length === 24 ? { petId: payload.pet._id || payload.pet.id } : {}),
+    providerId: String(payload.center._id || payload.center.id),
+    ...(payload.pet?._id || String(payload.pet?.id || '').length === 24
+      ? { petId: payload.pet._id || payload.pet.id }
+      : {}),
     items,
     schedule: {
-      startDate: toYMD(payload.dates?.[0]) || toYMD(new Date()),
-      ...(payload.dates?.length > 1 ? { endDate: toYMD(payload.dates[payload.dates.length - 1]) } : {}),
+      startDate: dates[0] || toYMD(new Date()),
+      ...(dates.length > 1 ? { endDate: dates[dates.length - 1] } : {}),
       durationDays: days,
+      // The drop-off time. This used to be sent only inside `meta`, where
+      // nothing looked for it, so the server rejected every daycare booking
+      // with "Pick a date and time slot". Omitted rather than sent as null,
+      // because the schema accepts a string or nothing — not null.
+      ...(payload.dropoffTime ? { time: payload.dropoffTime } : {}),
     },
     paymentMethod: payload.paymentMethod === 'Cash' ? 'pay_later' : 'razorpay',
     meta: {
       dateType: payload.dateType,
-      dates: (payload.dates || []).map(toYMD).filter(Boolean),
+      // The exact days booked. A Tue/Thu-only arrangement is not a contiguous
+      // range, so the server reserves against this list when it is present.
+      dates,
       dropoffTime: payload.dropoffTime || null,
       pickupTime: payload.pickupTime || null,
       visitOption: payload.visitOption || null,

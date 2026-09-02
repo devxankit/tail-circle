@@ -13,7 +13,7 @@ const base = (vertical) => `/vendor/${vertical}`;
 
 export const VERTICAL_COPY = {
   grooming: {
-    title: 'Grooming Salon',
+    title: 'Grooming Partner',
     providerNoun: 'salon',
     serviceNoun: 'package',
     servicePlural: 'Packages & Add-ons',
@@ -21,7 +21,7 @@ export const VERTICAL_COPY = {
     bookingNoun: 'appointment',
   },
   daycare: {
-    title: 'Daycare Centre',
+    title: 'Day Care Partner',
     providerNoun: 'centre',
     serviceNoun: 'plan',
     servicePlural: 'Plans & Add-ons',
@@ -74,8 +74,15 @@ export async function saveProviderSlots(vertical, slotTemplate) {
   return data;
 }
 
-export async function fetchProviderBookings(vertical, status) {
-  const { data } = await api.get(`${base(vertical)}/bookings`, { params: { status } });
+/**
+ * `filters` accepts `status`, `date` (YYYY-MM-DD) and `visitType`. The date
+ * filter backs the day sheet — the vendor's view of the same slot grid the
+ * customer booked from. A bare string is still accepted as a status for the
+ * daycare portal, which calls this with one positional argument.
+ */
+export async function fetchProviderBookings(vertical, filters) {
+  const params = typeof filters === 'string' ? { status: filters } : (filters || {});
+  const { data } = await api.get(`${base(vertical)}/bookings`, { params });
   return data;
 }
 
