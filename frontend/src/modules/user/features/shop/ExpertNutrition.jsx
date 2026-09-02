@@ -5,17 +5,32 @@ export function ExpertNutrition({ onClose }) {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleBookCall = (e) => {
+  /*
+   * Raise a support ticket so the request reaches the team's queue. This used
+   * to be a 1.5s timer straight to the success screen, so the number the user
+   * left was never recorded and nobody ever called back.
+   */
+  const handleBookCall = async (e) => {
     e.preventDefault();
     if (!phoneNumber || phoneNumber.length < 10) return;
-    
+
     setIsSubmitting(true);
-    // Simulate API call
-    setTimeout(() => {
-      setIsSubmitting(false);
+    setError('');
+    try {
+      const { api } = await import('../../../../services/api');
+      await api.post('/support/tickets', {
+        subject: 'Expert nutrition call-back request',
+        category: 'other',
+        message: `Please call me back on ${phoneNumber} to discuss a nutrition plan for my pet.`,
+      });
       setIsSuccess(true);
-    }, 1500);
+    } catch (err) {
+      setError(err.message || 'Could not book your call. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (isSuccess) {
@@ -159,6 +174,10 @@ export function ExpertNutrition({ onClose }) {
               className="w-full bg-transparent border-none py-3.5 px-4 font-bold text-gray-900 focus:outline-none focus:ring-0 text-[15px] placeholder:text-gray-400 placeholder:font-medium"
             />
           </div>
+
+          {error && (
+            <p className="text-center text-[12px] font-bold text-[#F87B68]">{error}</p>
+          )}
 
           <button 
             type="submit"

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, Camera, Check, ShieldCheck, Tag, Gift, MapPin, Plus, X } from 'lucide-react';
+import { ChevronLeft, Camera, Check, ShieldCheck, Tag, Gift, MapPin, Plus, X, Loader2 } from 'lucide-react';
 import { createAdoptionListing } from '../../../../../services/adoptApi';
 
 const DEFAULT_TRAITS = ['Friendly', 'Playful', 'Loyal', 'Good with Kids', 'House Trained', 'Intelligent', 'Energetic', 'Gentle'];
@@ -33,15 +33,39 @@ export function ListPetForAdoption() {
   const [about, setAbout] = useState('');
 
   // Photos
-  const [imageUrl, setImageUrl] = useState('');
-  const [images, setImages] = useState([
-    'https://images.unsplash.com/photo-1552053831-71594a27632d?auto=format&fit=crop&w=500&q=80'
-  ]);
+  /*
+   * Photos are uploaded to the media service, the same way AddPet and the
+   * community composer do it. This used to be a "paste an image URL" box
+   * seeded with a stock photo of someone else's dog, which meant a listing
+   * published without touching this section advertised the wrong animal.
+   */
+  const [images, setImages] = useState([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const fileInputRef = useRef(null);
 
-  const handleAddImage = () => {
-    if (!imageUrl.trim()) return;
-    setImages(prev => [...prev, imageUrl.trim()]);
-    setImageUrl('');
+  const handleAddImage = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = null;
+    if (!files.length) return;
+    setUploadError('');
+    setIsUploading(true);
+    try {
+      const { api } = await import('../../../../../services/api');
+      const uploaded = [];
+      for (const file of files) {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('folder', 'adoption');
+        const { data: asset } = await api.post('/uploads/image', form);
+        uploaded.push(asset.url || asset.secure_url);
+      }
+      setImages(prev => [...prev, ...uploaded]);
+    } catch (err) {
+      setUploadError(err.message || 'Could not upload that photo. Please try again.');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleRemoveImage = (index) => {
@@ -56,6 +80,10 @@ export function ListPetForAdoption() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!images.length) {
+      setUploadError('Please add at least one photo of your pet.');
+      return;
+    }
     if (!name.trim() || !breed.trim()) {
       setError('Please provide Pet Name and Breed.');
       return;
@@ -77,7 +105,7 @@ export function ListPetForAdoption() {
         vaccinated,
         dewormed,
         neutered,
-        images: images.length > 0 ? images : ['https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=500&q=80'],
+        images,
         about: about.trim() || `${name} is looking for a loving home!`,
         traits: selectedTraits,
         contactPhone: contactPhone.trim(),
@@ -309,22 +337,36 @@ export function ListPetForAdoption() {
         <div className="bg-white rounded-[24px] p-5 border border-gray-100/80 shadow-[0_4px_20px_rgba(0,0,0,0.02)] space-y-3">
           <h2 className="text-[15px] font-black text-gray-900 tracking-tight">4. Pet Photos</h2>
           
-          <div className="flex gap-2">
-            <input 
-              type="url"
-              placeholder="Paste Image URL..."
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              className="flex-1 bg-[#FAF7F2] border border-gray-200/80 rounded-[14px] px-3.5 py-2.5 text-[12.5px] font-bold text-gray-900 placeholder-gray-400 outline-none focus:border-[#66B4B1]"
-            />
-            <button
-              type="button"
-              onClick={handleAddImage}
-              className="px-4 bg-[#66B4B1] text-white font-bold text-xs rounded-[14px] hover:bg-[#599D9A] transition-colors flex items-center gap-1 cursor-pointer"
-            >
-              <Plus size={14} /> Add
-            </button>
-          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleAddImage}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            className="w-full py-2.5 bg-[#66B4B1] text-white font-bold text-xs rounded-[14px] hover:bg-[#599D9A] transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
+          >
+            {isUploading ? (
+              <><Loader2 size={14} className="animate-spin" /> Uploading...</>
+            ) : (
+              <><Plus size={14} /> Add photos</>
+            )}
+          </button>
+
+          {uploadError && (
+            <p className="text-[12px] font-bold text-[#F87B68]">{uploadError}</p>
+          )}
+
+          {images.length === 0 && !isUploading && (
+            <p className="text-[12px] text-gray-500 font-medium">
+              Add at least one photo of your pet so adopters can see them.
+            </p>
+          )}
 
           <div className="grid grid-cols-4 gap-2 pt-1">
             {images.map((img, i) => (

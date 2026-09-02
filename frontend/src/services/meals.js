@@ -49,6 +49,15 @@ export async function fetchMeals() {
   }));
 }
 
+/**
+ * Per-item add-on catalogue. Prices come from the same table the server bills
+ * from, so the picker cannot advertise a surcharge that is not charged.
+ */
+export async function fetchMealCustomisations() {
+  const { data } = await api.get('/meals/customisations');
+  return data.map((c) => ({ id: c.id, name: c.name, price: c.price }));
+}
+
 export async function fetchMealAccount() {
   const { data } = await api.get('/meals/account');
   return data;

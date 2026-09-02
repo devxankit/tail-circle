@@ -103,6 +103,23 @@ async function resolveApplication(listingLegacyId) {
   return activeApplication;
 }
 
+/**
+ * The live application for a listing, or null if there is none.
+ *
+ * The adopter-facing stage screens (approval, home check, meet & greet) render
+ * whatever the shelter scheduled, so they need to read the record rather than
+ * only push it forward. Unlike `resolveApplication` this never throws -- a
+ * screen opened before an application exists shows its empty state instead of
+ * an error.
+ */
+export async function getApplicationForListing(listingLegacyId) {
+  try {
+    return await resolveApplication(listingLegacyId);
+  } catch {
+    return null;
+  }
+}
+
 export async function advanceApplication(listingLegacyId, step, opts = {}) {
   const application = await resolveApplication(listingLegacyId);
   const { data } = await api.post(`/adoption/applications/${application._id}/advance`, {

@@ -98,69 +98,6 @@ const banners = [
   },
 ];
 
-const monthlyPacks = [
-  {
-    id: 'pack_1',
-    badge: 'Most Popular',
-    themeColor: '#F87B68', // Brand Coral
-    themeBg: '#FFFBEB',
-    title: 'Monthly Dog Care Pack',
-    desc: 'Your complete monthly refill, done in one tap',
-    items: ['20kg Dog Food (Ruff Food)', 'Martha Stewart Shampoo Set', 'Training Treats 2x 300g'],
-    hiddenItems: ['Dog Collar & Leash Set', 'Poop Bags (2 rolls)'],
-    price: '5,499',
-    originalPrice: '7,299',
-    savings: '1,800',
-    delivery: '24-hr delivery • Free shipping',
-    img: '/assets/shop_banners/dog_care_pack_1782048549852.png'
-  },
-  {
-    id: 'pack_2',
-    badge: 'Best Combo',
-    themeColor: '#66B4B1', // Brand Teal
-    themeBg: '#F0F9FF',
-    title: 'Food + Grooming Combo',
-    desc: 'Feed fresh & groom right, every single month',
-    items: ['5kg Premium Dog Food', 'DOGX All-Terrain Shampoo 1L', 'Grooming Glove'],
-    hiddenItems: ['Tick & Flea Powder', 'Pet Wipes 80pcs'],
-    price: '3,999',
-    originalPrice: '5,199',
-    savings: '1,200',
-    delivery: '24-hr delivery',
-    img: '/assets/shop_banners/food_combo_pack_1782048560666.png'
-  },
-  {
-    id: 'pack_3',
-    badge: 'Max Savings',
-    themeColor: '#7C3AED', // Purple
-    themeBg: '#F5F3FF',
-    title: 'Heavy Saver Pack',
-    desc: 'Maximum value for multi-pet households',
-    items: ['20kg Dog Food', 'Premium Shampoo Set (4 variants)', 'Duck Toy + Bear Toy'],
-    hiddenItems: ['Tick Collar', 'Ceramic Bowl', 'Dental Chews'],
-    price: '8,999',
-    originalPrice: '11,999',
-    savings: '3,000',
-    delivery: '24-hr delivery • Priority',
-    img: '/assets/shop_banners/heavy_saver_pack_1782048572181.png'
-  },
-  {
-    id: 'pack_4',
-    badge: 'For Cat Parents',
-    themeColor: '#E11D48', // Rose/Pink
-    themeBg: '#FFF1F2',
-    title: 'Cat Monthly Essentials',
-    desc: 'The full monthly care kit for your cat',
-    items: ['Cat Dry Food 2kg', 'Mooncat Waterless Shampoo', 'Cat Bath Shampoo 500ml'],
-    hiddenItems: ['Litter Box Deodorizer', 'Cat Nip Toy'],
-    price: '3,499',
-    originalPrice: '4,399',
-    savings: '900',
-    delivery: '24-hr delivery',
-    img: '/assets/shop_banners/cat_essentials_1782048585973.png'
-  }
-];
-
 export function ShopList() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -191,9 +128,6 @@ export function ShopList() {
   }, []);
 
   // Bottom Sheet State
-  const [selectedPack, setSelectedPack] = useState(null);
-  const [checkoutStep, setCheckoutStep] = useState(1);
-  const [selectedPayment, setSelectedPayment] = useState('upi');
   const [showSuccess, setShowSuccess] = useState(false);
   // One toast serves both 'added to cart' and 'order placed', so it needs to
   // say which -- it read "Order Confirmed Successfully!" for a cart add.
@@ -320,31 +254,6 @@ export function ShopList() {
     return () => clearInterval(timer);
   }, []);
 
-  const openCheckout = (pack) => {
-    setSelectedPack(pack);
-    setCheckoutStep(1);
-  };
-
-  const closeCheckout = () => {
-    setSelectedPack(null);
-    setTimeout(() => {
-      setCheckoutStep(1);
-      setSelectedPayment('upi');
-    }, 300);
-  };
-
-  const handleNextStep = () => {
-    if (checkoutStep === 1) {
-      setCheckoutStep(2);
-    } else if (checkoutStep === 2) {
-      setSuccessText('Order Confirmed Successfully!');
-      setShowSuccess(true);
-      setTimeout(() => {
-        setShowSuccess(false);
-        closeCheckout();
-      }, 2500);
-    }
-  };
 
   return (
     <div className="flex flex-col relative w-full overflow-x-hidden">
@@ -1268,120 +1177,6 @@ export function ShopList() {
       </div>
       )}
 
-      {/* 1-Step Checkout Bottom Sheet */}
-      {selectedPack && (
-        <>
-          <div 
-            className="fixed inset-0 bg-black/60 z-[100] animate-in fade-in duration-200 backdrop-blur-sm"
-            onClick={closeCheckout}
-          ></div>
-
-          <div className="fixed bottom-0 left-0 right-0 bg-[#FAF7F2] rounded-t-[32px] z-[101] animate-in slide-in-from-bottom-full duration-300 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] flex flex-col">
-            
-            {/* Drag Handle */}
-            <div className="w-full flex justify-center pt-3 pb-2">
-              <div className="w-12 h-1.5 bg-gray-200 rounded-full"></div>
-            </div>
-
-            <div className="px-5 pt-2 pb-6 overflow-y-auto hide-scrollbar max-h-[85vh]">
-              
-              <div className="flex justify-between items-start mb-5">
-                <h2 className="text-2xl font-black text-gray-900">
-                  {checkoutStep === 1 ? 'Pack Details' : 'Confirm Order'}
-                </h2>
-                <button onClick={closeCheckout} className="p-2 bg-gray-100 rounded-full text-gray-500">
-                  <X size={20} />
-                </button>
-              </div>
-
-              {checkoutStep === 1 ? (
-                <>
-                  <div className="bg-white border border-gray-100 rounded-[20px] p-4 mb-4 shadow-sm flex items-center gap-4">
-                    <img src={selectedPack.img} alt={selectedPack.title} className="w-20 h-20 object-cover rounded-[12px]" />
-                    <div className="flex-1">
-                      <span className="bg-[#66B4B1] text-white px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider mb-1.5 inline-block">
-                        {selectedPack.badge}
-                      </span>
-                      <h3 className="font-black text-gray-900 text-[16px] leading-tight mb-1">{selectedPack.title}</h3>
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg font-black text-gray-900">₹{selectedPack.price}</span>
-                        <span className="text-[12px] text-gray-400 line-through">₹{selectedPack.originalPrice}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <h4 className="font-bold text-gray-900 text-[16px] mb-3 mt-6">What's inside?</h4>
-                  <div className="space-y-3 mb-6 bg-white border border-gray-100 p-4 rounded-[20px] shadow-sm">
-                    {[...selectedPack.items, ...(selectedPack.hiddenItems || [])].map((item, idx) => (
-                      <div key={idx} className="flex items-start gap-3">
-                        <div className="w-5 h-5 rounded-full bg-green-50 flex items-center justify-center shrink-0 mt-0.5">
-                          <CheckCircle2 size={12} className="text-green-600" strokeWidth={3} />
-                        </div>
-                        <span className="text-[14px] font-medium text-gray-800 leading-snug">{item}</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="bg-white border border-gray-100 rounded-[20px] p-4 mb-4 shadow-sm flex items-center gap-4">
-                    <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center shrink-0">
-                      <Package size={24} className="text-gray-400" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-bold text-gray-900 text-[14px] leading-tight mb-1">{selectedPack.title}</h3>
-                      <span className="text-[16px] font-black text-gray-900">₹{selectedPack.price}</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-white border border-gray-100 rounded-[20px] p-4 mb-5 shadow-sm">
-                    <div className="flex justify-between items-center mb-2">
-                      <h4 className="font-bold text-gray-900 text-[14px]">Delivery Address</h4>
-                      <button className="text-[#F87B68] text-[12px] font-bold">Change</button>
-                    </div>
-                    <div className="flex items-start gap-3 text-gray-600 text-[13px] font-medium leading-relaxed">
-                      <Truck size={18} className="text-[#66B4B1] mt-0.5 shrink-0" />
-                      <p>A-402, Sunset Heights, Lokhandwala Complex, Andheri West, Mumbai 400053</p>
-                    </div>
-                  </div>
-
-                  <h4 className="font-bold text-gray-900 text-[16px] mb-3">Payment Method</h4>
-                  <div className="space-y-3 mb-5">
-                    <label className={`flex items-center gap-3 p-4 rounded-[16px] border ${selectedPayment === 'upi' ? 'border-[#66B4B1] bg-[#FAF7F2]' : 'border-gray-100 bg-white'} transition-colors cursor-pointer`}>
-                      <input type="radio" name="payment" checked={selectedPayment === 'upi'} onChange={() => setSelectedPayment('upi')} className="w-5 h-5 accent-[#80C1BF]" />
-                      <div className="flex-1 font-bold text-gray-900 text-[14px]">UPI (GPay, PhonePe, Paytm)</div>
-                    </label>
-                    <label className={`flex items-center gap-3 p-4 rounded-[16px] border ${selectedPayment === 'card' ? 'border-[#66B4B1] bg-[#FAF7F2]' : 'border-gray-100 bg-white'} transition-colors cursor-pointer`}>
-                      <input type="radio" name="payment" checked={selectedPayment === 'card'} onChange={() => setSelectedPayment('card')} className="w-5 h-5 accent-[#80C1BF]" />
-                      <div className="flex-1 font-bold text-gray-900 text-[14px]">Credit / Debit Card</div>
-                    </label>
-                    <label className={`flex items-center gap-3 p-4 rounded-[16px] border ${selectedPayment === 'cod' ? 'border-[#66B4B1] bg-[#FAF7F2]' : 'border-gray-100 bg-white'} transition-colors cursor-pointer`}>
-                      <input type="radio" name="payment" checked={selectedPayment === 'cod'} onChange={() => setSelectedPayment('cod')} className="w-5 h-5 accent-[#80C1BF]" />
-                      <div className="flex-1 font-bold text-gray-900 text-[14px]">Cash on Delivery</div>
-                    </label>
-                  </div>
-                </>
-              )}
-
-              <div className="flex items-center gap-2 text-[#66B4B1] text-[12px] font-bold justify-center mb-4 mt-2">
-                <ShieldCheck size={16} /> 100% Secure Payment • Satisfaction Guarantee
-              </div>
-
-            </div>
-
-            {/* Sticky Action Button */}
-            <div className="p-4 bg-white border-t border-gray-100 pb-8">
-              <button 
-                onClick={handleNextStep}
-                className="w-full h-[56px] bg-[#66B4B1] text-white rounded-full font-black text-[16px] shadow-[0_4px_14px_rgba(27,170,96,0.3)] flex items-center justify-center gap-2 hover:bg-[#599D9A] active:scale-95 transition-all"
-              >
-                {checkoutStep === 1 ? 'Confirm Order' : 'Pay & Book'} • ₹{selectedPack.price}
-              </button>
-            </div>
-
-          </div>
-        </>
-      )}
 
       {showNutritionPlan && (
         <ExpertNutrition onClose={() => setShowNutritionPlan(false)} />

@@ -49,6 +49,27 @@ router.get(
   })
 );
 
+/**
+ * GET /meals/customisations — the per-item add-on catalogue.
+ *
+ * The storefront picker used to carry its own copy of this list, so a price
+ * changed here was still advertised at the old rate until the client was
+ * rebuilt. Serving it keeps the modal and the charge on one source.
+ */
+router.get(
+  '/customisations',
+  cacheResponse('meals', 300),
+  asyncHandler(async (_req, res) => {
+    sendSuccess(res, {
+      data: Object.entries(mealService.MEAL_CUSTOMISATIONS).map(([id, c]) => ({
+        id,
+        name: c.name,
+        price: c.price,
+      })),
+    });
+  })
+);
+
 router.get(
   '/recipes',
   cacheResponse('meals', 300),

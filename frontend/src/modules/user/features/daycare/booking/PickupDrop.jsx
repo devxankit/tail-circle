@@ -1,16 +1,40 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Plus, ChevronDown } from 'lucide-react';
 import { useDaycareStore } from '../../../../../store/useDaycareStore';
 
-const MOCK_ADDRESSES = [
-  { id: 'addr1', type: 'Home', address: '12, 4th Cross, Koramangala, Bangalore - 560034' },
-  { id: 'addr2', type: 'Office', address: '91, 3rd Main, HSR Layout, Bangalore - 560102' }
-];
-
 export function PickupDrop() {
   const navigate = useNavigate();
   const { visitOption, setVisitOption, selectedAddress, setAddress, pickupDropTimes, setPickupDropTimes, selectedAddons, toggleAddon } = useDaycareStore();
+
+  /*
+   * The user's real address book, same source the grooming visit flow reads.
+   * Two hardcoded Bangalore addresses used to stand in here, so the van was
+   * dispatched to an address the customer had never entered.
+   */
+  const [addresses, setAddresses] = useState([]);
+  const [isLoadingAddresses, setIsLoadingAddresses] = useState(true);
+
+  useEffect(() => {
+    import('../../../../../services/api').then(({ api }) =>
+      api.get('/addresses').then(({ data }) => {
+        const mapped = data.map((a) => ({
+          id: a._id,
+          type: (a.label || 'home').charAt(0).toUpperCase() + (a.label || 'home').slice(1),
+          address: `${a.line1}${a.line2 ? `, ${a.line2}` : ''}, ${a.city} - ${a.pincode}`,
+        }));
+        setAddresses(mapped);
+        // Preselect the default so the flow does not start with nothing chosen.
+        if (!selectedAddress) {
+          const def = data.find((a) => a.isDefault) || data[0];
+          if (def) setAddress(mapped.find((m) => m.id === def._id));
+        }
+      })
+    )
+      .catch(() => setAddresses([]))
+      .finally(() => setIsLoadingAddresses(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (selectedAddons.some(a => a.name === 'Pickup & Drop') && visitOption !== 'Pickup & Drop') {
@@ -81,7 +105,7 @@ export function PickupDrop() {
             {/* Pickup Address */}
             <h2 className="text-[14px] font-bold text-gray-900 mb-4">Pickup Address</h2>
             <div className="space-y-4 mb-6">
-              {MOCK_ADDRESSES.map(addr => (
+              {addresses.map(addr => (
                 <div 
                   key={addr.id}
                   onClick={() => setAddress(addr)}
@@ -98,6 +122,25 @@ export function PickupDrop() {
                   </div>
                 </div>
               ))}
+
+              {addresses.length === 0 && (
+                <div className="py-4">
+                  <p className="text-[13px] text-gray-500 mb-3">
+                    {isLoadingAddresses
+                      ? 'Loading your saved addresses...'
+                      : 'You have no saved addresses yet. Add one so we know where to collect your pet.'}
+                  </p>
+                  {!isLoadingAddresses && (
+                    <button
+                      type="button"
+                      onClick={() => navigate('/app/profile/address/add')}
+                      className="flex items-center gap-2 text-[13px] font-bold text-[#66B4B1]"
+                    >
+                      <Plus size={16} /> Add an address
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Timings */}

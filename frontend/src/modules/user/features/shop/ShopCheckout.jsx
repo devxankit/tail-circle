@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, MapPin, CreditCard, Wallet, CheckCircle2, ChevronRight, Truck, Banknote, Plus } from 'lucide-react';
+import { ArrowLeft, MapPin, CreditCard, Wallet, CheckCircle2, ChevronRight, Truck, Banknote } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
 import { cn } from '../../utils/cn';
@@ -15,19 +15,15 @@ export function ShopCheckout() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
 
-  // Card States
-  const [savedCards, setSavedCards] = useState([
-    { id: '1', type: 'VISA', last4: '4242', color: '#1A1F71' }
-  ]);
-  const [selectedCardId, setSelectedCardId] = useState('1');
-  const [showAddCard, setShowAddCard] = useState(false);
-  const [newCard, setNewCard] = useState({ number: '', name: '', expiry: '', cvv: '' });
-
-  // UPI States
-  const [selectedUpiApp, setSelectedUpiApp] = useState('gpay');
-  const [upiId, setUpiId] = useState('');
-  const [isVerifyingUpi, setIsVerifyingUpi] = useState(false);
-  const [upiVerified, setUpiVerified] = useState(false);
+  /*
+   * Card and UPI details are collected by the Razorpay sheet that opens after
+   * the order is placed -- never here. This screen used to render its own card
+   * form, a seeded "VISA 4242", and a UPI "Verify" button that was a 1.5s
+   * timer, none of which reached the payment: `handlePay` sends only the
+   * method. Collecting a PAN and CVV into component state that nothing reads
+   * is worse than not collecting it, so the inputs are gone and the choice
+   * below is what actually travels with the order.
+   */
   const [deliveryAddress, setDeliveryAddress] = useState(null);
 
   React.useEffect(() => {
@@ -53,23 +49,6 @@ export function ShopCheckout() {
       })
       .catch(() => {});
   }, []);
-
-  const handleAddCard = (e) => {
-    e.stopPropagation();
-    if (!newCard.number || !newCard.expiry) return;
-    const last4 = newCard.number.slice(-4).padStart(4, '0');
-    const isMastercard = newCard.number.startsWith('5');
-    const newSavedCard = {
-      id: Date.now().toString(),
-      type: isMastercard ? 'MC' : 'VISA',
-      last4: last4,
-      color: isMastercard ? '#EB001B' : '#1A1F71'
-    };
-    setSavedCards([...savedCards, newSavedCard]);
-    setSelectedCardId(newSavedCard.id);
-    setShowAddCard(false);
-    setNewCard({ number: '', name: '', expiry: '', cvv: '' });
-  };
 
   if (items.length === 0) {
     return <div className="p-8 text-center">No items to checkout.</div>;
@@ -181,47 +160,10 @@ export function ShopCheckout() {
                   {paymentMethod === 'card' && <CheckCircle2 className="text-primary-main" size={20} />}
                 </div>
                 {paymentMethod === 'card' && (
-                  <div className="mt-4 flex flex-col gap-2 w-full animate-in fade-in slide-in-from-top-2">
-                    {savedCards.map(card => (
-                      <div 
-                        key={card.id}
-                        onClick={(e) => { e.stopPropagation(); setSelectedCardId(card.id); }}
-                        className={cn("flex items-center justify-between p-3 border-2 bg-white rounded-xl shadow-sm transition-all cursor-pointer", selectedCardId === card.id ? "border-primary-main ring-2 ring-primary-main/10" : "border-border-light hover:border-primary-main/50")}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-7 rounded pl-1 flex items-center shadow-inner" style={{ backgroundColor: card.color }}>
-                            <span className="text-white text-[10px] font-black italic tracking-wider">{card.type}</span>
-                          </div>
-                          <span className="text-sm font-bold text-text-primary">**** {card.last4}</span>
-                        </div>
-                        <div className={cn("w-5 h-5 rounded-full border-[5px] bg-white transition-all", selectedCardId === card.id ? "border-primary-main" : "border-border-light")}></div>
-                      </div>
-                    ))}
-                    
-                    {!showAddCard ? (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); setShowAddCard(true); }}
-                        className="flex items-center justify-center gap-2 p-3 border-2 border-dashed border-border-light hover:border-primary-main/50 rounded-xl text-sm font-bold text-primary-main hover:bg-bg-secondary transition-colors mt-1"
-                      >
-                        <Plus size={18} /> Add New Card
-                      </button>
-                    ) : (
-                      <div className="mt-2 p-4 bg-white border border-border-light rounded-xl flex flex-col gap-3 shadow-sm animate-in fade-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center mb-1">
-                          <h4 className="text-xs font-bold text-text-secondary uppercase tracking-wider">New Card Details</h4>
-                        </div>
-                        <input type="text" placeholder="Card Number" value={newCard.number} onChange={e => setNewCard({...newCard, number: e.target.value.replace(/\D/g, '')})} className="w-full bg-bg-secondary border border-border-light rounded-lg px-4 py-3 text-sm font-bold text-text-primary outline-none focus:border-primary-main focus:ring-1 focus:ring-primary-main transition-colors placeholder:font-medium placeholder:text-text-secondary/50" maxLength={16} />
-                        <div className="flex gap-3">
-                          <input type="text" placeholder="MM/YY" value={newCard.expiry} onChange={e => setNewCard({...newCard, expiry: e.target.value})} className="w-1/2 bg-bg-secondary border border-border-light rounded-lg px-4 py-3 text-sm font-bold text-text-primary outline-none focus:border-primary-main focus:ring-1 focus:ring-primary-main transition-colors placeholder:font-medium placeholder:text-text-secondary/50" maxLength={5} />
-                          <input type="password" placeholder="CVV" value={newCard.cvv} onChange={e => setNewCard({...newCard, cvv: e.target.value.replace(/\D/g, '')})} className="w-1/2 bg-bg-secondary border border-border-light rounded-lg px-4 py-3 text-sm font-bold text-text-primary outline-none focus:border-primary-main focus:ring-1 focus:ring-primary-main transition-colors placeholder:font-medium placeholder:text-text-secondary/50" maxLength={4} />
-                        </div>
-                        <input type="text" placeholder="Name on Card" value={newCard.name} onChange={e => setNewCard({...newCard, name: e.target.value})} className="w-full bg-bg-secondary border border-border-light rounded-lg px-4 py-3 text-sm font-bold text-text-primary outline-none focus:border-primary-main focus:ring-1 focus:ring-primary-main transition-colors placeholder:font-medium placeholder:text-text-secondary/50" />
-                        <div className="flex gap-2 mt-2">
-                          <Button variant="outline" className="flex-1 h-12 text-sm font-bold rounded-xl" onClick={() => setShowAddCard(false)}>Cancel</Button>
-                          <Button className="flex-1 h-12 text-sm font-bold rounded-xl" onClick={handleAddCard} disabled={newCard.number.length < 14 || !newCard.expiry}>Save Card</Button>
-                        </div>
-                      </div>
-                    )}
+                  <div className="mt-4 w-full animate-in fade-in slide-in-from-top-2">
+                    <p className="text-xs font-medium text-text-secondary leading-relaxed">
+                      You'll enter your card details on the secure payment screen after you place the order.
+                    </p>
                   </div>
                 )}
               </button>
@@ -242,66 +184,10 @@ export function ShopCheckout() {
                   {paymentMethod === 'upi' && <CheckCircle2 className="text-primary-main" size={20} />}
                 </div>
                 {paymentMethod === 'upi' && (
-                  <div className="mt-4 flex flex-col gap-3 animate-in fade-in slide-in-from-top-2 w-full">
-                    <div className="grid grid-cols-4 gap-2">
-                      <div 
-                        onClick={(e) => { e.stopPropagation(); setSelectedUpiApp('gpay'); }}
-                        className={cn("flex flex-col items-center gap-1 bg-white p-2 rounded-xl border-2 shadow-sm cursor-pointer transition-all", selectedUpiApp === 'gpay' ? "border-primary-main ring-2 ring-primary-main/10" : "border-border-light hover:border-primary-main/50")}
-                      >
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="GPay" className="h-7 w-7 object-contain" />
-                        <span className="text-[10px] font-bold text-text-primary mt-1">GPay</span>
-                      </div>
-                      <div 
-                        onClick={(e) => { e.stopPropagation(); setSelectedUpiApp('phonepe'); }}
-                        className={cn("flex flex-col items-center gap-1 bg-white p-2 rounded-xl border-2 shadow-sm cursor-pointer transition-all", selectedUpiApp === 'phonepe' ? "border-primary-main ring-2 ring-primary-main/10" : "border-border-light hover:border-primary-main/50")}
-                      >
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/7/71/PhonePe_Logo.svg" alt="PhonePe" className="h-7 w-7 object-contain" />
-                        <span className="text-[10px] font-bold text-text-primary mt-1">PhonePe</span>
-                      </div>
-                      <div 
-                        onClick={(e) => { e.stopPropagation(); setSelectedUpiApp('paytm'); }}
-                        className={cn("flex flex-col items-center gap-1 bg-white p-2 rounded-xl border-2 shadow-sm cursor-pointer transition-all", selectedUpiApp === 'paytm' ? "border-primary-main ring-2 ring-primary-main/10" : "border-border-light hover:border-primary-main/50")}
-                      >
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/2/24/Paytm_Logo_%28standalone%29.svg" alt="Paytm" className="h-7 w-7 object-contain" />
-                        <span className="text-[10px] font-bold text-text-primary mt-1">Paytm</span>
-                      </div>
-                      <div 
-                        onClick={(e) => { e.stopPropagation(); setSelectedUpiApp('amazon'); }}
-                        className={cn("flex flex-col items-center gap-1 bg-white p-2 rounded-xl border-2 shadow-sm cursor-pointer transition-all", selectedUpiApp === 'amazon' ? "border-primary-main ring-2 ring-primary-main/10" : "border-border-light hover:border-primary-main/50")}
-                      >
-                        <img src="https://upload.wikimedia.org/wikipedia/commons/4/4a/Amazon_icon.svg" alt="Amazon Pay" className="h-7 w-7 object-contain" />
-                        <span className="text-[10px] font-bold text-text-primary mt-1">Amazon</span>
-                      </div>
-                    </div>
-                    
-                    <div className="flex flex-col gap-2 mt-2 p-3 bg-white rounded-xl border border-border-light relative overflow-hidden" onClick={e => e.stopPropagation()}>
-                      <p className="text-xs font-bold text-text-secondary">Or Enter UPI ID</p>
-                      <div className="flex items-center gap-2">
-                        <input 
-                          type="text" 
-                          value={upiId}
-                          onChange={(e) => { setUpiId(e.target.value); setUpiVerified(false); }}
-                          placeholder="name@okhdfc" 
-                          className={cn("flex-1 bg-bg-secondary border rounded-lg px-3 py-2 text-sm font-medium outline-none transition-colors", upiVerified ? "border-success/50 bg-success/5" : "border-border-light focus:border-primary-main focus:ring-1 focus:ring-primary-main")} 
-                        />
-                        <Button 
-                          onClick={() => {
-                            if (!upiId) return;
-                            setIsVerifyingUpi(true);
-                            setTimeout(() => { setIsVerifyingUpi(false); setUpiVerified(true); }, 1500);
-                          }}
-                          disabled={isVerifyingUpi || upiVerified || !upiId}
-                          className={cn("h-10 px-4 rounded-lg text-sm font-bold shadow-sm transition-all", upiVerified ? "bg-success hover:bg-success text-white" : "")}
-                        >
-                          {isVerifyingUpi ? '...' : upiVerified ? 'Verified' : 'Verify'}
-                        </Button>
-                      </div>
-                      {upiVerified && (
-                        <div className="absolute top-0 right-0 p-2 text-success">
-                          <CheckCircle2 size={16} />
-                        </div>
-                      )}
-                    </div>
+                  <div className="mt-4 w-full animate-in fade-in slide-in-from-top-2">
+                    <p className="text-xs font-medium text-text-secondary leading-relaxed">
+                      You'll pick your UPI app and approve the payment on the secure payment screen after you place the order.
+                    </p>
                   </div>
                 )}
               </button>

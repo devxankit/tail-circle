@@ -1,12 +1,31 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, Calendar, Clock, MapPin, AlertCircle } from 'lucide-react';
 import { useAdoptStore } from '../../../../../store/useAdoptStore';
+import { getApplicationForListing } from '../../../../../services/adoptApi';
+import { formatMeetSlot } from './scheduleFormat';
 
 export function MeetAndGreet() {
   const { id } = useParams();
   const navigate = useNavigate();
   const selectedPet = useAdoptStore(state => state.selectedPet);
+
+  /*
+   * The shelter sets the meet slot when it advances the application
+   * (`meet_scheduled` carries `scheduledAt`). This screen used to print a
+   * fixed "Saturday, 25 May 2026 / 11:00 AM - 2:00 PM" regardless, so the
+   * adopter was told a date the shelter had never agreed to.
+   */
+  const [application, setApplication] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    getApplicationForListing(id)
+      .then((app) => { if (active) setApplication(app); })
+      .finally(() => { if (active) setIsLoading(false); });
+    return () => { active = false; };
+  }, [id]);
 
   // Fallback to home if no pet is selected
   useEffect(() => {
@@ -14,6 +33,8 @@ export function MeetAndGreet() {
   }, [selectedPet, navigate]);
 
   if (!selectedPet) return null;
+
+  const slot = formatMeetSlot(application?.meet?.scheduledAt, isLoading);
 
   return (
     <div className="flex flex-col min-h-screen bg-[#FAF7F2] pb-10">
@@ -44,7 +65,7 @@ export function MeetAndGreet() {
             </div>
             <div>
               <p className="text-[12px] text-gray-500 font-medium">Date</p>
-              <p className="text-[14px] font-bold text-gray-900">Saturday, 25 May 2026</p>
+              <p className="text-[14px] font-bold text-gray-900">{slot.date}</p>
             </div>
           </div>
 
@@ -54,7 +75,7 @@ export function MeetAndGreet() {
             </div>
             <div>
               <p className="text-[12px] text-gray-500 font-medium">Time</p>
-              <p className="text-[14px] font-bold text-gray-900">11:00 AM - 2:00 PM</p>
+              <p className="text-[14px] font-bold text-gray-900">{slot.time}</p>
             </div>
           </div>
 
@@ -64,7 +85,9 @@ export function MeetAndGreet() {
             </div>
             <div>
               <p className="text-[12px] text-gray-500 font-medium">Location</p>
-              <p className="text-[14px] font-bold text-gray-900">{selectedPet.shelter.name}, Bangalore</p>
+              <p className="text-[14px] font-bold text-gray-900">
+                {[selectedPet.shelter?.name, selectedPet.location].filter(Boolean).join(', ') || 'Shelter address shared on confirmation'}
+              </p>
             </div>
           </div>
         </div>

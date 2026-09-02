@@ -31,6 +31,7 @@ import {
   fetchMealPlans,
   fetchMealAccount,
   fetchMealOrders,
+  fetchMealCustomisations,
   orderPrepaid,
   orderALaCarte,
   claimFreeTrial,
@@ -115,12 +116,22 @@ export function MealDashboard() {
       alert(err.message);
     }
   };
-  const dummyCustomisations = [
+  /*
+   * Add-on catalogue from the server, which is also what it bills from. The
+   * list was hardcoded here and fed the cart total directly, so a price the
+   * kitchen changed was still shown -- and added to the displayed total -- at
+   * the old rate. The bare 'Standard Portion' keeps the picker usable while
+   * the request is in flight; every id in it exists server-side.
+   */
+  const [customisations, setCustomisations] = useState([
     { id: 'c1', name: 'Standard Portion', price: 0 },
-    { id: 'c2', name: 'Extra Meat (+₹120)', price: 120 },
-    { id: 'c3', name: 'Extra Veggies (+₹60)', price: 60 },
-    { id: 'c4', name: 'Premium Broth (+₹90)', price: 90 },
-  ];
+  ]);
+
+  useEffect(() => {
+    fetchMealCustomisations()
+      .then((rows) => { if (rows.length) setCustomisations(rows); })
+      .catch(() => {});
+  }, []);
   const defaultPlans = [
     {
       id: 'starter',
@@ -212,7 +223,7 @@ export function MealDashboard() {
   const cartItemsCount = Object.values(cart).reduce((sum, line) => sum + line.qty, 0);
   const cartTotal = Object.keys(cart).reduce((sum, mealId) => {
     const meal = availableMeals.find(m => m.id === mealId);
-    const custom = dummyCustomisations.find(c => c.id === cart[mealId].customisationId);
+    const custom = customisations.find(c => c.id === cart[mealId].customisationId);
     return sum + (meal ? (meal.price + (custom?.price || 0)) * cart[mealId].qty : 0);
   }, 0);
 
@@ -878,7 +889,7 @@ export function MealDashboard() {
                 <p className="text-xs text-[#5A5552]/70 mb-4">Required • Select any 1 option</p>
                 
                 <div className="space-y-4">
-                  {dummyCustomisations.map((custom) => (
+                  {customisations.map((custom) => (
                     <div 
                       key={custom.id} 
                       onClick={() => setSelectedCustomisation(custom.id)}
@@ -945,7 +956,7 @@ export function MealDashboard() {
                   className="flex-1 py-3.5 rounded-xl font-bold text-base text-white shadow-md active:scale-[0.98] transition-all hover:opacity-90"
                   style={{ backgroundColor: selectedMealForModal.category === 'Dog' ? '#66B4B1' : '#F87B68' }}
                 >
-                  Add item - ₹{((selectedMealForModal.price + (dummyCustomisations.find(c => c.id === selectedCustomisation)?.price || 0)) * modalQty).toFixed(0)}
+                  Add item - ₹{((selectedMealForModal.price + (customisations.find(c => c.id === selectedCustomisation)?.price || 0)) * modalQty).toFixed(0)}
                 </button>
               )}
             </div>

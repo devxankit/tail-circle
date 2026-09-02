@@ -1,13 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, Plus, MapPin, CheckCircle, ShieldAlert, Award, MessageCircle, Heart, Star, Sparkles, FileText, Check } from 'lucide-react';
+import { ChevronLeft, Plus, MapPin, CheckCircle, ShieldAlert, Award, MessageCircle, Heart, Star, Sparkles, FileText, Check, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { cn } from '../../utils/cn';
-
-const initialAdoptionPets = [
-  { id: 'a1', name: 'Sheru', species: 'Dog', breed: 'Indie', age: '1.5 Years', gender: 'Male', img: 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=300&q=80', shelter: 'Paws Haven NGO', location: 'Mumbai', desc: 'Rescued from street injury, fully healed and looking for a warm family. Sheru is high-energy and very friendly.' },
-  { id: 'a2', name: 'Luna', species: 'Cat', breed: 'Domestic Shorthair', age: '1 Year', gender: 'Female', img: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=300&q=80', shelter: 'Happy Tails Rescue', location: 'Pune', desc: 'Calm, loves cuddles, and matches perfectly with apartments or quiet homes.' }
-];
 
 export function Marketplace() {
   const navigate = useNavigate();
@@ -15,7 +10,11 @@ export function Marketplace() {
   
   // API-loaded lists
   const [pets, setPets] = useState([]);
-  const [adoptPets, setAdoptPets] = useState(initialAdoptionPets);
+  // Seeded empty: these are real shelter listings, and an applicant can only
+  // apply for one that exists. Placeholder pets here were applied for and the
+  // request failed at the server, since no such listing was ever there.
+  const [adoptPets, setAdoptPets] = useState([]);
+  const [isLoadingAdoptPets, setIsLoadingAdoptPets] = useState(true);
 
   useEffect(() => {
     import('../../../../services/adoptApi').then(({ getPets }) =>
@@ -35,7 +34,9 @@ export function Marketplace() {
           }))
         )
       )
-    ).catch(() => {});
+    )
+      .catch(() => {})
+      .finally(() => setIsLoadingAdoptPets(false));
   }, []);
   
   // Selected detail states
@@ -53,6 +54,8 @@ export function Marketplace() {
   const [sellLocation, setSellLocation] = useState('');
   const [sellVaccinated, setSellVaccinated] = useState('Fully Vaccinated');
   const [sellImage, setSellImage] = useState(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [sellImageError, setSellImageError] = useState('');
   const [sellSuccess, setSellSuccess] = useState(false);
 
   // Adoption Form States
@@ -62,6 +65,8 @@ export function Marketplace() {
   const [adoptHome, setAdoptHome] = useState('Apartment');
   const [adoptReason, setAdoptReason] = useState('');
   const [adoptSuccess, setAdoptSuccess] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
+  const [adoptError, setAdoptError] = useState('');
 
   const loadListings = () => {
     import('../../../../services/api').then(({ api }) =>
@@ -78,6 +83,7 @@ export function Marketplace() {
   const handleSellSubmit = async (e) => {
     e.preventDefault();
     if (!sellName.trim() || !sellBreed.trim() || !sellPrice.trim()) return;
+    if (isUploadingImage) return; // the photo URL is not back yet
 
     try {
       const { api } = await import('../../../../services/api');
@@ -90,7 +96,9 @@ export function Marketplace() {
         price: sellPrice,
         location: sellLocation || 'Local City',
         vaccinated: sellVaccinated,
-        img: sellImage || 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=300&q=80',
+        // No stock photo stand-in: a listing showing someone else's dog is worse
+        // than one showing none, and the card handles a missing image.
+        img: sellImage || '',
       });
       loadListings();
       setSellSuccess(true);
@@ -112,12 +120,28 @@ export function Marketplace() {
     }, 1500);
   };
 
-  const handleImageUpload = (e) => {
+  /*
+   * Upload to the media service and keep the returned URL. This used to keep
+   * the FileReader data URL and post that as the listing image, which put a
+   * whole base64 blob in the document instead of a link to the file.
+   */
+  const handleImageUpload = async (e) => {
     const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => setSellImage(reader.result);
-      reader.readAsDataURL(file);
+    e.target.value = null;
+    if (!file) return;
+    setSellImageError('');
+    setIsUploadingImage(true);
+    try {
+      const { api } = await import('../../../../services/api');
+      const form = new FormData();
+      form.append('file', file);
+      form.append('folder', 'marketplace');
+      const { data: asset } = await api.post('/uploads/image', form);
+      setSellImage(asset.url || asset.secure_url);
+    } catch (err) {
+      setSellImageError(err.message || 'Could not upload that photo. Please try again.');
+    } finally {
+      setIsUploadingImage(false);
     }
   };
 
@@ -139,10 +163,30 @@ export function Marketplace() {
     }, 2000);
   };
 
-  const handleAdoptSubmit = (e) => {
+  /*
+   * Submit the adoption application. The answers collected here used to be
+   * dropped on the floor -- the form only flipped to the success screen -- so
+   * the shelter never saw an application at all.
+   */
+  const handleAdoptSubmit = async (e) => {
     e.preventDefault();
-    setShowAdoptForm(false);
-    setAdoptSuccess(true);
+    if (!adoptPetItem) return;
+    setAdoptError('');
+    setIsApplying(true);
+    try {
+      const { applyForAdoption } = await import('../../../../services/adoptApi');
+      await applyForAdoption(adoptPetItem.id, {
+        hasExperience: adoptExp,
+        homeType: adoptHome,
+        reason: adoptReason,
+      });
+      setShowAdoptForm(false);
+      setAdoptSuccess(true);
+    } catch (err) {
+      setAdoptError(err.message || 'Could not submit your application. Please try again.');
+    } finally {
+      setIsApplying(false);
+    }
   };
 
   return (
@@ -231,7 +275,12 @@ export function Marketplace() {
                 <div className="flex flex-col items-center justify-center border-2 border-dashed border-border-light rounded-2xl p-4 bg-bg-secondary/40">
                   <input type="file" accept="image/*" onChange={handleImageUpload} id="sell-photo" className="hidden" />
                   <label htmlFor="sell-photo" className="cursor-pointer flex flex-col items-center justify-center text-center">
-                    {sellImage ? (
+                    {isUploadingImage ? (
+                      <>
+                        <Loader2 size={24} className="text-[#66B4B1] mb-1 animate-spin" />
+                        <span className="text-xs font-bold text-text-secondary">Uploading...</span>
+                      </>
+                    ) : sellImage ? (
                       <img src={sellImage} alt="Upload preview" className="w-24 h-24 rounded-2xl object-cover shadow-md border" />
                     ) : (
                       <>
@@ -240,6 +289,9 @@ export function Marketplace() {
                       </>
                     )}
                   </label>
+                  {sellImageError && (
+                    <p className="text-xs font-bold text-error mt-2 text-center">{sellImageError}</p>
+                  )}
                 </div>
 
                 <div>
@@ -372,17 +424,31 @@ export function Marketplace() {
                     <textarea required value={adoptReason} onChange={(e) => setAdoptReason(e.target.value)} placeholder="Why do you wish to adopt this lovely pet?" className="w-full bg-white border border-border-light rounded-xl px-4 py-3 text-sm min-h-[90px] focus:outline-none focus:border-[#66B4B1] resize-none" />
                   </div>
 
+                  {adoptError && (
+                    <p className="text-xs font-bold text-error text-center">{adoptError}</p>
+                  )}
+
                   <div className="flex gap-3 mt-4">
-                    <button type="button" onClick={() => setShowAdoptForm(false)} className="flex-1 bg-bg-secondary hover:bg-border-light/50 text-text-primary font-bold h-12 rounded-xl transition-colors">
+                    <button type="button" onClick={() => setShowAdoptForm(false)} disabled={isApplying} className="flex-1 bg-bg-secondary hover:bg-border-light/50 text-text-primary font-bold h-12 rounded-xl transition-colors disabled:opacity-60">
                       Cancel
                     </button>
-                    <button type="submit" className="flex-1 bg-[#66B4B1] hover:bg-[#66B4B1]/90 text-white font-bold h-12 rounded-xl shadow-sm active:scale-95 transition-all">
-                      Submit Screening
+                    <button type="submit" disabled={isApplying} className="flex-1 bg-[#66B4B1] hover:bg-[#66B4B1]/90 text-white font-bold h-12 rounded-xl shadow-sm active:scale-95 transition-all disabled:opacity-60">
+                      {isApplying ? 'Submitting...' : 'Submit Screening'}
                     </button>
                   </div>
                 </form>
               </div>
             ) : (
+              adoptPets.length === 0 ? (
+                <div className="bg-white rounded-[24px] border border-border-light p-8 text-center shadow-sm">
+                  <p className="text-sm font-bold text-text-primary mb-1">
+                    {isLoadingAdoptPets ? 'Loading pets...' : 'No pets up for adoption right now'}
+                  </p>
+                  {!isLoadingAdoptPets && (
+                    <p className="text-xs text-text-secondary">Check back soon — shelters add new pets regularly.</p>
+                  )}
+                </div>
+              ) : (
               adoptPets.map((pet) => (
                 <div key={pet.id} className="bg-white rounded-[24px] border border-border-light p-4 shadow-sm flex flex-col gap-4">
                   <div className="flex gap-4">
@@ -408,6 +474,7 @@ export function Marketplace() {
                   </button>
                 </div>
               ))
+              )
             )}
           </div>
         )}

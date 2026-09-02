@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Plus, MessageCircle, Trash2, CheckCircle2, AlertCircle, MapPin, Tag, Gift, ChevronRight } from 'lucide-react';
 import { getMyAdoptionListings, updateAdoptionListing, deleteAdoptionListing } from '../../../../../services/adoptApi';
+import { PetPhoto } from '../components/PetPhoto';
 
 export function MyAdoptionListings() {
   const navigate = useNavigate();
@@ -105,10 +106,10 @@ export function MyAdoptionListings() {
               return (
                 <div key={item._id} className="bg-white rounded-[24px] p-4 shadow-[0_4px_20px_rgba(0,0,0,0.02)] border border-gray-100/80">
                   <div className="flex gap-3.5 mb-3.5">
-                    <img 
-                      src={item.images[0] || 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=150&q=80'} 
+                    <PetPhoto
+                      src={item.images?.[0]}
                       alt={item.name}
-                      className="w-20 h-20 rounded-[18px] object-cover shrink-0 bg-gray-50" 
+                      className="w-20 h-20 rounded-[18px] object-cover shrink-0 bg-gray-50"
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex justify-between items-start mb-1 gap-2">

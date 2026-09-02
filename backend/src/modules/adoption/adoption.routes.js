@@ -107,9 +107,13 @@ router.post(
   ),
   asyncHandler(async (req, res) => {
     const legacyId = `ADOPT-USER-${Date.now()}`;
-    const images = req.body.images && req.body.images.length > 0
-      ? req.body.images
-      : ['https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=500&q=80'];
+    /*
+     * A listing with no photo stores no photo. This used to substitute a stock
+     * picture of an unrelated dog, so a listing published without images
+     * advertised an animal the poster had never seen -- the storefront shows
+     * its own "no photo" state instead.
+     */
+    const images = req.body.images || [];
 
     const listing = await AdoptionListing.create({
       legacyId,

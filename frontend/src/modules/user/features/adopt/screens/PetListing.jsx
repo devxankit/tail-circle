@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
+import { PetPhoto } from '../components/PetPhoto';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   ChevronLeft, Heart, ArrowUpRight, MessageSquare, MapPin, PawPrint
@@ -169,7 +170,7 @@ export function PetListing() {
               >
                 {/* Left Side Image */}
                 <div className="w-[115px] h-[125px] relative shrink-0">
-                  <img src={pet.images[0]} alt={pet.name} className="w-full h-full object-cover" />
+                  <PetPhoto src={pet.images?.[0]} alt={pet.name} className="w-full h-full object-cover" iconSize={36} />
                   <button 
                     onClick={(e) => togglePetFavorite(pet.id, e)}
                     className="absolute top-2 left-2 w-6.5 h-6.5 bg-white/95 backdrop-blur-md rounded-full flex items-center justify-center shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer z-10"

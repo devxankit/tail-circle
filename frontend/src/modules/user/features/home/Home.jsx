@@ -69,11 +69,42 @@ export function Home() {
     return () => clearInterval(timer);
   }, [matchCarouselSlides.length]);
 
-  const toggleLikeProduct = (id) => {
-    setLikedProducts(prev => ({
-      ...prev,
-      [id]: !prev[id]
-    }));
+  /*
+   * Likes are the saved-items list, the same one the Saved screen and the
+   * product page read. This used to be component state only, so a heart
+   * filled in here was empty again on the next navigation and the item never
+   * reached the user's saved list.
+   *
+   * Keyed by the product's Mongo `_id` -- `id` is a legacy display handle and
+   * the saved-items API stores an ObjectId.
+   */
+  useEffect(() => {
+    import('../../../../services/shop').then(({ fetchSavedItems }) =>
+      fetchSavedItems()
+        .then((rows) => {
+          const saved = {};
+          for (const r of rows) {
+            if (r.targetType === 'product') saved[String(r.targetId)] = true;
+          }
+          setLikedProducts(saved);
+        })
+        .catch(() => {})
+    );
+  }, []);
+
+  const toggleLikeProduct = async (productObjectId) => {
+    if (!productObjectId) return;
+    const key = String(productObjectId);
+    const wasLiked = Boolean(likedProducts[key]);
+    setLikedProducts(prev => ({ ...prev, [key]: !wasLiked }));
+    try {
+      const { toggleSavedItem } = await import('../../../../services/shop');
+      await toggleSavedItem(key, wasLiked);
+    } catch {
+      // Put the heart back the way it was rather than showing a save that
+      // did not happen.
+      setLikedProducts(prev => ({ ...prev, [key]: wasLiked }));
+    }
   };
 
   // Home carousel banners — fetched from the admin-managed CMS (GET /banners),
@@ -763,13 +794,13 @@ export function Home() {
                 <button 
                   onClick={(e) => {
                     e.stopPropagation();
-                    toggleLikeProduct(item.id);
+                    toggleLikeProduct(item._product?._id);
                   }}
                   className="w-7 h-7 rounded-full bg-white flex items-center justify-center shadow-sm border border-slate-100 active:scale-90 transition-transform cursor-pointer"
                 >
                   <Heart 
                     size={11} 
-                    className={`transition-colors ${likedProducts[item.id] ? 'fill-red-500 text-red-500' : 'text-[#4C8684]'}`} 
+                    className={`transition-colors ${likedProducts[String(item._product?._id)] ? 'fill-red-500 text-red-500' : 'text-[#4C8684]'}`} 
                   />
                 </button>
               </div>
