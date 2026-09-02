@@ -173,13 +173,13 @@ export function Home() {
     }, [isPaused]);
 
   const services = [
-    { name: 'Grooming', image: '/assets/quick_links/grooming.png', path: '/app/services/grooming' },
+    { name: 'Grooming', image: '/assets/quick_links/grooming.jpeg', path: '/app/services/grooming' },
     { name: 'Day Care', image: '/assets/quick_links/daycare.png', path: '/app/services/daycare' },
     { name: 'Shop', image: '/assets/quick_links/shop.png', path: '/app/shop' },
-    { name: 'Vet', image: '/assets/quick_links/vet.png', path: '/app/services/doctors' },
+    { name: 'Vet', image: '/assets/quick_links/vet.jpeg', path: '/app/services/doctors' },
     { name: 'Events', image: '/assets/quick_links/events.png', path: '/app/services/events' },
     { name: 'Meals', image: '/assets/quick_links/meals.png', path: '/app/meals' },
-    { name: 'Community', image: '/assets/quick_links/community.png', path: '/app/community' },
+    { name: 'Community', image: '/assets/quick_links/community.jpeg', path: '/app/community' },
     { name: 'Adopt', image: '/assets/quick_links/adopt.png', path: '/app/adopt' },
   ];
 
@@ -284,13 +284,13 @@ export function Home() {
   }, []);
 
   const categoryCards = [
-    { name: 'Grooming', tag: 'SPA', desc: 'Spa & salon', image: '/assets/quick_links/grooming_spa.png', bg: 'bg-[#599D9A]', path: '/app/services/grooming' },
+    { name: 'Grooming', tag: 'SPA', desc: 'Spa & salon', image: '/assets/quick_links/grooming.jpeg', bg: 'bg-[#599D9A]', path: '/app/services/grooming', imgClass: 'object-top' },
     { name: 'Daycare', tag: 'STAY', desc: 'Safe & fun boarding', image: '/assets/quick_links/daycare_stay.png', bg: 'bg-[#F87B68]', path: '/app/services/daycare' },
     { name: 'Shop', tag: 'SHOP', desc: 'Toys & Treats', image: '/assets/quick_links/shop_box.png', bg: 'bg-[#F87B68]', path: '/app/shop' },
-    { name: 'Find Vets', tag: 'VETS', desc: 'Book 60 sec', image: '/assets/quick_links/vet_checkup.png', bg: 'bg-[#599D9A]', path: '/app/services/doctors' },
+    { name: 'Find Vets', tag: 'VETS', desc: 'Book 60 sec', image: '/assets/quick_links/vet.jpeg', bg: 'bg-[#599D9A]', path: '/app/services/doctors', imgClass: 'object-top' },
     { name: 'Events', tag: 'EVENTS', desc: 'Parties & shows', image: '/assets/quick_links/events_party.png', bg: 'bg-[#599D9A]', path: '/app/services/events' },
     { name: 'Meals', tag: 'DIET', desc: 'Fresh & healthy diet', image: '/assets/quick_links/meals_fresh.png', bg: 'bg-[#F87B68]', path: '/app/meals' },
-    { name: 'Community', tag: 'SOCIAL', desc: 'Connect & share', image: '/assets/quick_links/community_social.png', bg: 'bg-[#F87B68]', path: '/app/community' },
+    { name: 'Community', tag: 'SOCIAL', desc: 'Connect & share', image: '/assets/quick_links/community.jpeg', bg: 'bg-[#F87B68]', path: '/app/community', imgClass: 'object-top' },
     { name: 'Adopt', tag: 'ADOPT', desc: 'Find a companion', image: '/assets/quick_links/adopt_pet.png', bg: 'bg-[#599D9A]', path: '/app/adopt' }
   ];
 
@@ -605,6 +605,8 @@ export function Home() {
                 <img 
                   src={card.image} 
                   alt={card.name} 
+                  loading="eager"
+                  decoding="async"
                   className={`w-full h-full object-cover ${card.imgClass || ''}`} 
                 />
                 {/* Floating Tag Badge */}
