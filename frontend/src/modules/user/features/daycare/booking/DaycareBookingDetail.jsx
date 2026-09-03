@@ -250,19 +250,6 @@ export function DaycareBookingDetail() {
           >
             Cancel
           </button>
-          
-          <button 
-            onClick={() => navigate('/app/chat/room')}
-            className="col-span-1 py-3.5 rounded-[16px] font-bold text-[13px] bg-white text-[#66B4B1] border-2 border-[#66B4B1]/20 hover:bg-[#66B4B1]/5 active:scale-95 transition-all flex items-center justify-center gap-2"
-          >
-            <MessageCircle size={16} /> Chat
-          </button>
-          <button 
-            onClick={() => window.location.href = 'tel:+919876543210'}
-            className="col-span-1 py-3.5 rounded-[16px] font-bold text-[13px] bg-white text-[#66B4B1] border-2 border-[#66B4B1]/20 hover:bg-[#66B4B1]/5 active:scale-95 transition-all flex items-center justify-center gap-2"
-          >
-            <Phone size={16} /> Call Center
-          </button>
         </div>
 
       </div>

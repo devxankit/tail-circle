@@ -27,8 +27,19 @@ export function GroomingList() {
 
   const loadShops = async () => {
     setLoading(true);
+    let coordsParams = {};
     try {
-      const data = await getGroomingShops();
+      const cachedCity = sessionStorage.getItem('tc_user_gps_city');
+      if (cachedCity) {
+        const parsed = JSON.parse(cachedCity);
+        if (parsed?.lat && parsed?.lng) {
+          coordsParams = { lat: parsed.lat, lng: parsed.lng };
+        }
+      }
+    } catch {}
+
+    try {
+      const data = await getGroomingShops(coordsParams);
       setShops(data);
     } catch (e) {
       console.error(e);

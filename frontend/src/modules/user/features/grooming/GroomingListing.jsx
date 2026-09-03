@@ -34,9 +34,19 @@ export function GroomingListing() {
 
   const loadShops = async () => {
     setLoading(true);
+    let coordsParams = {};
     try {
-      const data = await getGroomingShops();
-      // Sort client-side by each shop's real distanceText field.
+      const cachedCity = sessionStorage.getItem('tc_user_gps_city');
+      if (cachedCity) {
+        const parsed = JSON.parse(cachedCity);
+        if (parsed?.lat && parsed?.lng) {
+          coordsParams = { lat: parsed.lat, lng: parsed.lng };
+        }
+      }
+    } catch {}
+
+    try {
+      const data = await getGroomingShops(coordsParams);
       let sorted = [...data];
       if (sortBy === 'Lowest Price') {
         sorted.sort((a, b) => a.startingPrice - b.startingPrice);

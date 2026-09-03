@@ -238,14 +238,44 @@ export async function getMatchDeck({ userId, filters = {}, limit = 50 }) {
     return true;
   });
 
-  // Compute compatibility score & format candidates
-  const scoredDeck = filteredCandidates.map((cand) => {
+  // Batch lookup owner details for candidates with real ownerId
+  const ownerIds = [...new Set(filteredCandidates.map((c) => c.ownerId).filter(Boolean))];
+  const ownersMap = new Map();
+  if (ownerIds.length > 0) {
+    const owners = await User.find({ _id: { $in: ownerIds } }).select('name avatarUrl bio city').lean();
+    owners.forEach((o) => ownersMap.set(o._id.toString(), o));
+  }
+
+  const MOCK_OWNERS = [
+    { name: 'Ananya', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80', bio: 'Dog lover & weekend hiker. Looking for friendly park playdates!' },
+    { name: 'Rohan', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80', bio: 'Pet parent based in the city. Big fan of outdoor games and social walks.' },
+    { name: 'Priya', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=300&q=80', bio: 'Cat & dog enthusiast! Passionate about pet wellness & fun meetups.' },
+    { name: 'Vikram', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80', bio: 'Active pet owner who loves training sessions & weekend park runs.' },
+    { name: 'Neha', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=300&q=80', bio: 'Passionate about animal care, healthy treats & happy tail wags!' },
+  ];
+
+  // Compute compatibility score & format candidates with ownerInfo
+  const scoredDeck = filteredCandidates.map((cand, idx) => {
     const realDistance = cand._computedDistance;
     const candCoords = cand._computedCoords;
+
+    const realOwner = cand.ownerId ? ownersMap.get(cand.ownerId.toString()) : null;
+    const mockOwner = MOCK_OWNERS[idx % MOCK_OWNERS.length];
+
+    const ownerInfo = {
+      name: realOwner?.name || cand.ownerInfo?.name || mockOwner.name,
+      avatar: realOwner?.avatarUrl || cand.ownerInfo?.avatar || mockOwner.avatar,
+      bio: realOwner?.bio || cand.ownerInfo?.bio || mockOwner.bio,
+    };
+
     const updatedCand = {
       ...cand,
       distance: realDistance,
       location: candCoords,
+      ownerInfo,
+      ownerName: ownerInfo.name,
+      ownerAvatar: ownerInfo.avatar,
+      ownerBio: ownerInfo.bio,
     };
     const score = calculateCompatibilityScore(userPet, updatedCand);
     return {

@@ -149,11 +149,16 @@ export function VisitAddress() {
             <div className="p-4 rounded-[12px] border border-[#66B4B1] shadow-sm bg-[#66B4B1]/5">
               <h3 className="font-bold text-gray-900 text-[15px] mb-1">{shop.name}</h3>
               <p className="text-[13px] text-gray-600 font-medium leading-relaxed mb-3">
-                123, Pet Street, near Central Park, Koramangala 5th Block, Bangalore 560034
+                {shop.address || shop.distanceText || shop.city || 'Shop Location'}
               </p>
-              <span className="inline-block bg-[#66B4B1]/10 text-[#66B4B1] px-3 py-1.5 rounded-lg text-[12px] font-bold">
+              <a 
+                href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${shop.name}, ${shop.address || shop.distanceText || shop.city || 'India'}`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block bg-[#66B4B1]/10 text-[#66B4B1] px-3 py-1.5 rounded-lg text-[12px] font-bold hover:bg-[#66B4B1]/20 transition cursor-pointer"
+              >
                 Get Directions
-              </span>
+              </a>
             </div>
           </div>
         )}

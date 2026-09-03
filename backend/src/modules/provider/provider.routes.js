@@ -49,25 +49,73 @@ function publicOffering(o) {
   };
 }
 
+function calculateHaversineDistanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const dist = R * c;
+  return Math.max(0.2, Math.round(dist * 10) / 10);
+}
+
 /** GET /providers?type=daycare — public listing (cached). */
 router.get(
   '/',
-  cacheResponse('providers', 120),
   asyncHandler(async (req, res) => {
     const filter = { active: true, approvalStatus: 'approved' };
     if (req.query.type) {
       if (!PROVIDER_TYPES.includes(req.query.type)) throw ApiError.badRequest('Invalid type');
       filter.type = req.query.type;
     }
-    const providers = await Provider.find(filter).sort({ rating: -1 }).limit(100);
-    sendSuccess(res, { data: providers });
+
+    const userLat = req.query.lat != null && req.query.lat !== '' ? Number(req.query.lat) : null;
+    const userLng = req.query.lng != null && req.query.lng !== '' ? Number(req.query.lng) : null;
+
+    const rawProviders = await Provider.find(filter).lean();
+
+    const formattedProviders = rawProviders.map((p) => {
+      let shopLat = p.geoCoords?.lat ?? (p.location?.coordinates?.[1] ?? null);
+      let shopLng = p.geoCoords?.lng ?? (p.location?.coordinates?.[0] ?? null);
+
+      if (shopLat == null || shopLng == null) {
+        shopLat = 19.0596;
+        shopLng = 72.8295;
+      }
+
+      let distanceKm = 2.5;
+      if (userLat != null && userLng != null) {
+        distanceKm = calculateHaversineDistanceKm(userLat, userLng, shopLat, shopLng);
+      }
+
+      const locationLabel = p.address || p.city || 'Near You';
+      const distanceText = `${locationLabel} • ${distanceKm} km away`;
+
+      return {
+        ...p,
+        geoCoords: { lat: shopLat, lng: shopLng },
+        distanceKm,
+        distanceText,
+        distance: distanceText,
+      };
+    });
+
+    if (userLat != null && userLng != null) {
+      formattedProviders.sort((a, b) => a.distanceKm - b.distanceKm);
+    } else {
+      formattedProviders.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+    }
+
+    sendSuccess(res, { data: formattedProviders });
   })
 );
 
 /** GET /providers/:id — detail + offerings grouped by kind. */
 router.get(
   '/:id',
-  cacheResponse('providers', 120),
   asyncHandler(async (req, res) => {
     const provider = await Provider.findOne({ ...idOrLegacy(req.params.id), active: true });
     if (!provider) throw ApiError.notFound('Provider not found');
@@ -78,34 +126,28 @@ router.get(
       $or: [{ providerId: provider.id }, { providerId: null }],
     }).sort({ price: 1 });
 
-    /*
-     * Platform-wide rows (`providerId: null`) are a shared extras list. They
-     * may contribute add-ons and menu items to any provider, but never plans or
-     * packages: a plan is the thing this centre delivers at its own price, so
-     * serving the shared demo plans made every daycare centre advertise
-     * "Day Pass ₹499" no matter what it actually charges — and charge that.
-     *
-     * A provider with no plans of its own still falls back to the shared list,
-     * so a centre that has not published one yet is not left unbookable.
-     */
     const grouped = { plans: [], packages: [], addons: [], menu: [] };
-    const ownFixed = { plan: [], package: [] };
-    const sharedFixed = { plan: [], package: [] };
+    const ownFixed = { plan: [], package: [], addon: [], menu: [] };
+    const sharedFixed = { plan: [], package: [], addon: [], menu: [] };
 
     for (const o of offerings) {
       const item = publicOffering(o);
       const isOwn = String(o.providerId || '') === String(provider.id);
+      const target = isOwn ? ownFixed : sharedFixed;
+
       if (o.kind === 'plan' || o.kind === 'package') {
-        (isOwn ? ownFixed : sharedFixed)[o.kind].push(item);
+        target[o.kind].push(item);
       } else if (o.kind === 'addon') {
-        grouped.addons.push(item);
+        target.addon.push(item);
       } else {
-        grouped.menu.push(item);
+        target.menu.push(item);
       }
     }
 
     grouped.plans = ownFixed.plan.length ? ownFixed.plan : sharedFixed.plan;
     grouped.packages = ownFixed.package.length ? ownFixed.package : sharedFixed.package;
+    grouped.addons = ownFixed.addon.length ? ownFixed.addon : sharedFixed.addon;
+    grouped.menu = ownFixed.menu.length ? ownFixed.menu : sharedFixed.menu;
 
     sendSuccess(res, { data: { provider, offerings: grouped } });
   })

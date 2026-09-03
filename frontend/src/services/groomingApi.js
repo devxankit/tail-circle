@@ -29,20 +29,45 @@ export function dedupePhotos(urls) {
 }
 
 function toLegacyShop(p) {
+  const parts = [
+    p.address,
+    p.distanceText,
+    p.city,
+    p.state,
+    p.pincode
+  ].filter(Boolean);
+  
+  const uniqueParts = [];
+  const seenParts = new Set();
+  for (const part of parts) {
+    const trimmed = String(part).trim();
+    if (trimmed && !seenParts.has(trimmed.toLowerCase())) {
+      seenParts.add(trimmed.toLowerCase());
+      uniqueParts.push(trimmed);
+    }
+  }
+
+  const fullAddress = uniqueParts.length > 0 ? uniqueParts.join(', ') : 'Shop Location';
+
   return {
     id: p.legacyId || p._id,
     _id: p._id,
     name: p.name,
     rating: p.rating,
     reviews: p.ratingCount,
-    distance: p.distanceText,
+    distance: p.distanceText || (p.distanceKm != null ? `${p.distanceKm} km away` : 'Near You'),
+    address: fullAddress,
+    streetAddress: p.address || '',
+    city: p.city || '',
+    state: p.state || '',
+    pincode: p.pincode || '',
+    distanceText: p.distanceText || '',
+    locationText: fullAddress,
+    geoCoords: p.geoCoords || (p.location?.coordinates ? { lat: p.location.coordinates[1], lng: p.location.coordinates[0] } : null),
     visitTypes: p.visitTypes || [],
     startingPrice: p.startingPrice,
     availability: p.details?.availability || (p.isOpen ? 'Open Now' : 'Closed'),
     image: p.image,
-    // The salon's photo strip. This was never copied out of the API response,
-    // so `shop.gallery` was always undefined and the detail screen's slider
-    // silently collapsed to the single cover image. Cover first, then the rest.
     gallery: dedupePhotos([p.image, ...(p.gallery || [])]),
     about: p.about,
     experience: p.details?.experience,
@@ -50,9 +75,6 @@ function toLegacyShop(p) {
     cancellation: p.details?.cancellation,
     supportedPets: p.supportedPets || [],
     servicesList: p.details?.servicesList || [],
-    // Travel fee / promo discount the salon set from its dashboard. The price
-    // summary used to hard-code 50 and 100 while the server charged neither,
-    // so the customer approved one total and was billed another.
     fees: {
       travelFee: Number(p.details?.groomingFees?.travelFee ?? 50),
       discount: Number(p.details?.groomingFees?.discount ?? 100),
@@ -60,8 +82,8 @@ function toLegacyShop(p) {
   };
 }
 
-export async function getGroomingShops() {
-  const { data } = await api.get('/providers', { params: { type: 'grooming' } });
+export async function getGroomingShops(params = {}) {
+  const { data } = await api.get('/providers', { params: { type: 'grooming', ...params } });
   return data.map(toLegacyShop);
 }
 

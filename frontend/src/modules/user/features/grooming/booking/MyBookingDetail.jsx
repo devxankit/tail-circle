@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ArrowLeft, MessageCircle, Phone } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getBookingById, updateBookingStatus, rescheduleBooking, getGroomingSlots } from '../../../../../services/groomingApi';
@@ -212,20 +212,7 @@ export function MyBookingDetail() {
           </div>
         )}
 
-        <div className="flex gap-3">
-          <button 
-            onClick={() => navigate('/app/chat/room')}
-            className="flex-1 py-3.5 rounded-[14px] font-bold text-[14px] bg-[#66B4B1]/10 text-[#66B4B1] active:scale-95 transition-all flex items-center justify-center gap-2 hover:bg-[#66B4B1]/20"
-          >
-            <MessageCircle size={18} /> Chat
-          </button>
-          <button 
-            onClick={() => window.location.href = 'tel:+919876543210'}
-            className="flex-1 py-3.5 rounded-[14px] font-bold text-[14px] bg-[#66B4B1] text-white shadow-lg shadow-[#66B4B1]/20 active:scale-95 transition-all flex items-center justify-center gap-2 hover:bg-[#599D9A]"
-          >
-            <Phone size={18} className="fill-white" /> Call
-          </button>
-        </div>
+
 
       </div>
 

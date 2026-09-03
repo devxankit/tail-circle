@@ -37,7 +37,12 @@ const vendorProfileSchema = new mongoose.Schema(
     email: { type: String, trim: true, lowercase: true },
     phone: { type: String, trim: true },
     city: { type: String, trim: true, default: '' },
+    state: { type: String, trim: true, default: '' },
     address: { type: String, trim: true, default: '' },
+    location: {
+      lat: { type: Number, default: null },
+      lng: { type: Number, default: null },
+    },
     logo: { type: String, default: '' },
     online: { type: Boolean, default: true }, // storefront open/closed toggle
 

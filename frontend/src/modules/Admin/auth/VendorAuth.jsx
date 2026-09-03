@@ -375,7 +375,10 @@ export function VendorAuth() {
                               <input type="text" placeholder="Phone Number" maxLength={10} value={formData.phone} onChange={e => handleInputChange('phone', e.target.value.replace(/\D/g, ''))} className={inputClass} />
                               <input type="password" placeholder="Account Password" value={formData.password} onChange={e => handleInputChange('password', e.target.value)} className={inputClass} />
                             </div>
-                            <input type="text" placeholder="City / Registered Address" value={formData.address} onChange={e => handleInputChange('address', e.target.value)} className={inputClass} />
+                            <div className="grid grid-cols-2 gap-4">
+                              <input type="text" placeholder="City (e.g. Mumbai, Indore)" value={formData.city} onChange={e => handleInputChange('city', e.target.value)} className={inputClass} />
+                              <input type="text" placeholder="Shop Area / Address" value={formData.address} onChange={e => handleInputChange('address', e.target.value)} className={inputClass} />
+                            </div>
                           </div>
                         )}
 

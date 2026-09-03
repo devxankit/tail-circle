@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Heart, MapPin, MoreHorizontal, Filter, MessageCircle, Sparkles, RefreshCw, RotateCcw, CheckCircle, ChevronDown } from 'lucide-react';
+import { X, Heart, MapPin, MoreHorizontal, Filter, MessageCircle, Sparkles, RefreshCw, RotateCcw, CheckCircle, ChevronDown, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '../../utils/cn';
 import { fetchMatchDeck, swipeProfile, fetchMatches, reportProfile, resetMatchesSwipe } from '../../../../services/social';
@@ -624,11 +624,45 @@ export function MatchSwipe({ setView }) {
                 </div>
               )}
 
-              {/* Bottom Actions */}
-              <div className="px-4 mt-10 mb-6 flex justify-center">
-                <button onClick={handleReport} className="text-gray-400 text-sm font-bold hover:text-gray-600 transition underline decoration-gray-300 underline-offset-4">
-                  Report {currentProfile.name}
-                </button>
+              {/* Pet Parent / Owner Info Card */}
+              <div className="px-4 mt-6 mb-8">
+                <div className="bg-white rounded-[24px] p-5 shadow-sm border border-gray-100 relative overflow-hidden">
+                  {/* Soft Accent Header Tag */}
+                  <div className="flex items-center justify-between mb-3.5">
+                    <span className="text-[11px] font-black tracking-wider uppercase bg-[#e8f4f3] text-[#4C8684] px-3 py-1 rounded-full flex items-center gap-1.5">
+                      <User size={12} className="text-[#4C8684]" />
+                      Pet Parent
+                    </span>
+                    <span className="text-xs font-bold text-gray-400 flex items-center gap-1">
+                      <Sparkles size={12} className="text-amber-400" />
+                      Verified Owner
+                    </span>
+                  </div>
+
+                  <div className="flex items-start gap-4">
+                    {/* Parent Photo */}
+                    <div className="relative shrink-0">
+                      <img 
+                        src={currentProfile.ownerInfo?.avatar || currentProfile.ownerAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'} 
+                        alt={currentProfile.ownerInfo?.name || 'Pet Parent'} 
+                        className="w-14 h-14 rounded-full object-cover border-2 border-[#4C8684]/20 shadow-sm bg-gray-100" 
+                      />
+                      <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-[#4C8684] text-white rounded-full flex items-center justify-center text-[10px] font-bold shadow-sm">
+                        ✓
+                      </div>
+                    </div>
+
+                    {/* Parent Name & Short Bio */}
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-base font-black text-[#222] truncate">
+                        {currentProfile.ownerInfo?.name?.split(' ')[0] || currentProfile.ownerName || 'Pet Parent'}
+                      </h4>
+                      <p className="text-xs font-medium text-gray-600 mt-1 leading-relaxed">
+                        {currentProfile.ownerInfo?.bio || currentProfile.ownerBio || `Loving parent of ${currentProfile.name}. Always excited for weekend dog park playdates, social walks & happy furry meetups!`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

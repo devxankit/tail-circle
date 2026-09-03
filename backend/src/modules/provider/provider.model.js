@@ -28,7 +28,15 @@ const providerSchema = new mongoose.Schema(
     startingPrice: { type: Number, default: 0 }, // rupees
     supportedPets: { type: [String], default: [] },
     visitTypes: { type: [String], default: [] }, // grooming: Salon Visit / Home Visit
-    distanceText: { type: String, default: '' }, // display until real geo lands
+    distanceText: { type: String, default: '' },
+    city: { type: String, trim: true, default: '' },
+    address: { type: String, trim: true, default: '' },
+    state: { type: String, trim: true, default: '' },
+    pincode: { type: String, trim: true, default: '' },
+    geoCoords: {
+      lat: { type: Number, default: null },
+      lng: { type: Number, default: null },
+    },
     location: {
       type: { type: String, enum: ['Point'], default: undefined },
       coordinates: { type: [Number], default: undefined },

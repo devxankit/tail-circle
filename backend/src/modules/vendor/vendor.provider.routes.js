@@ -71,6 +71,16 @@ export function providerVendorRouter(providerType) {
         supportedPets: z.array(z.string().max(40)).max(20).optional(),
         visitTypes: z.array(z.string().max(40)).max(10).optional(),
         distanceText: z.string().max(120).optional(),
+        city: z.string().max(120).optional(),
+        address: z.string().max(300).optional(),
+        state: z.string().max(120).optional(),
+        pincode: z.string().max(20).optional(),
+        geoCoords: z
+          .object({
+            lat: z.number().min(-90).max(90).optional(),
+            lng: z.number().min(-180).max(180).optional(),
+          })
+          .optional(),
         isOpen: z.boolean().optional(),
         // Grooming: the travel fee charged on home visits and the promo
         // discount, both of which the customer's price summary displays.
@@ -102,8 +112,15 @@ export function providerVendorRouter(providerType) {
     ),
     asyncHandler(async (req, res) => {
       const provider = await ownProvider(req, providerType);
-      const { details, groomingFees, daycareFees, dailyCapacity, pricing, ...rest } = req.body;
+      const { details, groomingFees, daycareFees, dailyCapacity, pricing, geoCoords, ...rest } = req.body;
       Object.assign(provider, rest);
+      if (geoCoords && geoCoords.lat != null && geoCoords.lng != null) {
+        provider.geoCoords = { lat: geoCoords.lat, lng: geoCoords.lng };
+        provider.location = {
+          type: 'Point',
+          coordinates: [geoCoords.lng, geoCoords.lat],
+        };
+      }
       // `details` is a free-form blob per vertical — merge, never replace, so a
       // partial save cannot wipe the slot template or the day capacity.
       if (details || groomingFees || daycareFees || pricing || dailyCapacity !== undefined) {

@@ -4,7 +4,7 @@ import {
   Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Save, Clock,
   ClipboardList, LayoutDashboard, User, IndianRupee, Star, CalendarCheck,
   Scissors, Sparkles, Home, MapPin, Phone, X, Eye, ChevronLeft, ChevronRight,
-  ImagePlus, Upload, ArrowLeft, ArrowRight,
+  ImagePlus, Upload, ArrowLeft, ArrowRight, Navigation, Compass,
 } from 'lucide-react';
 import {
   fetchProviderSummary, fetchProviderProfile, updateProviderProfile,
@@ -439,11 +439,7 @@ function BookingCard({ b, busy, onMove }) {
             </div>
           )}
 
-          {b.userId?.phone && (
-            <a href={`tel:${b.userId.phone}`} className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-[#40716F]">
-              <Phone size={13} /> {b.userId.phone}
-            </a>
-          )}
+
         </div>
 
         <div className="text-right shrink-0">
@@ -960,6 +956,64 @@ function Profile({ onChanged }) {
 
   const fees = p?.details?.groomingFees || {};
 
+  const [detectingGps, setDetectingGps] = useState(false);
+  const [gpsStatus, setGpsStatus] = useState('');
+
+  const handleDetectLiveGps = () => {
+    if (!navigator.geolocation) {
+      setGpsStatus('Geolocation is not supported by your browser.');
+      return;
+    }
+    setDetectingGps(true);
+    setGpsStatus('Fetching live GPS location…');
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = Math.round(pos.coords.latitude * 100000) / 100000;
+        const lng = Math.round(pos.coords.longitude * 100000) / 100000;
+        setGpsStatus(`📍 Captured Live GPS: ${lat}, ${lng}`);
+
+        let updateObj = {
+          ...p,
+          geoCoords: { lat, lng },
+        };
+
+        try {
+          if (window.google?.maps?.Geocoder) {
+            const geocoder = new window.google.maps.Geocoder();
+            const res = await geocoder.geocode({ location: { lat, lng } });
+            if (res.results && res.results[0]) {
+              const comp = res.results[0].address_components;
+              let city = '', state = '', pincode = '', street = '';
+              for (const c of comp) {
+                if (c.types.includes('locality')) city = c.long_name;
+                if (c.types.includes('administrative_area_level_1')) state = c.long_name;
+                if (c.types.includes('postal_code')) pincode = c.long_name;
+                if (c.types.includes('route') || c.types.includes('sublocality_level_1')) {
+                  street = street ? `${street}, ${c.long_name}` : c.long_name;
+                }
+              }
+              if (city) updateObj.city = updateObj.city || city;
+              if (state) updateObj.state = updateObj.state || state;
+              if (pincode) updateObj.pincode = updateObj.pincode || pincode;
+              if (street) updateObj.distanceText = updateObj.distanceText || street;
+              if (res.results[0].formatted_address) {
+                updateObj.address = updateObj.address || res.results[0].formatted_address;
+              }
+            }
+          }
+        } catch {}
+
+        setP(updateObj);
+        setDetectingGps(false);
+      },
+      (err) => {
+        setGpsStatus(`Could not fetch location: ${err.message}`);
+        setDetectingGps(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
   const save = async () => {
     setBusy(true);
     setErr('');
@@ -978,6 +1032,11 @@ function Profile({ onChanged }) {
         supportedPets: p.supportedPets,
         visitTypes: p.visitTypes,
         distanceText: p.distanceText,
+        address: p.address,
+        city: p.city,
+        state: p.state,
+        pincode: p.pincode,
+        geoCoords: p.geoCoords,
         isOpen: p.isOpen,
         groomingFees: {
           travelFee: Number(fees.travelFee ?? 50) || 0,
@@ -1024,7 +1083,6 @@ function Profile({ onChanged }) {
 
         <div className="grid md:grid-cols-2 gap-4">
           <Input label="Salon name" value={p.name} onChange={(v) => setP({ ...p, name: v })} />
-          <Input label="Area / locality" value={p.distanceText} onChange={(v) => setP({ ...p, distanceText: v })} />
           <Input label="Opens at" value={p.openTime} onChange={(v) => setP({ ...p, openTime: v })} />
           <Input label="Closes at" value={p.closeTime} onChange={(v) => setP({ ...p, closeTime: v })} />
           <Input
@@ -1039,23 +1097,118 @@ function Profile({ onChanged }) {
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-y"
             />
           </div>
+        </div>
+      </div>
 
-          <ChipPicker
-            label="Pets you groom"
-            options={PET_TYPES}
-            value={p.supportedPets || []}
-            onChange={(supportedPets) => setP({ ...p, supportedPets })}
-          />
-          <ChipPicker
-            label="Visit types offered"
-            hint="Customers see exactly these options at checkout."
-            options={VISIT_TYPES}
-            value={p.visitTypes || []}
-            onChange={(visitTypes) => setP({ ...p, visitTypes })}
-          />
+      {/* Shop Location & Map Settings */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-gray-900 flex items-center gap-2">
+              <MapPin size={18} className="text-[#40716F]" /> Shop Address & Location Pin
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Set your shop address, city, pincode, and GPS coordinates so customers can find and navigate to your salon.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleDetectLiveGps}
+            disabled={detectingGps}
+            className="px-3 py-2 rounded-xl bg-[#EAF3F1] text-[#40716F] hover:bg-[#d8ece8] text-xs font-bold flex items-center gap-1.5 transition active:scale-95 disabled:opacity-50 shrink-0 cursor-pointer"
+          >
+            {detectingGps ? <Loader2 size={14} className="animate-spin" /> : <Navigation size={14} />}
+            {detectingGps ? 'Fetching GPS…' : 'Use Live GPS Location'}
+          </button>
         </div>
 
-        <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
+        {gpsStatus && (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-medium text-emerald-800 flex items-center justify-between">
+            <span>{gpsStatus}</span>
+            {p.geoCoords?.lat && (
+              <span className="text-[11px] bg-emerald-100 px-2 py-0.5 rounded font-bold">
+                {p.geoCoords.lat}, {p.geoCoords.lng}
+              </span>
+            )}
+          </div>
+        )}
+
+        <div className="grid md:grid-cols-2 gap-4">
+          <Input
+            label="Shop / Building Address"
+            placeholder="e.g. Shop 14, Lotus Park, Link Road"
+            value={p.address || ''}
+            onChange={(v) => setP({ ...p, address: v })}
+          />
+          <Input
+            label="Area / Locality"
+            placeholder="e.g. Bandra West"
+            value={p.distanceText || ''}
+            onChange={(v) => setP({ ...p, distanceText: v })}
+          />
+          <Input
+            label="City"
+            placeholder="e.g. Mumbai"
+            value={p.city || ''}
+            onChange={(v) => setP({ ...p, city: v })}
+          />
+          <Input
+            label="State"
+            placeholder="e.g. Maharashtra"
+            value={p.state || ''}
+            onChange={(v) => setP({ ...p, state: v })}
+          />
+          <Input
+            label="Pincode / Postal Code"
+            placeholder="e.g. 400050"
+            value={p.pincode || ''}
+            onChange={(v) => setP({ ...p, pincode: v })}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              label="Latitude"
+              type="number"
+              step="0.00001"
+              value={p.geoCoords?.lat ?? ''}
+              onChange={(v) =>
+                setP({
+                  ...p,
+                  geoCoords: { ...(p.geoCoords || {}), lat: v ? Number(v) : null },
+                })
+              }
+            />
+            <Input
+              label="Longitude"
+              type="number"
+              step="0.00001"
+              value={p.geoCoords?.lng ?? ''}
+              onChange={(v) =>
+                setP({
+                  ...p,
+                  geoCoords: { ...(p.geoCoords || {}), lng: v ? Number(v) : null },
+                })
+              }
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
+        <ChipPicker
+          label="Pets you groom"
+          options={PET_TYPES}
+          value={p.supportedPets || []}
+          onChange={(supportedPets) => setP({ ...p, supportedPets })}
+        />
+        <ChipPicker
+          label="Visit types offered"
+          hint="Customers see exactly these options at checkout."
+          options={VISIT_TYPES}
+          value={p.visitTypes || []}
+          onChange={(visitTypes) => setP({ ...p, visitTypes })}
+        />
+
+        <label className="flex items-center gap-2 text-sm font-medium text-gray-700 pt-2">
           <input
             type="checkbox" checked={p.isOpen ?? true}
             onChange={(e) => setP({ ...p, isOpen: e.target.checked })}
