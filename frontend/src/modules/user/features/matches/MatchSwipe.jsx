@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Heart, MapPin, MoreHorizontal, Filter, MessageCircle, Sparkles, RefreshCw } from 'lucide-react';
+import { X, Heart, MapPin, MoreHorizontal, Filter, MessageCircle, Sparkles, RefreshCw, RotateCcw, CheckCircle, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '../../utils/cn';
-import { fetchMatchDeck, swipeProfile, fetchMatches, reportProfile } from '../../../../services/social';
+import { fetchMatchDeck, swipeProfile, fetchMatches, reportProfile, resetMatchesSwipe } from '../../../../services/social';
 import { MatchesFilterModal } from './MatchesFilterModal';
+import { ReportModal } from '../../../../components/common/ReportModal';
+import { CitySelectorModal } from './CitySelectorModal';
 
 const DEFAULT_FILTERS = {
   type: 'Any',
@@ -25,13 +27,28 @@ export function MatchSwipe({ setView }) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Discover');
 
+  // Location / City selector state
+  const [selectedCity, setSelectedCity] = useState({ name: 'Delhi NCR', lat: 28.6139, lng: 77.2090 });
+  const [isCityModalOpen, setIsCityModalOpen] = useState(false);
+
   // Filters state & modal toggle
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
 
-  // Candidate deck from Match Engine API
-  const [filteredProfiles, setFilteredProfiles] = useState([]);
-  const [isLoadingDeck, setIsLoadingDeck] = useState(true);
+  // Report Modal state
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+
+  // Candidate deck from Match Engine API with instant sessionStorage caching
+  const [filteredProfiles, setFilteredProfiles] = useState(() => {
+    try {
+      const cached = sessionStorage.getItem('tc_match_deck_cache');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isLoadingDeck, setIsLoadingDeck] = useState(() => filteredProfiles.length === 0);
 
   // Real Matches state for 'Liked You' tab
   const [realMatches, setRealMatches] = useState([]);
@@ -48,21 +65,86 @@ export function MatchSwipe({ setView }) {
   const [touchStart, setTouchStart] = useState({ x: null, y: null, time: null });
   const [touchEnd, setTouchEnd] = useState({ x: null, y: null });
   
+  const [userCoords, setUserCoords] = useState(null);
   const scrollRef = useRef(null);
 
-  const loadDeck = (activeFilters = filters) => {
-    setIsLoadingDeck(true);
-    fetchMatchDeck(activeFilters)
+  const loadDeck = (activeFilters = filters, showLoading = false) => {
+    if (showLoading || filteredProfiles.length === 0) {
+      setIsLoadingDeck(true);
+    }
+    const cityParams = selectedCity
+      ? { city: selectedCity.name, cityName: selectedCity.name, lat: selectedCity.lat, lng: selectedCity.lng }
+      : {};
+    const queryFilters = { ...cityParams, ...(userCoords || {}), ...activeFilters };
+    fetchMatchDeck(queryFilters)
       .then((data) => {
-        setFilteredProfiles(data);
+        setFilteredProfiles(data || []);
+        if (data && data.length > 0) {
+          try {
+            sessionStorage.setItem('tc_match_deck_cache', JSON.stringify(data));
+          } catch {}
+        }
         setCurrentIndex(0);
       })
-      .catch(() => setFilteredProfiles([]))
+      .catch(() => {})
       .finally(() => setIsLoadingDeck(false));
   };
 
+  const handleResetSwipes = async () => {
+    try {
+      setIsLoadingDeck(true);
+      await resetMatchesSwipe();
+      setFilters(DEFAULT_FILTERS);
+      loadDeck(userCoords ? { ...DEFAULT_FILTERS, ...userCoords } : DEFAULT_FILTERS, true);
+    } catch {
+      setIsLoadingDeck(false);
+    }
+  };
+
   useEffect(() => {
-    loadDeck(filters);
+    try {
+      const cachedCity = sessionStorage.getItem('tc_user_gps_city');
+      if (cachedCity) {
+        const parsed = JSON.parse(cachedCity);
+        if (parsed?.name && parsed?.lat && parsed?.lng) {
+          setSelectedCity(parsed);
+          setUserCoords({ lat: parsed.lat, lng: parsed.lng });
+          loadDeck({ ...filters, lat: parsed.lat, lng: parsed.lng });
+          fetchMatches().then(setRealMatches).catch(() => setRealMatches([]));
+          return;
+        }
+      }
+    } catch {}
+
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = Math.round(pos.coords.latitude * 10000) / 10000;
+          const lng = Math.round(pos.coords.longitude * 10000) / 10000;
+          try {
+            const { reverseGeocodeCoords } = await import('../../../../services/googleMaps');
+            const cityObj = await reverseGeocodeCoords(lat, lng);
+            setSelectedCity(cityObj);
+            setUserCoords({ lat, lng });
+            try {
+              sessionStorage.setItem('tc_user_gps_city', JSON.stringify(cityObj));
+            } catch {}
+            loadDeck({ ...filters, lat, lng });
+          } catch {
+            const fallbackCity = { name: 'Current Location', lat, lng, isGps: true };
+            setSelectedCity(fallbackCity);
+            setUserCoords({ lat, lng });
+            loadDeck({ ...filters, lat, lng });
+          }
+        },
+        () => {
+          loadDeck(filters);
+        },
+        { timeout: 6000 }
+      );
+    } else {
+      loadDeck(filters);
+    }
     fetchMatches().then(setRealMatches).catch(() => setRealMatches([]));
   }, []);
 
@@ -100,14 +182,17 @@ export function MatchSwipe({ setView }) {
     }, 400);
   };
 
-  // Real report — was a decorative link/icon with no handler before.
   const handleReport = () => {
     if (!currentProfile) return;
-    const reason = window.prompt(`Why are you reporting ${currentProfile.name}? (optional)`);
-    if (reason === null) return; // cancelled
-    reportProfile(currentProfile.id, reason)
-      .then(() => handleAction('pass'))
-      .catch(() => alert('Could not submit the report — please try again.'));
+    setIsReportModalOpen(true);
+  };
+
+  const handleReportSubmit = async (reason) => {
+    if (!currentProfile) return;
+    await reportProfile(currentProfile.id, reason);
+    setToastMessage(`Reported ${currentProfile.name}. Thank you for keeping TailCircle safe.`);
+    setTimeout(() => setToastMessage(''), 3500);
+    handleAction('pass');
   };
 
   const onTouchStart = (e) => {
@@ -153,6 +238,36 @@ export function MatchSwipe({ setView }) {
 
   return (
     <div className="flex flex-col h-full bg-[#f4f1eb] overflow-hidden relative">
+      {/* Toast Feedback */}
+      {toastMessage && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 text-white px-5 py-3 rounded-full text-xs font-bold shadow-2xl flex items-center gap-2 backdrop-blur-md animate-in fade-in slide-in-from-top-4 duration-300 border border-slate-700">
+          <CheckCircle size={16} className="text-emerald-400" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* Report Profile Modal */}
+      <ReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        title={`Report ${currentProfile?.name || 'Profile'}`}
+        subtitle="Tell us why you are reporting this pet profile"
+        onSubmit={handleReportSubmit}
+      />
+
+      {/* City Location Selector Modal */}
+      <CitySelectorModal
+        isOpen={isCityModalOpen}
+        onClose={() => setIsCityModalOpen(false)}
+        selectedCity={selectedCity}
+        onSelectCity={(city) => {
+          setSelectedCity(city);
+          const cityCoords = { lat: city.lat, lng: city.lng, city: city.name, cityName: city.name };
+          setUserCoords(cityCoords);
+          loadDeck({ ...filters, ...cityCoords }, true);
+        }}
+      />
+
       {/* Filter Modal */}
       <MatchesFilterModal
         isOpen={isFilterOpen}
@@ -161,7 +276,7 @@ export function MatchSwipe({ setView }) {
         onApply={(newFilters) => {
           setFilters(newFilters);
           setIsFilterOpen(false);
-          loadDeck(newFilters);
+          loadDeck(userCoords ? { ...userCoords, ...newFilters } : newFilters, true);
         }}
       />
 
@@ -257,28 +372,72 @@ export function MatchSwipe({ setView }) {
         </div>
       </div>
 
+      {/* City Location Switcher Bar */}
+      {activeTab === 'Discover' && (
+        <div className="flex items-center justify-between px-5 py-2 bg-[#e8e4db]/70 border-y border-[#dcd7cc] text-xs font-bold text-slate-700 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Location:</span>
+            <button
+              onClick={() => setIsCityModalOpen(true)}
+              className="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-[#4C8684] px-3.5 py-1 rounded-full shadow-xs border border-slate-200/80 transition active:scale-95"
+            >
+              <MapPin size={13} className="text-rose-500 fill-rose-500/20" />
+              <span className="font-black text-slate-900">{selectedCity?.name || 'Select City'}</span>
+              <ChevronDown size={13} className="text-slate-400" />
+            </button>
+          </div>
+          <span className="text-[10px] font-bold text-slate-500 bg-white/60 px-2 py-0.5 rounded-full border border-slate-200/50">
+            Nearest Pets First
+          </span>
+        </div>
+      )}
+
       {/* Main Content Area */}
       {activeTab === 'Discover' ? (
-        !currentProfile ? (
+        isLoadingDeck && !currentProfile ? (
+          <div className="flex-1 overflow-y-auto hide-scrollbar bg-[#f4f1eb] px-5 pt-5 pb-24 animate-pulse">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <div className="h-8 w-36 bg-slate-300 rounded-full mb-2"></div>
+                <div className="h-4 w-24 bg-slate-200 rounded"></div>
+              </div>
+              <div className="h-6 w-20 bg-slate-300 rounded-full"></div>
+            </div>
+            <div className="w-full aspect-[4/5] bg-slate-300 rounded-[24px] shadow-sm mb-6 relative overflow-hidden">
+              <div className="absolute bottom-4 left-4 right-4 h-12 bg-slate-400/40 rounded-xl"></div>
+            </div>
+            <div className="bg-white rounded-[24px] p-5 shadow-sm space-y-3">
+              <div className="h-4 w-28 bg-slate-300 rounded"></div>
+              <div className="h-4 w-full bg-slate-200 rounded"></div>
+              <div className="h-4 w-4/5 bg-slate-200 rounded"></div>
+            </div>
+          </div>
+        ) : !currentProfile ? (
           <div className="flex-1 flex flex-col items-center justify-center bg-[#f4f1eb] p-6 text-center animate-in fade-in duration-300">
             <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-md mb-4 text-[#F87B68]">
               <Heart size={40} />
             </div>
             <h2 className="text-2xl font-black text-[#4C8684] mb-2">You're all caught up!</h2>
-            <p className="text-[#599D9A] font-bold mb-6">Come back later for more potential playdates.</p>
-            <div className="flex flex-col gap-3 w-full max-w-[220px]">
+            <p className="text-[#599D9A] font-bold mb-6">Come back later for more potential playdates, or reset your swipes to discover again.</p>
+            <div className="flex flex-col gap-3 w-full max-w-[240px]">
+              <button 
+                onClick={handleResetSwipes}
+                className="w-full bg-[#4C8684] text-white py-3 rounded-full font-bold text-sm shadow-lg hover:bg-[#3d6b6a] transition flex items-center justify-center gap-2"
+              >
+                <RotateCcw size={16} /> Reset Swipes & Discover
+              </button>
               <button 
                 onClick={() => {
                   setFilters(DEFAULT_FILTERS);
-                  loadDeck(DEFAULT_FILTERS);
+                  loadDeck(DEFAULT_FILTERS, true);
                 }}
                 className="w-full bg-white text-[#4C8684] border border-[#4C8684] py-2.5 rounded-full font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm hover:bg-[#4C8684]/10 transition"
               >
-                <RefreshCw size={14} /> Reset Filters
+                <RefreshCw size={14} /> Clear Filters
               </button>
               <button 
                 onClick={() => navigate('/app/home')}
-                className="w-full bg-[#4C8684] text-white py-3 rounded-full font-bold text-sm shadow-lg hover:bg-[#3d6b6a] transition"
+                className="w-full text-slate-500 py-2 font-bold text-xs hover:text-slate-800 transition"
               >
                 Go back Home
               </button>
@@ -340,9 +499,10 @@ export function MatchSwipe({ setView }) {
                 {/* Like Button */}
                 <button 
                   onClick={() => handleAction('like')}
-                  className="absolute bottom-6 right-8 w-[52px] h-[52px] bg-white rounded-full shadow-[0_8px_20px_rgba(0,0,0,0.15)] flex items-center justify-center text-[#F87B68] hover:scale-105 active:scale-95 transition-all z-10"
+                  className="absolute bottom-6 right-8 w-[52px] h-[52px] bg-white rounded-full shadow-[0_8px_20px_rgba(0,0,0,0.15)] flex items-center justify-center text-[#F87B68] hover:scale-110 active:scale-95 transition-all z-10 border border-slate-100"
+                  title="Like pet profile"
                 >
-                  <Heart size={26} strokeWidth={3} fill="#F87B68" />
+                  <Heart size={26} strokeWidth={2.5} className="text-[#F87B68]" />
                 </button>
               </div>
 
@@ -429,7 +589,7 @@ export function MatchSwipe({ setView }) {
                     onClick={() => handleAction('like')}
                     className="absolute -bottom-5 right-8 w-[48px] h-[48px] bg-white rounded-full shadow-[0_8px_20px_rgba(0,0,0,0.12)] flex items-center justify-center text-[#F87B68] hover:scale-105 active:scale-95 transition-all z-10 border border-gray-100"
                   >
-                    <Heart size={24} strokeWidth={3} fill="#F87B68" />
+                    <Heart size={24} strokeWidth={2.5} className="text-[#F87B68]" />
                   </button>
                 </div>
               )}
@@ -444,7 +604,7 @@ export function MatchSwipe({ setView }) {
                     onClick={() => handleAction('like')}
                     className="absolute bottom-6 right-8 w-[52px] h-[52px] bg-white rounded-full shadow-[0_8px_20px_rgba(0,0,0,0.15)] flex items-center justify-center text-[#4C8684] hover:scale-105 active:scale-95 transition-all z-10"
                   >
-                    <Heart size={26} strokeWidth={3} />
+                    <Heart size={26} strokeWidth={2.5} className="text-[#4C8684]" />
                   </button>
                 </div>
               )}
@@ -459,7 +619,7 @@ export function MatchSwipe({ setView }) {
                     onClick={() => handleAction('like')}
                     className="absolute bottom-6 right-8 w-[52px] h-[52px] bg-white rounded-full shadow-[0_8px_20px_rgba(0,0,0,0.15)] flex items-center justify-center text-[#F87B68] hover:scale-105 active:scale-95 transition-all z-10"
                   >
-                    <Heart size={26} strokeWidth={3} fill="#F87B68" />
+                    <Heart size={26} strokeWidth={2.5} className="text-[#F87B68]" />
                   </button>
                 </div>
               )}

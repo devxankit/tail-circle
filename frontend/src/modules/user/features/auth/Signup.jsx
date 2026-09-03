@@ -131,22 +131,15 @@ export function Signup() {
         
         <h3 className="text-[1.5rem] font-bold text-[#599D9A] mb-3">Sign up</h3>
         
-        {/* Social Logins */}
-        <div className="flex justify-center gap-4 mb-3 shrink-0">
-          <button type="button" className="w-[2.8rem] h-[2.8rem] bg-white rounded-[14px] shadow-[0_4px_15px_rgba(0,0,0,0.05)] flex items-center justify-center active:scale-95 transition-transform border border-gray-100 hover:bg-[#FAF7F2]">
-            <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5" alt="Google" />
-          </button>
-          <button type="button" className="w-[2.8rem] h-[2.8rem] bg-white rounded-[14px] shadow-[0_4px_15px_rgba(0,0,0,0.05)] flex items-center justify-center active:scale-95 transition-transform border border-gray-100 hover:bg-[#FAF7F2]">
-            <img src="https://www.svgrepo.com/show/475647/facebook-color.svg" className="w-5 h-5" alt="Facebook" />
-          </button>
-          <button type="button" className="w-[2.8rem] h-[2.8rem] bg-white rounded-[14px] shadow-[0_4px_15px_rgba(0,0,0,0.05)] flex items-center justify-center active:scale-95 transition-transform border border-gray-100 hover:bg-[#FAF7F2]">
-            <img src="https://www.svgrepo.com/show/511330/apple-173.svg" className="w-5 h-5" alt="Apple" />
-          </button>
-        </div>
-
-        {/* Divider Text */}
-        <div className="text-center mb-2 shrink-0">
-          <p className="text-[11px] font-bold tracking-wide text-[#F87B68]">Or, register with phone number</p>
+        {/* Community Welcome Card (Replaces Social Icons) */}
+        <div className="bg-[#FAF7F2] rounded-2xl p-3 border border-[#599D9A]/20 flex items-center gap-3 mb-3 shrink-0">
+          <div className="w-9 h-9 rounded-full bg-[#599D9A] text-white flex items-center justify-center font-black text-sm shadow-sm shrink-0">
+            🐾
+          </div>
+          <div>
+            <h4 className="text-[12px] font-extrabold text-[#4C8684] leading-tight">Join 10,000+ Pet Parents</h4>
+            <p className="text-[10px] font-semibold text-slate-500 mt-0.5">Playdates, Vets, Shop & Care under one circle</p>
+          </div>
         </div>
 
         {/* Signup Form */}

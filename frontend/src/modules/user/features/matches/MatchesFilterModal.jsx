@@ -84,10 +84,10 @@ export function MatchesFilterModal({ isOpen, onClose, currentFilters, onApply })
     <button
       onClick={onClick}
       className={cn(
-        "px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap",
+        "px-4 py-2 rounded-full text-xs font-bold transition-all whitespace-nowrap border shadow-xs",
         active 
-          ? "bg-primary-main text-white shadow-md shadow-primary-main/20" 
-          : "bg-white border border-border-light text-text-secondary hover:border-primary-main hover:text-primary-main"
+          ? "bg-[#F87B68] text-white border-[#F87B68] shadow-md shadow-rose-200" 
+          : "bg-slate-50 border-slate-200 text-slate-700 hover:border-[#4C8684] hover:text-[#4C8684]"
       )}
     >
       {label}
@@ -95,28 +95,31 @@ export function MatchesFilterModal({ isOpen, onClose, currentFilters, onApply })
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-300 p-0 sm:p-4">
       <div 
-        className="relative w-full sm:w-[450px] max-w-full bg-bg-main h-[85vh] sm:h-[80vh] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-full sm:slide-in-from-bottom-8 duration-300 overflow-hidden"
+        className="relative w-full sm:w-[480px] max-w-full bg-white h-[85vh] sm:h-[80vh] rounded-t-3xl sm:rounded-3xl shadow-2xl flex flex-col animate-in slide-in-from-bottom-full sm:slide-in-from-bottom-8 duration-300 overflow-hidden border border-slate-100"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-border-light bg-white rounded-t-3xl sm:rounded-t-3xl shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-primary-light flex items-center justify-center text-primary-main">
-              <SlidersHorizontal size={16} strokeWidth={2.5} />
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white rounded-t-3xl shrink-0 z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-[#4C8684]/10 flex items-center justify-center text-[#4C8684]">
+              <SlidersHorizontal size={20} strokeWidth={2.5} />
             </div>
-            <h2 className="text-xl font-bold text-text-primary">Filters</h2>
+            <div>
+              <h2 className="text-lg font-black text-slate-900 leading-tight">Filters</h2>
+              <p className="text-xs font-bold text-slate-400">Customize discovery preferences</p>
+            </div>
           </div>
           <button 
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-bg-secondary text-text-secondary transition-colors"
+            className="w-9 h-9 flex items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
           >
             <X size={20} strokeWidth={2.5} />
           </button>
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-8 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-6 space-y-7 bg-white custom-scrollbar">
           
           {/* Basic Info */}
           <div className="space-y-6">
@@ -319,16 +322,16 @@ export function MatchesFilterModal({ isOpen, onClose, currentFilters, onApply })
         </div>
 
         {/* Footer Actions */}
-        <div className="w-full p-5 bg-white border-t border-border-light flex gap-4 shrink-0 mt-auto rounded-b-3xl sm:rounded-b-3xl z-10">
+        <div className="w-full p-5 bg-white border-t border-slate-100 flex gap-3 shrink-0 mt-auto rounded-b-3xl sm:rounded-b-3xl z-10 shadow-lg">
           <button 
             onClick={handleReset}
-            className="flex-1 py-3.5 rounded-xl font-bold text-text-secondary bg-bg-main hover:bg-border-light transition-colors"
+            className="flex-1 py-3.5 rounded-2xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors text-sm"
           >
             Clear All
           </button>
           <button 
             onClick={handleApply}
-            className="flex-1 py-3.5 rounded-xl font-bold text-white bg-primary-main hover:bg-primary-dark transition-colors shadow-lg shadow-primary-main/30 flex items-center justify-center gap-2"
+            className="flex-1 py-3.5 rounded-2xl font-bold text-white bg-[#4C8684] hover:bg-[#3d6b6a] transition-colors shadow-lg shadow-[#4C8684]/20 flex items-center justify-center gap-2 text-sm"
           >
             Apply Filters
           </button>

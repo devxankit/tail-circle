@@ -39,19 +39,34 @@ export async function getOrSet(key, ttlSeconds, loader) {
 }
 
 /**
- * Delete all keys matching a pattern, e.g. `invalidate('shop:products:*')`.
- * Uses SCAN (never KEYS). ioredis does not apply keyPrefix to SCAN MATCH,
- * but DOES apply it to DEL args — so we scan with the full prefix and strip
- * it back off before deleting.
+ * Delete all keys matching a pattern or namespace, e.g. `invalidate('shop')` or `invalidate('shop:*')`.
+ * First attempts O(1) tracking-set invalidation (`cache_set:<namespace>`); falls back to SCAN if needed.
  */
 export async function invalidate(pattern) {
   if (!isRedisReady()) return 0;
+
+  // Extract namespace, e.g. "community:*" -> "community", "shop" -> "shop"
+  const namespace = pattern.replace(/:\*$/, '').replace(/:resp.*$/, '');
+  const setKey = `cache_set:${namespace}`;
+
+  try {
+    const keys = await redis.smembers(setKey);
+    if (keys && keys.length > 0) {
+      await redis.del(...keys, setKey);
+      return keys.length;
+    }
+  } catch (err) {
+    logger.warn(`cache set-based invalidate failed for ${namespace}: ${err.message}`);
+  }
+
+  // Fallback scan for dynamic pattern keys if tracking set was empty
   const prefix = env.redis.keyPrefix;
   let cursor = '0';
   let deleted = 0;
   try {
+    const scanPattern = pattern.includes('*') ? pattern : `${pattern}:*`;
     do {
-      const [next, keys] = await redis.scan(cursor, 'MATCH', `${prefix}${pattern}`, 'COUNT', 200);
+      const [next, keys] = await redis.scan(cursor, 'MATCH', `${prefix}${scanPattern}`, 'COUNT', 500);
       cursor = next;
       if (keys.length) {
         await redis.del(...keys.map((k) => k.slice(prefix.length)));
@@ -89,8 +104,13 @@ export function cacheResponse(namespace, ttlSeconds) {
     const originalJson = res.json.bind(res);
     res.json = (body) => {
       if (res.statusCode >= 200 && res.statusCode < 300 && isRedisReady()) {
+        const setKey = `cache_set:${namespace}`;
         redis
+          .multi()
           .set(key, JSON.stringify(body), 'EX', ttlSeconds)
+          .sadd(setKey, key)
+          .expire(setKey, ttlSeconds * 2)
+          .exec()
           .catch((err) => logger.warn(`cacheResponse set failed: ${err.message}`));
       }
       res.set('X-Cache', 'MISS');

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Lock, Phone, Hash } from 'lucide-react';
+import { Lock, Phone, Hash, ShieldCheck } from 'lucide-react';
 import { requestOtp, verifyOtp } from '../../../../services/auth';
 
 export function Login() {
@@ -225,39 +225,20 @@ export function Login() {
           </form>
         </div>
 
-        {/* Social Logins */}
-        <div className="flex flex-col items-center shrink-0 mb-6 mt-auto">
-          <div className="flex items-center gap-3 w-full mb-4 opacity-70">
-            <div className="flex-1 h-[1px] bg-gray-300"></div>
-            <p className="text-[12px] font-bold tracking-widest text-gray-500 uppercase">Or login with</p>
-            <div className="flex-1 h-[1px] bg-gray-300"></div>
+        {/* Trust & Instant Security Card (Replaces Social Icons) */}
+        <div className="w-full bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-[#599D9A]/15 shadow-sm mb-6 mt-auto shrink-0 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-[#599D9A]/10 flex items-center justify-center text-[#4C8684] shrink-0">
+              <ShieldCheck size={22} strokeWidth={2.5} />
+            </div>
+            <div>
+              <h4 className="text-[13px] font-extrabold text-[#4C8684] leading-tight">Instant OTP Authentication</h4>
+              <p className="text-[11px] font-semibold text-slate-500 mt-0.5">Safe, Secure & Spam-Free Access</p>
+            </div>
           </div>
-          <div className="flex justify-center gap-5">
-            {/* No OAuth backend exists yet (auth.routes.js is phone/OTP only) —
-                these tell the user that honestly instead of silently doing
-                nothing when tapped. */}
-            <button
-              type="button"
-              onClick={() => alert('Google sign-in is coming soon. Please continue with your phone number for now.')}
-              className="w-[3.5rem] h-[3.5rem] bg-white rounded-full shadow-[0_4px_15px_rgba(0,0,0,0.06)] flex items-center justify-center active:scale-95 transition-transform border border-gray-100 hover:bg-[#FAF7F2]"
-            >
-              <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-6 h-6" alt="Google" />
-            </button>
-            <button
-              type="button"
-              onClick={() => alert('Facebook sign-in is coming soon. Please continue with your phone number for now.')}
-              className="w-[3.5rem] h-[3.5rem] bg-white rounded-full shadow-[0_4px_15px_rgba(0,0,0,0.06)] flex items-center justify-center active:scale-95 transition-transform border border-gray-100 hover:bg-[#FAF7F2]"
-            >
-              <img src="https://www.svgrepo.com/show/475647/facebook-color.svg" className="w-6 h-6" alt="Facebook" />
-            </button>
-            <button
-              type="button"
-              onClick={() => alert('Apple sign-in is coming soon. Please continue with your phone number for now.')}
-              className="w-[3.5rem] h-[3.5rem] bg-white rounded-full shadow-[0_4px_15px_rgba(0,0,0,0.06)] flex items-center justify-center active:scale-95 transition-transform border border-gray-100 hover:bg-[#FAF7F2]"
-            >
-              <img src="https://www.svgrepo.com/show/511330/apple-173.svg" className="w-6 h-6" alt="Apple" />
-            </button>
-          </div>
+          <span className="text-[10px] font-extrabold bg-[#599D9A]/10 text-[#4C8684] px-2.5 py-1 rounded-full border border-[#599D9A]/20 shrink-0">
+            ⚡ Fast
+          </span>
         </div>
 
         <div className="text-center shrink-0 pb-safe">

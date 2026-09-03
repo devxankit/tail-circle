@@ -63,7 +63,7 @@ router.post(
       authorName: req.user.name || (req.user.phone ? `User (${req.user.phone.slice(-4)})` : 'User'),
       authorAvatar: req.user.avatarUrl || null,
     });
-    await invalidate('community:*');
+    invalidate('community').catch(() => {});
     sendSuccess(res, { statusCode: 201, message: 'Post published', data: post });
   })
 );
@@ -77,7 +77,7 @@ router.delete(
       { $set: { deletedAt: new Date() } }
     );
     if (result.matchedCount === 0) throw ApiError.forbidden('Not authorized to delete this post');
-    await invalidate('community:*');
+    invalidate('community').catch(() => {});
     sendSuccess(res, { message: 'Post deleted' });
   })
 );
@@ -120,7 +120,7 @@ router.post(
       }
       liked = true;
     }
-    await invalidate('community:*');
+    invalidate('community').catch(() => {});
     const fresh = await Post.findById(post.id);
     sendSuccess(res, { data: { liked, likesCount: fresh.likesCount } });
   })
@@ -152,7 +152,7 @@ router.post(
       text: req.body.text,
     });
     await Post.updateOne({ _id: post.id }, { $inc: { commentsCount: 1 } });
-    await invalidate('community:*');
+    invalidate('community').catch(() => {});
     sendSuccess(res, { statusCode: 201, data: comment });
   })
 );
@@ -170,7 +170,7 @@ router.post(
     const reports = await PostReport.countDocuments({ postId: req.params.id });
     if (reports >= 5) {
       await Post.updateOne({ _id: req.params.id }, { $set: { status: 'reported' } });
-      await invalidate('community:*');
+      invalidate('community').catch(() => {});
     }
     sendSuccess(res, { message: 'Report received' });
   })

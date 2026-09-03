@@ -218,6 +218,8 @@ import { MealPortalProvider } from './modules/Admin/MealPortalAdmin/context/Meal
 
 
 import { ErrorBoundary } from './ErrorBoundary';
+// Eager, not lazy: these must render even when a chunk fails to download.
+import { NotFound } from './components/error/NotFound';
 
 // Lazy Imports
 const AuthLayout = lazy(() => import('./modules/user/layouts/AuthLayout').then(m => ({ default: m.AuthLayout })));
@@ -485,306 +487,315 @@ function App() {
         <ErrorBoundary>
           {/* Wraps the router so an in-progress consultation survives navigation. */}
           <CallProvider>
-          <Suspense fallback={<PageLoader />}><Routes>
-            <Route path="/" element={<Navigate to="/splash" replace />} />
-            <Route path="/splash" element={<Splash />} />
-            
-            {/* Auth Routes */}
-            <Route path="/auth" element={<AuthLayout />}>
-              <Route path="login" element={<Login />} />
-              <Route path="signup" element={<Signup />} />
-              <Route path="otp" element={<OtpVerify />} />
-            </Route>
+            {/* Inner boundary: a page that throws is contained here, so the call
+              context above it - and any consultation in progress - survives. */}
+            <ErrorBoundary>
+              <Suspense fallback={<PageLoader />}><Routes>
+                <Route path="/" element={<Navigate to="/splash" replace />} />
+                <Route path="/splash" element={<Splash />} />
 
-            {/* Authenticated user app (everything below needs a session) */}
-            <Route element={<RequireAuth />}>
+                {/* Auth Routes */}
+                <Route path="/auth" element={<AuthLayout />}>
+                  <Route path="login" element={<Login />} />
+                  <Route path="signup" element={<Signup />} />
+                  <Route path="otp" element={<OtpVerify />} />
+                </Route>
 
-            {/* Onboarding Routes */}
-            <Route path="/onboarding" element={<OnboardingLayout />}>
-              <Route path="step1" element={<Step1Details />} />
-              <Route path="step2" element={<Step2Media />} />
-              <Route path="step3" element={<Step3Health />} />
-            </Route>
-            <Route path="/welcome" element={<WelcomeIntro />} />
+                {/* Authenticated user app (everything below needs a session) */}
+                <Route element={<RequireAuth />}>
 
-            {/* Main App Routes with Bottom Nav */}
-            <Route path="/app" element={<MainLayout />}>
-              <Route path="home" element={<Home />} />
-              <Route path="matches" element={<Matches />} />
-              <Route path="community" element={<Community />} />
-              <Route path="shop" element={<Shop />} />
-              <Route path="profile" element={<Profile />} />
-            </Route>
+                  {/* Onboarding Routes */}
+                  <Route path="/onboarding" element={<OnboardingLayout />}>
+                    <Route path="step1" element={<Step1Details />} />
+                    <Route path="step2" element={<Step2Media />} />
+                    <Route path="step3" element={<Step3Health />} />
+                  </Route>
+                  <Route path="/welcome" element={<WelcomeIntro />} />
 
-            {/* Full Screen Modals/Pages */}
-            <Route path="/app/chat/room" element={<ChatRoom />} />
-            {/* Matches, match notifications and the matches list all link to
+                  {/* Main App Routes with Bottom Nav */}
+                  <Route path="/app" element={<MainLayout />}>
+                    <Route path="home" element={<Home />} />
+                    <Route path="matches" element={<Matches />} />
+                    <Route path="community" element={<Community />} />
+                    <Route path="shop" element={<Shop />} />
+                    <Route path="profile" element={<Profile />} />
+                  </Route>
+
+                  {/* Full Screen Modals/Pages */}
+                  <Route path="/app/chat/room" element={<ChatRoom />} />
+                  {/* Matches, match notifications and the matches list all link to
                 /app/chat/room/<conversationId>. Only the bare path was
                 registered, so every one of those landed on "No routes
                 matched" and a blank screen. */}
-            <Route path="/app/chat/room/:conversationId" element={<ChatRoom />} />
-            <Route path="/app/community/create" element={<CreatePost />} />
-            <Route path="/app/shop/product/:id" element={<ProductDetail />} />
-            <Route path="/app/shop/cart" element={<Cart />} />
-            <Route path="/app/shop/checkout" element={<ShopCheckout />} />
-            <Route path="/app/shop/success" element={<OrderSuccess />} />
-             <Route path="/app/shop/marketplace" element={<Marketplace />} />
-             <Route path="/app/adopt" element={<AdoptHome />} />
-             <Route path="/app/adopt/list" element={<PetListing />} />
-             <Route path="/app/adopt/list-pet" element={<ListPetForAdoption />} />
-             <Route path="/app/adopt/my-listings" element={<MyAdoptionListings />} />
-             <Route path="/app/adopt/my-adoptions" element={<MyAdoptions />} />
-             <Route path="/app/adopt/:id" element={<PetDetail />} />
-             <Route path="/app/adopt/chat/:id" element={<ShelterChat />} />
-             <Route path="/app/adopt/apply/:id" element={<AdoptionApplication />} />
-             <Route path="/app/adopt/home-check/:id" element={<HomeCheck />} />
-             <Route path="/app/adopt/approved/:id" element={<ApplicationApproved />} />
-             <Route path="/app/adopt/meet/:id" element={<MeetAndGreet />} />
-             <Route path="/app/adopt/agreement/:id" element={<AdoptionAgreement />} />
-             <Route path="/app/adopt/fee/:id" element={<AdoptionFee />} />
-             <Route path="/app/adopt/success/:id" element={<AdoptionSuccess />} />
-            <Route path="/app/services/daycare" element={<DaycareHome />} />
-            <Route path="/app/services/daycare/list" element={<DaycareListing />} />
-            <Route path="/app/services/daycare/:id" element={<DaycareDetail />} />
-            <Route path="/app/services/daycare/book/plan" element={<SelectPlan />} />
-            <Route path="/app/services/daycare/book/date" element={<SelectDateDuration />} />
-            <Route path="/app/services/daycare/book/pet" element={<PetInformation />} />
-            <Route path="/app/services/daycare/book/pickup" element={<PickupDrop />} />
-            <Route path="/app/services/daycare/book/payment" element={<DaycarePriceSummary />} />
-            <Route path="/app/services/daycare/book/pay" element={<DaycarePayment />} />
-            <Route path="/app/services/daycare/book/success" element={<DaycareBookingConfirmed />} />
-            <Route path="/app/services/daycare/booking/:id" element={<DaycareBookingDetail />} />
-            <Route path="/app/services/doctors" element={<DoctorList />} />
-            <Route path="/app/services/doctors/:id" element={<DoctorDetail />} />
-            <Route path="/app/services/doctors/:id/checkout" element={<DoctorCheckout />} />
-            <Route path="/app/services/doctors/:id/success" element={<DoctorSuccess />} />
-            {/* Video consultation room — deep-linked from the ring notification. */}
-            <Route path="/app/consult/:bookingId" element={<ConsultCall />} />
-             <Route path="/app/events" element={<EventList />} />
-             <Route path="/app/events/list" element={<EventList />} />
-             <Route path="/app/events/my-tickets" element={<MyEventTickets />} />
-             <Route path="/app/services/events" element={<EventList />} />
-             <Route path="/app/services/events/:id" element={<EventDetail />} />
-            <Route path="/app/services/events/:id/checkout" element={<EventCheckout />} />
-            <Route path="/app/services/events/:id/success" element={<TicketSuccess />} />
-            <Route path="/app/services/memorial" element={<MemorialService />} />
-            <Route path="/app/services/grooming" element={<GroomingList />} />
-            <Route path="/app/services/grooming/list" element={<GroomingListing />} />
-            <Route path="/app/services/grooming/book/package" element={<SelectPackage />} />
-            <Route path="/app/services/grooming/book/slot" element={<SelectSlot />} />
-            <Route path="/app/services/grooming/book/pet" element={<PetDetails />} />
-            <Route path="/app/services/grooming/book/address" element={<VisitAddress />} />
-            <Route path="/app/services/grooming/book/payment" element={<PriceSummary />} />
-            <Route path="/app/services/grooming/book/success" element={<BookingConfirmed />} />
-            <Route path="/app/services/grooming/booking/:id" element={<GroomingBookingDetail />} />
-            <Route path="/app/services/grooming/:id" element={<GroomingDetail />} />
-            <Route path="/app/wallet" element={<Wallet />} />
-            <Route path="/app/notifications" element={<Notifications />} />
-            
-            {/* Meal Plan Sub-screens */}
-            <Route path="/app/meals" element={<UserMealDashboard />} />
-            <Route path="/app/meals/subscribe" element={<MealSubscribeFlow />} />
-            <Route path="/app/meals/track" element={<TrackDelivery />} />
-            <Route path="/app/meals/plan" element={<ChangePlan />} />
-            <Route path="/app/meals/plan/:id" element={<PlanDetail />} />
-            <Route path="/app/meals/allergies" element={<UpdateAllergies />} />
-            <Route path="/app/meals/pause" element={<PauseSubscription />} />
-            
-            {/* Profile Sub-screens */}
-            <Route path="/app/profile/edit" element={<EditProfile />} />
-            <Route path="/app/profile/pets/add" element={<AddPet />} />
-            <Route path="/app/profile/bookings" element={<BookingHistory />} />
-            <Route path="/app/profile/bookings/:id" element={<BookingDetail />} />
-            <Route path="/app/profile/orders" element={<MyOrders />} />
-            <Route path="/app/profile/address" element={<AddressBook />} />
-            <Route path="/app/profile/address/add" element={<AddAddress />} />
-            <Route path="/app/profile/saved" element={<SavedItems />} />
-            <Route path="/app/profile/posts" element={<MyPosts />} />
-            <Route path="/app/profile/support" element={<HelpSupport />} />
+                  <Route path="/app/chat/room/:conversationId" element={<ChatRoom />} />
+                  <Route path="/app/community/create" element={<CreatePost />} />
+                  <Route path="/app/shop/product/:id" element={<ProductDetail />} />
+                  <Route path="/app/shop/cart" element={<Cart />} />
+                  <Route path="/app/shop/checkout" element={<ShopCheckout />} />
+                  <Route path="/app/shop/success" element={<OrderSuccess />} />
+                  <Route path="/app/shop/marketplace" element={<Marketplace />} />
+                  <Route path="/app/adopt" element={<AdoptHome />} />
+                  <Route path="/app/adopt/list" element={<PetListing />} />
+                  <Route path="/app/adopt/list-pet" element={<ListPetForAdoption />} />
+                  <Route path="/app/adopt/my-listings" element={<MyAdoptionListings />} />
+                  <Route path="/app/adopt/my-adoptions" element={<MyAdoptions />} />
+                  <Route path="/app/adopt/:id" element={<PetDetail />} />
+                  <Route path="/app/adopt/chat/:id" element={<ShelterChat />} />
+                  <Route path="/app/adopt/apply/:id" element={<AdoptionApplication />} />
+                  <Route path="/app/adopt/home-check/:id" element={<HomeCheck />} />
+                  <Route path="/app/adopt/approved/:id" element={<ApplicationApproved />} />
+                  <Route path="/app/adopt/meet/:id" element={<MeetAndGreet />} />
+                  <Route path="/app/adopt/agreement/:id" element={<AdoptionAgreement />} />
+                  <Route path="/app/adopt/fee/:id" element={<AdoptionFee />} />
+                  <Route path="/app/adopt/success/:id" element={<AdoptionSuccess />} />
+                  <Route path="/app/services/daycare" element={<DaycareHome />} />
+                  <Route path="/app/services/daycare/list" element={<DaycareListing />} />
+                  <Route path="/app/services/daycare/:id" element={<DaycareDetail />} />
+                  <Route path="/app/services/daycare/book/plan" element={<SelectPlan />} />
+                  <Route path="/app/services/daycare/book/date" element={<SelectDateDuration />} />
+                  <Route path="/app/services/daycare/book/pet" element={<PetInformation />} />
+                  <Route path="/app/services/daycare/book/pickup" element={<PickupDrop />} />
+                  <Route path="/app/services/daycare/book/payment" element={<DaycarePriceSummary />} />
+                  <Route path="/app/services/daycare/book/pay" element={<DaycarePayment />} />
+                  <Route path="/app/services/daycare/book/success" element={<DaycareBookingConfirmed />} />
+                  <Route path="/app/services/daycare/booking/:id" element={<DaycareBookingDetail />} />
+                  <Route path="/app/services/doctors" element={<DoctorList />} />
+                  <Route path="/app/services/doctors/:id" element={<DoctorDetail />} />
+                  <Route path="/app/services/doctors/:id/checkout" element={<DoctorCheckout />} />
+                  <Route path="/app/services/doctors/:id/success" element={<DoctorSuccess />} />
+                  {/* Video consultation room — deep-linked from the ring notification. */}
+                  <Route path="/app/consult/:bookingId" element={<ConsultCall />} />
+                  <Route path="/app/events" element={<EventList />} />
+                  <Route path="/app/events/list" element={<EventList />} />
+                  <Route path="/app/events/my-tickets" element={<MyEventTickets />} />
+                  <Route path="/app/services/events" element={<EventList />} />
+                  <Route path="/app/services/events/:id" element={<EventDetail />} />
+                  <Route path="/app/services/events/:id/checkout" element={<EventCheckout />} />
+                  <Route path="/app/services/events/:id/success" element={<TicketSuccess />} />
+                  <Route path="/app/services/memorial" element={<MemorialService />} />
+                  <Route path="/app/services/grooming" element={<GroomingList />} />
+                  <Route path="/app/services/grooming/list" element={<GroomingListing />} />
+                  <Route path="/app/services/grooming/book/package" element={<SelectPackage />} />
+                  <Route path="/app/services/grooming/book/slot" element={<SelectSlot />} />
+                  <Route path="/app/services/grooming/book/pet" element={<PetDetails />} />
+                  <Route path="/app/services/grooming/book/address" element={<VisitAddress />} />
+                  <Route path="/app/services/grooming/book/payment" element={<PriceSummary />} />
+                  <Route path="/app/services/grooming/book/success" element={<BookingConfirmed />} />
+                  <Route path="/app/services/grooming/booking/:id" element={<GroomingBookingDetail />} />
+                  <Route path="/app/services/grooming/:id" element={<GroomingDetail />} />
+                  <Route path="/app/wallet" element={<Wallet />} />
+                  <Route path="/app/notifications" element={<Notifications />} />
 
-            </Route>
-            {/* End authenticated user app */}
+                  {/* Meal Plan Sub-screens */}
+                  <Route path="/app/meals" element={<UserMealDashboard />} />
+                  <Route path="/app/meals/subscribe" element={<MealSubscribeFlow />} />
+                  <Route path="/app/meals/track" element={<TrackDelivery />} />
+                  <Route path="/app/meals/plan" element={<ChangePlan />} />
+                  <Route path="/app/meals/plan/:id" element={<PlanDetail />} />
+                  <Route path="/app/meals/allergies" element={<UpdateAllergies />} />
+                  <Route path="/app/meals/pause" element={<PauseSubscription />} />
 
-            {/* Admin Redirects & Auth */}
-            <Route path="/admin" element={<Navigate to="/admin/login" replace />} />
-            <Route path="/admin/login" element={<AdminLogin />} />
-            <Route path="/auth/login/admin" element={<Navigate to="/admin/login" replace />} />
-            <Route path="/auth/signup/admin" element={<Navigate to="/admin/login" replace />} />
-            <Route path="/auth/admin" element={<Navigate to="/admin/login" replace />} />
+                  {/* Profile Sub-screens */}
+                  <Route path="/app/profile/edit" element={<EditProfile />} />
+                  <Route path="/app/profile/pets/add" element={<AddPet />} />
+                  <Route path="/app/profile/bookings" element={<BookingHistory />} />
+                  <Route path="/app/profile/bookings/:id" element={<BookingDetail />} />
+                  <Route path="/app/profile/orders" element={<MyOrders />} />
+                  <Route path="/app/profile/address" element={<AddressBook />} />
+                  <Route path="/app/profile/address/add" element={<AddAddress />} />
+                  <Route path="/app/profile/saved" element={<SavedItems />} />
+                  <Route path="/app/profile/posts" element={<MyPosts />} />
+                  <Route path="/app/profile/support" element={<HelpSupport />} />
 
-            {/* Super Admin Control (Full Web Layout) — PROTECTED */}
-            <Route path="/admin" element={<ProtectedAdminRoute><AdminLayout /></ProtectedAdminRoute>}>
-              {/* Main */}
-              <Route path="dashboard" element={<AdminDashboard />} />
-              <Route path="users" element={<Users />} />
-              <Route path="pets" element={<Pets />} />
+                </Route>
+                {/* End authenticated user app */}
 
-              {/* Vendors */}
-              <Route path="vendors" element={<AllVendors />} />
-              <Route path="vendors/pending" element={<PendingApprovals />} />
-              <Route path="vendors/shop" element={<ShopVendors />} />
-              <Route path="vendors/meal" element={<MealProviders />} />
-              <Route path="vendors/event" element={<EventOrganizers />} />
-              <Route path="vendors/doctors" element={<DoctorsClinics />} />
-              <Route path="vendors/memorial" element={<MemorialProviders />} />
-              <Route path="vendors/documents" element={<VendorDocuments />} />
-              <Route path="vendors/performance" element={<VendorPerformance />} />
+                {/* Admin Redirects & Auth */}
+                <Route path="/admin" element={<Navigate to="/admin/login" replace />} />
+                <Route path="/admin/login" element={<AdminLogin />} />
+                <Route path="/auth/login/admin" element={<Navigate to="/admin/login" replace />} />
+                <Route path="/auth/signup/admin" element={<Navigate to="/admin/login" replace />} />
+                <Route path="/auth/admin" element={<Navigate to="/admin/login" replace />} />
 
-              {/* Operations */}
-              <Route path="operations/orders" element={<Orders />} />
-              <Route path="operations/bookings" element={<Bookings />} />
-              <Route path="operations/appointments" element={<Appointments />} />
-              <Route path="operations/deliveries" element={<Deliveries />} />
-              <Route path="operations/refunds" element={<Returns />} />
-              <Route path="operations/support" element={<Support />} />
+                {/* Super Admin Control (Full Web Layout) — PROTECTED */}
+                <Route path="/admin" element={<ProtectedAdminRoute><AdminLayout /></ProtectedAdminRoute>}>
+                  {/* Main */}
+                  <Route path="dashboard" element={<AdminDashboard />} />
+                  <Route path="users" element={<Users />} />
+                  <Route path="pets" element={<Pets />} />
 
-              {/* Services */}
-              <Route path="services/products" element={<Products />} />
-              <Route path="services/product-categories" element={<ProductCategories />} />
-              <Route path="services/meal-plans" element={<MealPlans />} />
-              <Route path="services/doctor-services" element={<DoctorServices />} />
-              <Route path="services/event-categories" element={<EventCategories />} />
-              <Route path="services/memorial-packages" element={<MemorialPackages />} />
-              <Route path="services/grooming" element={<GroomingDayCare />} />
-              <Route path="services/addons" element={<AddonsAmenities />} />
-              <Route path="services/breeds" element={<BreedManagement />} />
+                  {/* Vendors */}
+                  <Route path="vendors" element={<AllVendors />} />
+                  <Route path="vendors/pending" element={<PendingApprovals />} />
+                  <Route path="vendors/shop" element={<ShopVendors />} />
+                  <Route path="vendors/meal" element={<MealProviders />} />
+                  <Route path="vendors/event" element={<EventOrganizers />} />
+                  <Route path="vendors/doctors" element={<DoctorsClinics />} />
+                  <Route path="vendors/memorial" element={<MemorialProviders />} />
+                  <Route path="vendors/documents" element={<VendorDocuments />} />
+                  <Route path="vendors/performance" element={<VendorPerformance />} />
 
-              {/* Finance */}
-              <Route path="finance/transactions" element={<Transactions />} />
-              <Route path="finance/payments" element={<Payments />} />
-              <Route path="finance/commission" element={<Commission />} />
-              <Route path="finance/payouts" element={<AdminVendorPayouts />} />
-              <Route path="finance/wallet" element={<AdminWallet />} />
-              <Route path="finance/tax" element={<TaxGSTReports />} />
+                  {/* Operations */}
+                  <Route path="operations/orders" element={<Orders />} />
+                  <Route path="operations/bookings" element={<Bookings />} />
+                  <Route path="operations/appointments" element={<Appointments />} />
+                  <Route path="operations/deliveries" element={<Deliveries />} />
+                  <Route path="operations/refunds" element={<Returns />} />
+                  <Route path="operations/support" element={<Support />} />
 
-              {/* Platform */}
-              <Route path="platform/notifications" element={<AdminNotifications />} />
-              <Route path="platform/community" element={<AdminCommunity />} />
-              <Route path="platform/reviews" element={<Reviews />} />
-              <Route path="platform/content" element={<BannersContent />} />
-              <Route path="platform/reports" element={<Reports />} />
-              <Route path="platform/security" element={<Security />} />
-              <Route path="platform/staff" element={<Staff />} />
-              <Route path="platform/settings" element={<AdminSettings />} />
-            </Route>
+                  {/* Services */}
+                  <Route path="services/products" element={<Products />} />
+                  <Route path="services/product-categories" element={<ProductCategories />} />
+                  <Route path="services/meal-plans" element={<MealPlans />} />
+                  <Route path="services/doctor-services" element={<DoctorServices />} />
+                  <Route path="services/event-categories" element={<EventCategories />} />
+                  <Route path="services/memorial-packages" element={<MemorialPackages />} />
+                  <Route path="services/grooming" element={<GroomingDayCare />} />
+                  <Route path="services/addons" element={<AddonsAmenities />} />
+                  <Route path="services/breeds" element={<BreedManagement />} />
 
-            {/* Super Admin - Meal Portal Operations */}
-            <Route path="/admin/meal-portal" element={<ProtectedAdminRoute><MealPortalProvider><MealPortalAdminLayout /></MealPortalProvider></ProtectedAdminRoute>}>
-              <Route path="dashboard" element={<SuperAdminDashboard />} />
-              <Route path="plans" element={<div className="p-8 text-center text-gray-500">Global Meal Plans (Integrated with Vendor Module)</div>} />
-              <Route path="subscriptions" element={<SubscriptionsAdminView />} />
-              <Route path="trials" element={<TrialMealsAdminView />} />
-              <Route path="deliveries" element={<SuperDeliveryView />} />
-              <Route path="tracking" element={<div className="p-8 text-center text-gray-500">Live GPS Tracking Maps...</div>} />
-              <Route path="vendors" element={<VendorsManagementView />} />
-              <Route path="kitchens" element={<div className="p-8 text-center text-gray-500">Global Kitchen Queue...</div>} />
-              <Route path="inventory" element={<div className="p-8 text-center text-gray-500">Platform Inventory...</div>} />
-              <Route path="nutrition" element={<div className="p-8 text-center text-gray-500">Pet Nutrition DB...</div>} />
-              <Route path="support" element={<div className="p-8 text-center text-gray-500">Reviews & Tickets...</div>} />
-              <Route path="users" element={<div className="p-8 text-center text-gray-500">User Directory...</div>} />
-              <Route path="finance" element={<FinanceAdminView />} />
-              <Route path="analytics" element={<div className="p-8 text-center text-gray-500">Reports & Analytics...</div>} />
-              <Route path="settings" element={<div className="p-8 text-center text-gray-500">Platform Settings...</div>} />
-            </Route>
+                  {/* Finance */}
+                  <Route path="finance/transactions" element={<Transactions />} />
+                  <Route path="finance/payments" element={<Payments />} />
+                  <Route path="finance/commission" element={<Commission />} />
+                  <Route path="finance/payouts" element={<AdminVendorPayouts />} />
+                  <Route path="finance/wallet" element={<AdminWallet />} />
+                  <Route path="finance/tax" element={<TaxGSTReports />} />
 
-            {/* Vendor Redirects & Auth */}
-            <Route path="/vendor" element={<Navigate to="/vendor/login" replace />} />
-            <Route path="/vandor" element={<Navigate to="/vendor/login" replace />} />
-            <Route path="/auth/login/vendor" element={<Navigate to="/vendor/login" replace />} />
-            <Route path="/auth/login/vandor" element={<Navigate to="/vendor/login" replace />} />
-            <Route path="/vendor/login" element={<VendorAuth />} />
-            <Route path="/vendor/signup" element={<VendorAuth />} />
-            <Route path="/vendor/pending" element={<VendorAuth />} />
+                  {/* Platform */}
+                  <Route path="platform/notifications" element={<AdminNotifications />} />
+                  <Route path="platform/community" element={<AdminCommunity />} />
+                  <Route path="platform/reviews" element={<Reviews />} />
+                  <Route path="platform/content" element={<BannersContent />} />
+                  <Route path="platform/reports" element={<Reports />} />
+                  <Route path="platform/security" element={<Security />} />
+                  <Route path="platform/staff" element={<Staff />} />
+                  <Route path="platform/settings" element={<AdminSettings />} />
+                </Route>
 
-            {/* Vendor Dashboard & Tools (Full Web Layout) */}
-            <Route path="/vendor" element={<ProtectedVendorRoute><VendorLayout /></ProtectedVendorRoute>}>
-              <Route path="doctor/consultations" element={<ProtectedVendorRoute allow="clinic"><ClinicVendorProvider><DoctorManagement /></ClinicVendorProvider></ProtectedVendorRoute>} />
-              <Route path="grooming-provider" element={<ProtectedVendorRoute allow="grooming"><GroomingVendorPortal /></ProtectedVendorRoute>} />
-              <Route path="daycare-provider" element={<ProtectedVendorRoute allow="daycare"><DaycareVendorPortal /></ProtectedVendorRoute>} />
-              <Route path="adoption-partner" element={<ProtectedVendorRoute allow="adoption"><AdoptionVendorPortal /></ProtectedVendorRoute>} />
-              <Route path="meal/plans" element={<Navigate to="/vendor/meal-provider/dashboard" replace />} />
-              <Route path="event/packages" element={<Navigate to="/vendor/events-organizer" replace />} />
-              <Route path="memorial/requests" element={<Navigate to="/vendor/memorial-provider" replace />} />
-              <Route path="settings" element={<VendorSettings />} />
-              <Route path="payouts" element={<VendorPayouts />} />
-              <Route path="support" element={<VendorSupport />} />
-            </Route>
+                {/* Super Admin - Meal Portal Operations */}
+                <Route path="/admin/meal-portal" element={<ProtectedAdminRoute><MealPortalProvider><MealPortalAdminLayout /></MealPortalProvider></ProtectedAdminRoute>}>
+                  <Route path="dashboard" element={<SuperAdminDashboard />} />
+                  <Route path="plans" element={<div className="p-8 text-center text-gray-500">Global Meal Plans (Integrated with Vendor Module)</div>} />
+                  <Route path="subscriptions" element={<SubscriptionsAdminView />} />
+                  <Route path="trials" element={<TrialMealsAdminView />} />
+                  <Route path="deliveries" element={<SuperDeliveryView />} />
+                  <Route path="tracking" element={<div className="p-8 text-center text-gray-500">Live GPS Tracking Maps...</div>} />
+                  <Route path="vendors" element={<VendorsManagementView />} />
+                  <Route path="kitchens" element={<div className="p-8 text-center text-gray-500">Global Kitchen Queue...</div>} />
+                  <Route path="inventory" element={<div className="p-8 text-center text-gray-500">Platform Inventory...</div>} />
+                  <Route path="nutrition" element={<div className="p-8 text-center text-gray-500">Pet Nutrition DB...</div>} />
+                  <Route path="support" element={<div className="p-8 text-center text-gray-500">Reviews & Tickets...</div>} />
+                  <Route path="users" element={<div className="p-8 text-center text-gray-500">User Directory...</div>} />
+                  <Route path="finance" element={<FinanceAdminView />} />
+                  <Route path="analytics" element={<div className="p-8 text-center text-gray-500">Reports & Analytics...</div>} />
+                  <Route path="settings" element={<div className="p-8 text-center text-gray-500">Platform Settings...</div>} />
+                </Route>
 
-            {/* Shop Partner Standalone Dashboard */}
-            <Route path="/vendor/shop-provider" element={<ProtectedVendorRoute allow="shop"><ShopVendorProvider><ShopVendorLayout /></ShopVendorProvider></ProtectedVendorRoute>}>
-              <Route index element={<ShopDashboard />} />
-              <Route path="products" element={<ShopProductsView />} />
-              <Route path="orders" element={<ShopOrdersView />} />
-              <Route path="inventory" element={<ShopInventoryView />} />
-              <Route path="returns" element={<ShopReturnsView />} />
-              <Route path="feedback" element={<ShopFeedbackView />} />
-              <Route path="finance" element={<ShopFinanceView />} />
-              <Route path="settings" element={<ShopSettingsView />} />
-              <Route path="*" element={<Navigate to="/vendor/shop-provider" replace />} />
-            </Route>
+                {/* Vendor Redirects & Auth */}
+                <Route path="/vendor" element={<Navigate to="/vendor/login" replace />} />
+                <Route path="/vandor" element={<Navigate to="/vendor/login" replace />} />
+                <Route path="/auth/login/vendor" element={<Navigate to="/vendor/login" replace />} />
+                <Route path="/auth/login/vandor" element={<Navigate to="/vendor/login" replace />} />
+                <Route path="/vendor/login" element={<VendorAuth />} />
+                <Route path="/vendor/signup" element={<VendorAuth />} />
+                <Route path="/vendor/pending" element={<VendorAuth />} />
 
-            {/* Fresh Meals Partner Exclusive Dashboard */}
-            <Route path="/vendor/meal-provider" element={<ProtectedVendorRoute allow="meal_subscription"><MealProviderProvider><MealProviderLayout /></MealProviderProvider></ProtectedVendorRoute>}>
-              <Route path="dashboard" element={<MealDashboard />} />
-              <Route path="plans" element={<MealPlansView />} />
-              <Route path="subscriptions" element={<SubscriptionsView />} />
-              <Route path="trials" element={<TrialMealsView />} />
-              <Route path="kitchen" element={<KitchenQueueView />} />
-              <Route path="delivery-board" element={<DeliveryManagementView />} />
-              <Route path="live-tracking" element={<LiveTrackingView />} />
-              <Route path="feedback" element={<CustomerFeedbackView />} />
-              
-              <Route path="finance" element={<FinanceCenterView />} />
-              <Route path="settings" element={<BusinessControlCenterView />} />
+                {/* Vendor Dashboard & Tools (Full Web Layout) */}
+                <Route path="/vendor" element={<ProtectedVendorRoute><VendorLayout /></ProtectedVendorRoute>}>
+                  <Route path="doctor/consultations" element={<ProtectedVendorRoute allow="clinic"><ClinicVendorProvider><DoctorManagement /></ClinicVendorProvider></ProtectedVendorRoute>} />
+                  <Route path="grooming-provider" element={<ProtectedVendorRoute allow="grooming"><GroomingVendorPortal /></ProtectedVendorRoute>} />
+                  <Route path="daycare-provider" element={<ProtectedVendorRoute allow="daycare"><DaycareVendorPortal /></ProtectedVendorRoute>} />
+                  <Route path="adoption-partner" element={<ProtectedVendorRoute allow="adoption"><AdoptionVendorPortal /></ProtectedVendorRoute>} />
+                  <Route path="meal/plans" element={<Navigate to="/vendor/meal-provider/dashboard" replace />} />
+                  <Route path="event/packages" element={<Navigate to="/vendor/events-organizer" replace />} />
+                  <Route path="memorial/requests" element={<Navigate to="/vendor/memorial-provider" replace />} />
+                  <Route path="settings" element={<VendorSettings />} />
+                  <Route path="payouts" element={<VendorPayouts />} />
+                  <Route path="support" element={<VendorSupport />} />
+                </Route>
 
-              {/* Redirects for removed legacy routes */}
-              <Route path="support" element={<Navigate to="/vendor/meal-provider/feedback" replace />} />
-              <Route path="tickets" element={<Navigate to="/vendor/meal-provider/feedback" replace />} />
-              <Route path="payouts" element={<Navigate to="/vendor/meal-provider/finance" replace />} />
-              <Route path="transactions" element={<Navigate to="/vendor/meal-provider/finance" replace />} />
-              <Route path="zones" element={<Navigate to="/vendor/meal-provider/settings" replace />} />
-              <Route path="notifications" element={<Navigate to="/vendor/meal-provider/settings" replace />} />
-              <Route path="security" element={<Navigate to="/vendor/meal-provider/settings" replace />} />
-              <Route path="*" element={<Navigate to="/vendor/meal-provider/dashboard" replace />} />
-            </Route>
+                {/* Shop Partner Standalone Dashboard */}
+                <Route path="/vendor/shop-provider" element={<ProtectedVendorRoute allow="shop"><ShopVendorProvider><ShopVendorLayout /></ShopVendorProvider></ProtectedVendorRoute>}>
+                  <Route index element={<ShopDashboard />} />
+                  <Route path="products" element={<ShopProductsView />} />
+                  <Route path="orders" element={<ShopOrdersView />} />
+                  <Route path="inventory" element={<ShopInventoryView />} />
+                  <Route path="returns" element={<ShopReturnsView />} />
+                  <Route path="feedback" element={<ShopFeedbackView />} />
+                  <Route path="finance" element={<ShopFinanceView />} />
+                  <Route path="settings" element={<ShopSettingsView />} />
+                  <Route path="*" element={<Navigate to="/vendor/shop-provider" replace />} />
+                </Route>
 
-            {/* Events Partner Dashboard */}
-            <Route path="/vendor/events-organizer" element={<ProtectedVendorRoute allow="events"><PetEventsProvider><PetEventsLayout /></PetEventsProvider></ProtectedVendorRoute>}>
-              <Route index element={<DashboardOverview />} />
-              <Route path="events" element={<EventsView />} />
-              <Route path="events/create" element={<CreateEventView />} />
-              <Route path="events/:id/edit" element={<CreateEventView />} />
-              <Route path="bookings" element={<BookingsView />} />
-              <Route path="calendar" element={<CalendarView />} />
-              <Route path="packages" element={<PackagesAddonsView />} />
-              <Route path="gallery" element={<EventGalleryView />} />
-              <Route path="requests" element={<CustomerRequestsView />} />
-              <Route path="feedback" element={<EventsFeedbackView />} />
-              <Route path="finance" element={<EventsFinanceView />} />
-              <Route path="settings" element={<EventsSettingsView />} />
-              <Route path="*" element={<Navigate to="/vendor/events-organizer" replace />} />
-            </Route>
+                {/* Fresh Meals Partner Exclusive Dashboard */}
+                <Route path="/vendor/meal-provider" element={<ProtectedVendorRoute allow="meal_subscription"><MealProviderProvider><MealProviderLayout /></MealProviderProvider></ProtectedVendorRoute>}>
+                  <Route path="dashboard" element={<MealDashboard />} />
+                  <Route path="plans" element={<MealPlansView />} />
+                  <Route path="subscriptions" element={<SubscriptionsView />} />
+                  <Route path="trials" element={<TrialMealsView />} />
+                  <Route path="kitchen" element={<KitchenQueueView />} />
+                  <Route path="delivery-board" element={<DeliveryManagementView />} />
+                  <Route path="live-tracking" element={<LiveTrackingView />} />
+                  <Route path="feedback" element={<CustomerFeedbackView />} />
 
-            {/* Last Ride Partner Dashboard */}
-            <Route path="/vendor/memorial-provider" element={<ProtectedVendorRoute allow="memorial"><MemorialProviderProvider><MemorialProviderLayout /></MemorialProviderProvider></ProtectedVendorRoute>}>
-              <Route index element={<MemorialDashboard />} />
-              <Route path="requests" element={<MemorialRequests />} />
-              <Route path="calendar" element={<MemorialCalendar />} />
-              <Route path="team" element={<MemorialTeam />} />
-              <Route path="services" element={<MemorialServicesView />} />
-              <Route path="addons" element={<MemoryAddonsView />} />
-              <Route path="proofs" element={<ServiceProofsView />} />
-              <Route path="support" element={<MemorialSupport />} />
-              <Route path="finance" element={<MemorialFinance />} />
-              <Route path="settings" element={<MemorialSettings />} />
-              <Route path="*" element={<Navigate to="/vendor/memorial-provider" replace />} />
-            </Route>
+                  <Route path="finance" element={<FinanceCenterView />} />
+                  <Route path="settings" element={<BusinessControlCenterView />} />
 
-            {/* Legacy route redirects */}
-            <Route path="/home" element={<Navigate to="/app/home" replace />} />
-          </Routes></Suspense>
-          {/* Rings wherever the user is in the app. */}
-          <IncomingCallOverlay />
+                  {/* Redirects for removed legacy routes */}
+                  <Route path="support" element={<Navigate to="/vendor/meal-provider/feedback" replace />} />
+                  <Route path="tickets" element={<Navigate to="/vendor/meal-provider/feedback" replace />} />
+                  <Route path="payouts" element={<Navigate to="/vendor/meal-provider/finance" replace />} />
+                  <Route path="transactions" element={<Navigate to="/vendor/meal-provider/finance" replace />} />
+                  <Route path="zones" element={<Navigate to="/vendor/meal-provider/settings" replace />} />
+                  <Route path="notifications" element={<Navigate to="/vendor/meal-provider/settings" replace />} />
+                  <Route path="security" element={<Navigate to="/vendor/meal-provider/settings" replace />} />
+                  <Route path="*" element={<Navigate to="/vendor/meal-provider/dashboard" replace />} />
+                </Route>
+
+                {/* Events Partner Dashboard */}
+                <Route path="/vendor/events-organizer" element={<ProtectedVendorRoute allow="events"><PetEventsProvider><PetEventsLayout /></PetEventsProvider></ProtectedVendorRoute>}>
+                  <Route index element={<DashboardOverview />} />
+                  <Route path="events" element={<EventsView />} />
+                  <Route path="events/create" element={<CreateEventView />} />
+                  <Route path="events/:id/edit" element={<CreateEventView />} />
+                  <Route path="bookings" element={<BookingsView />} />
+                  <Route path="calendar" element={<CalendarView />} />
+                  <Route path="packages" element={<PackagesAddonsView />} />
+                  <Route path="gallery" element={<EventGalleryView />} />
+                  <Route path="requests" element={<CustomerRequestsView />} />
+                  <Route path="feedback" element={<EventsFeedbackView />} />
+                  <Route path="finance" element={<EventsFinanceView />} />
+                  <Route path="settings" element={<EventsSettingsView />} />
+                  <Route path="*" element={<Navigate to="/vendor/events-organizer" replace />} />
+                </Route>
+
+                {/* Last Ride Partner Dashboard */}
+                <Route path="/vendor/memorial-provider" element={<ProtectedVendorRoute allow="memorial"><MemorialProviderProvider><MemorialProviderLayout /></MemorialProviderProvider></ProtectedVendorRoute>}>
+                  <Route index element={<MemorialDashboard />} />
+                  <Route path="requests" element={<MemorialRequests />} />
+                  <Route path="calendar" element={<MemorialCalendar />} />
+                  <Route path="team" element={<MemorialTeam />} />
+                  <Route path="services" element={<MemorialServicesView />} />
+                  <Route path="addons" element={<MemoryAddonsView />} />
+                  <Route path="proofs" element={<ServiceProofsView />} />
+                  <Route path="support" element={<MemorialSupport />} />
+                  <Route path="finance" element={<MemorialFinance />} />
+                  <Route path="settings" element={<MemorialSettings />} />
+                  <Route path="*" element={<Navigate to="/vendor/memorial-provider" replace />} />
+                </Route>
+
+                {/* Legacy route redirects */}
+                <Route path="/home" element={<Navigate to="/app/home" replace />} />
+
+                {/* Nothing matched — an illustrated 404 instead of a blank screen.
+                Top level and outside RequireAuth, so a mistyped URL does not
+                bounce a signed-out visitor through a login first. */}
+                <Route path="*" element={<NotFound />} />
+              </Routes></Suspense>
+            </ErrorBoundary>
+            {/* Rings wherever the user is in the app. */}
+            <IncomingCallOverlay />
           </CallProvider>
         </ErrorBoundary>
       </MobileWrapper>

@@ -82,7 +82,7 @@ export async function seedSocial() {
           activityLevel: m.activityLevel, temperament: m.temperament,
           compatibility: m.compatibility, purpose: m.purpose, availability: m.availability,
           img: m.img, photos: m.photos, prompts: m.prompts, tags: m.tags,
-          online: true, autoLikesBack: true, active: true,
+          online: true, autoLikesBack: false, active: true,
         },
       },
       { upsert: true }

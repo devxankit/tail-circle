@@ -3,6 +3,7 @@ import { sendSuccess } from '../../utils/ApiResponse.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { Pet } from './pet.model.js';
 import { PetVaccination } from './petVaccination.model.js';
+import { syncPetToMatchProfile } from '../social/matchEngine.service.js';
 
 const MAX_PETS = 20;
 const MAX_PHOTOS = 6;
@@ -25,6 +26,7 @@ export const createPet = asyncHandler(async (req, res) => {
   if (count >= MAX_PETS) throw ApiError.badRequest(`You can have up to ${MAX_PETS} pets`);
 
   const pet = await Pet.create({ ...req.body, ownerId: req.user.id });
+  await syncPetToMatchProfile(pet).catch(() => {});
   sendSuccess(res, { statusCode: 201, message: 'Pet added', data: pet });
 });
 
@@ -46,6 +48,7 @@ export const updatePet = asyncHandler(async (req, res) => {
   // First photo doubles as the avatar unless one is set explicitly.
   if (!pet.avatarUrl && pet.photos.length) pet.avatarUrl = pet.photos[0];
   await pet.save();
+  await syncPetToMatchProfile(pet).catch(() => {});
   sendSuccess(res, { message: 'Pet updated', data: pet });
 });
 
@@ -54,6 +57,7 @@ export const deletePet = asyncHandler(async (req, res) => {
   const pet = await getOwnedPet(req.user.id, req.params.id);
   pet.deletedAt = new Date();
   await pet.save();
+  await syncPetToMatchProfile(pet).catch(() => {});
   sendSuccess(res, { message: 'Pet removed' });
 });
 

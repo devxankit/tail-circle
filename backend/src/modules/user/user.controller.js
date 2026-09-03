@@ -8,6 +8,7 @@ import { Booking } from '../booking/booking.model.js';
 import { Order } from '../order/order.model.js';
 import { Match, Post } from '../social/social.models.js';
 import { SavedItem } from '../savedItem/savedItem.routes.js';
+import { getOrSet } from '../../services/cache.service.js';
 
 /** GET /users/me — current authenticated user. */
 export const getMe = asyncHandler(async (req, res) => {
@@ -18,23 +19,24 @@ export const getMe = asyncHandler(async (req, res) => {
 export const getMyStats = asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const userName = req.user.name;
-  const [petsCount, bookingsCount, ordersCount, matchesCount, savesCount, postsCount] = await Promise.all([
-    Pet.countDocuments({ ownerId: userId, deletedAt: null }),
-    Booking.countDocuments({ userId }),
-    Order.countDocuments({ userId }),
-    Match.countDocuments({ userId }),
-    SavedItem.countDocuments({ userId }),
-    Post.countDocuments({
-      $or: [{ authorId: userId }, ...(userName ? [{ authorName: userName }] : [])],
-      deletedAt: null,
-    }),
-  ]);
 
-  const points = (req.user.points || 0) + (petsCount * 100) + (bookingsCount * 50) + (ordersCount * 25) + (postsCount * 15);
-  const level = Math.floor(points / 100) + 1;
+  const statsData = await getOrSet(`user:stats:${userId}`, 30, async () => {
+    const [petsCount, bookingsCount, ordersCount, matchesCount, savesCount, postsCount] = await Promise.all([
+      Pet.countDocuments({ ownerId: userId, deletedAt: null }),
+      Booking.countDocuments({ userId }),
+      Order.countDocuments({ userId }),
+      Match.countDocuments({ userId }),
+      SavedItem.countDocuments({ userId }),
+      Post.countDocuments({
+        $or: [{ authorId: userId }, ...(userName ? [{ authorName: userName }] : [])],
+        deletedAt: null,
+      }),
+    ]);
 
-  sendSuccess(res, {
-    data: {
+    const points = (req.user.points || 0) + (petsCount * 100) + (bookingsCount * 50) + (ordersCount * 25) + (postsCount * 15);
+    const level = Math.floor(points / 100) + 1;
+
+    return {
       points,
       level,
       matchesCount,
@@ -43,8 +45,10 @@ export const getMyStats = asyncHandler(async (req, res) => {
       bookingsCount,
       ordersCount,
       postsCount,
-    },
+    };
   });
+
+  sendSuccess(res, { data: statsData });
 });
 
 /** PATCH /users/me — update own profile (fields whitelisted by zod schema). */

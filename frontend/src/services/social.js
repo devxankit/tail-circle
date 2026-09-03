@@ -99,6 +99,11 @@ export async function swipeProfile(profileId, action) {
   return data; // { matched, conversationId? }
 }
 
+export async function resetMatchesSwipe() {
+  const { data } = await api.post('/matches/reset');
+  return data;
+}
+
 export async function fetchMatches() {
   const { data } = await api.get('/matches');
   return data;

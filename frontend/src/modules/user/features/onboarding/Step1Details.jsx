@@ -59,6 +59,19 @@ export function Step1Details() {
     const finalBreed = breed === 'Other' ? (customBreed.trim() || 'Mixed Breed') : breed;
 
     try {
+      let locationObj = null;
+      let userCity = '';
+      try {
+        const cachedCity = sessionStorage.getItem('tc_user_gps_city');
+        if (cachedCity) {
+          const parsed = JSON.parse(cachedCity);
+          if (parsed?.lat && parsed?.lng) {
+            locationObj = { lat: parsed.lat, lng: parsed.lng };
+            userCity = parsed.name || '';
+          }
+        }
+      } catch {}
+
       const pet = await createPet({
         name: petName.trim(),
         type: knownTypes[species] || 'other',
@@ -69,6 +82,8 @@ export function Step1Details() {
         ...(bio.trim() ? { bio: bio.trim() } : {}),
         temperament: behaviours,
         health: { vaccinated },
+        ...(locationObj ? { location: locationObj } : {}),
+        ...(userCity ? { city: userCity } : {}),
       });
       localStorage.setItem('tc_onboarding_pet_id', pet._id);
       navigate('/onboarding/step2');

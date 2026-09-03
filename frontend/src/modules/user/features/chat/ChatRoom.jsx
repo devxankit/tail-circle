@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, MoreVertical, Plus, Send, Image as ImageIcon, MapPin, User, Bell, BellOff, Flag, Trash2, FileText, Check, CheckCheck, Smile, Download, Sparkles, X } from 'lucide-react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
+import { ReportModal } from '../../../../components/common/ReportModal';
 import {
   fetchMessages,
   sendChatMessage,
@@ -49,6 +50,7 @@ export function ChatRoom() {
   const [msg, setMsg] = useState('');
   const [showAttach, setShowAttach] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   const params = useParams();
   /*
@@ -451,14 +453,24 @@ export function ChatRoom() {
   const handleReportBlock = () => {
     setShowMenu(false);
     if (!conversationId) return navigate(-1);
-    const reason = window.prompt("What's wrong with this chat? (optional)") || '';
-    reportAndBlockConversation(conversationId, reason)
-      .then(() => navigate(-1))
-      .catch(() => alert('Could not submit the report — please try again.'));
+    setIsReportModalOpen(true);
+  };
+
+  const handleReportSubmit = async (reason) => {
+    if (!conversationId) return;
+    await reportAndBlockConversation(conversationId, reason);
+    navigate(-1);
   };
 
   return (
     <div className="flex flex-col h-full bg-bg-secondary w-full absolute inset-0 z-50 animate-in slide-in-from-right-4 duration-300">
+      <ReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        title={`Report ${activePet.name || 'Conversation'}`}
+        subtitle="Help us keep TailCircle chats safe & respectful"
+        onSubmit={handleReportSubmit}
+      />
       {/* Header */}
       <div className="flex items-center px-4 py-3 bg-white border-b border-border-light z-20 sticky top-0 shadow-sm relative">
         <button onClick={() => navigate(-1)} className="mr-3 p-1 rounded-full hover:bg-bg-secondary">

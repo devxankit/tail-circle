@@ -74,6 +74,10 @@ const matchProfileSchema = new mongoose.Schema(
     gender: { type: String, default: '' },
     age: { type: Number, default: null },
     distance: { type: Number, default: null },
+    location: {
+      lat: { type: Number, default: null },
+      lng: { type: Number, default: null },
+    },
     breed: { type: String, default: '' },
     size: { type: String, default: '' },
     vaccinationStatus: { type: String, default: '' },

@@ -23,7 +23,7 @@ import {
   markMessagesAsRead,
 } from './chat.service.js';
 
-import { getMatchDeck, processSwipe, MATCH_ENGINE_CONFIG, updateEngineConfig } from './matchEngine.service.js';
+import { getMatchDeck, processSwipe, MATCH_ENGINE_CONFIG, updateEngineConfig, resetUserSwipes } from './matchEngine.service.js';
 
 /* ── matches ──────────────────────────────────────────── */
 
@@ -37,12 +37,6 @@ matchRouter.get('/engine/config', (_req, res) => {
 
 /**
  * PATCH /matches/engine/config — retune the engine. Admins only.
- *
- * This sat behind `authenticate` alone, so any signed-in pet owner could
- * rewrite the scoring weights, the distance ceiling, or switch off reciprocity
- * — for every user on the platform, since the config is a single module-level
- * object. The body was passed through unvalidated too, so arbitrary keys landed
- * in it.
  */
 matchRouter.patch(
   '/engine/config',
@@ -70,6 +64,15 @@ matchRouter.get(
     const filters = req.query || {};
     const deck = await getMatchDeck({ userId: req.user.id, filters });
     sendSuccess(res, { data: deck });
+  })
+);
+
+/** POST /matches/reset — clear previous swipes to rediscover profiles. */
+matchRouter.post(
+  '/reset',
+  asyncHandler(async (req, res) => {
+    const result = await resetUserSwipes(req.user.id);
+    sendSuccess(res, { message: 'Swipes reset successfully', data: result });
   })
 );
 

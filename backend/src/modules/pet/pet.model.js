@@ -44,6 +44,12 @@ const petSchema = new mongoose.Schema(
     isMatchProfile: { type: Boolean, default: false },
     activityLevel: { type: String, enum: ['low', 'medium', 'high', null], default: null },
     size: { type: String, enum: ['small', 'medium', 'large', null], default: null },
+    city: { type: String, trim: true, default: '' },
+    state: { type: String, trim: true, default: '' },
+    location: {
+      lat: { type: Number, default: null },
+      lng: { type: Number, default: null },
+    },
 
     deletedAt: { type: Date, default: null },
   },

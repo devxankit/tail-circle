@@ -20,6 +20,12 @@ const userSchema = new Schema(
     gender: { type: String, enum: ['male', 'female', 'other', null], default: null },
     dob: { type: Date, default: null },
     city: { type: String, trim: true, default: null },
+    state: { type: String, trim: true, default: '' },
+    address: { type: String, trim: true, default: '' },
+    location: {
+      lat: { type: Number, default: null },
+      lng: { type: Number, default: null },
+    },
     notificationPrefs: {
       push: { type: Boolean, default: true },
       sms: { type: Boolean, default: true },
