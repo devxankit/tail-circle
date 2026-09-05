@@ -6,9 +6,14 @@ import { fetchMatchDeck, swipeProfile, fetchMatches, reportProfile, resetMatches
 import { MatchesFilterModal } from './MatchesFilterModal';
 import { ReportModal } from '../../../../components/common/ReportModal';
 import { CitySelectorModal } from './CitySelectorModal';
+import { MatchPointsBreakdown } from './MatchPoints';
+import { MatchCelebrationModal } from './MatchCelebrationModal';
+import { BehaviourCompatibilityChip } from './BehaviourCompatibility';
+import { markCelebrated } from './matchCelebrations';
 
 const DEFAULT_FILTERS = {
   type: 'Any',
+  breedMode: 'All Breeds',
   gender: 'Any',
   age: 'Any',
   distance: 'Anywhere',
@@ -162,10 +167,22 @@ export function MatchSwipe({ setView }) {
     try {
       const res = await swipeProfile(targetProfile.id, actionType);
       if (res?.matched) {
+        // Claimed before rendering so the `match:new` socket event for the
+        // same match does not open a second copy of this modal.
+        markCelebrated(res.conversationId);
         setMatchedModalData({
-          profileName: targetProfile.name,
-          profileImage: targetProfile.img || targetProfile.photos?.[0],
+          profileName: res.profileName || targetProfile.name,
+          profileImage: res.profileImage || targetProfile.img || targetProfile.photos?.[0],
           conversationId: res.conversationId,
+          // The swipe response already carries the pair's rating; the modal's
+          // compatibility meter was rendering off a field nobody ever set.
+          matchPoints: res.matchPoints,
+          maxMatchPoints: res.maxMatchPoints,
+          behaviourMatch: res.behaviourMatch,
+          // Which of my pets this match is actually for. The client used to
+          // fetch my pets and take the first, which for a two-pet owner is a
+          // different answer from the one the engine scored against.
+          myPetImage: res.myPet?.image || null,
         });
       }
     } catch {
@@ -282,52 +299,20 @@ export function MatchSwipe({ setView }) {
 
       {/* Celebratory "IT'S A MATCH!" Modal */}
       {matchedModalData && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-6 animate-in fade-in zoom-in-95 duration-300">
-          <div className="bg-white rounded-[32px] p-6 w-full max-w-sm flex flex-col items-center text-center shadow-2xl relative border border-white/20">
-            <button
-              onClick={() => setMatchedModalData(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1"
-            >
-              <X size={20} />
-            </button>
-
-            <div className="w-16 h-16 bg-gradient-to-tr from-[#F87B68] to-rose-400 rounded-full flex items-center justify-center text-white mb-3 shadow-lg shadow-rose-200">
-              <Sparkles size={32} />
-            </div>
-
-            <h2 className="text-2xl font-black text-[#4C8684] tracking-tight mb-1">IT'S A MATCH!</h2>
-            <p className="text-xs font-bold text-slate-500 mb-6">
-              You and <span className="text-slate-800">{matchedModalData.profileName}</span> liked each other!
-            </p>
-
-            <div className="flex items-center justify-center gap-4 mb-6">
-              <div className="w-20 h-20 rounded-full overflow-hidden border-4 border-white shadow-xl bg-slate-100">
-                <img src={matchedModalData.profileImage} alt="Match" className="w-full h-full object-cover" />
-              </div>
-            </div>
-
-            <button
-              onClick={() => {
-                const convId = matchedModalData.conversationId;
-                setMatchedModalData(null);
-                if (convId) {
-                  navigate(`/app/chat/room/${convId}`);
-                } else {
-                  setView('chat');
-                }
-              }}
-              className="w-full bg-[#4C8684] text-white py-3 rounded-full font-bold shadow-lg hover:bg-[#3d6b6a] transition mb-2"
-            >
-              Send Message
-            </button>
-            <button
-              onClick={() => setMatchedModalData(null)}
-              className="w-full text-slate-500 py-2 font-bold text-xs hover:text-slate-800"
-            >
-              Keep Swiping
-            </button>
-          </div>
-        </div>
+        <MatchCelebrationModal
+          match={matchedModalData}
+          myPetImage={matchedModalData.myPetImage}
+          onClose={() => setMatchedModalData(null)}
+          onMessage={() => {
+            const convId = matchedModalData.conversationId;
+            setMatchedModalData(null);
+            if (convId) {
+              navigate(`/app/chat/room/${convId}`);
+            } else {
+              setView('chat');
+            }
+          }}
+        />
       )}
 
       {/* Premium Header Tabs with Actions */}
@@ -460,12 +445,10 @@ export function MatchSwipe({ setView }) {
               {/* Top Info Header (Name & Compatibility score) */}
               <div className="px-5 pt-5 pb-3 flex justify-between items-start">
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h1 className="text-3xl font-black text-[#222] tracking-tight">{currentProfile.name}</h1>
-                    <span className="text-xs bg-[#4C8684] text-white px-2.5 py-0.5 rounded-full font-bold shadow-sm">
-                      {currentProfile.compatibilityScore || 90}% Match
-                    </span>
-                  </div>
+                  {/* The pet's name stands alone. The compatibility reading
+                      sits in its own strip below, so the score never competes
+                      with the pet for the top line. */}
+                  <h1 className="text-3xl font-black text-[#222] tracking-tight">{currentProfile.name}</h1>
                   <p className="text-sm font-bold text-gray-500 mt-0.5">
                     {currentProfile.breed} • {currentProfile.age} yrs
                   </p>
@@ -505,6 +488,28 @@ export function MatchSwipe({ setView }) {
                   <Heart size={26} strokeWidth={2.5} className="text-[#F87B68]" />
                 </button>
               </div>
+
+              {/* Sits directly under the first photo: the pet is seen first,
+                  then how well they suit you — and the strip's own card echoes
+                  the photo's rounded block, so the two read as one unit. */}
+              {currentProfile.matchPoints != null && (
+                <div className="px-4 mb-4 -mt-1">
+                  <MatchPointsBreakdown
+                    points={currentProfile.matchPoints}
+                    maxPoints={currentProfile.maxMatchPoints || 5}
+                    factors={currentProfile.matchFactors || []}
+                    confidence={currentProfile.matchConfidence}
+                  />
+                  {/* Only the levels that ask something of the owner. A chip on
+                      every card saying "High" would be wallpaper; a warning
+                      before the swipe is worth more than one after it. */}
+                  {['Moderate', 'Caution'].includes(currentProfile.behaviourMatch?.level) && (
+                    <div className="mt-2">
+                      <BehaviourCompatibilityChip behaviour={currentProfile.behaviourMatch} />
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Prompt 1 */}
               {prompts[0] && (

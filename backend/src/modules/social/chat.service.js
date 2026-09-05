@@ -24,7 +24,7 @@ import { User } from '../user/user.model.js';
  * participant, which is invisible when the counterpart is a seeded profile but
  * silently locks a real person out of their own match.
  */
-export async function ensureConversation({ userId, context, refId, counterpart, alsoInclude = [] }) {
+export async function ensureConversation({ userId, context, refId, counterpart, counterparts, alsoInclude = [] }) {
   const everyone = [...new Set([String(userId), ...alsoInclude.map(String)])];
 
   let conversation = await Conversation.findOne({
@@ -39,6 +39,7 @@ export async function ensureConversation({ userId, context, refId, counterpart, 
       context,
       refId: refId ?? null,
       counterpart: counterpart || {},
+      counterparts: counterparts || {},
     });
     return conversation;
   }
@@ -52,6 +53,35 @@ export async function ensureConversation({ userId, context, refId, counterpart, 
     await conversation.save();
   }
   return conversation;
+}
+
+/**
+ * Record what the other side looks like *to one particular participant*.
+ *
+ * Called once per owner of a match, since each of them sees the other's pet.
+ */
+export async function setCounterpartFor(conversationId, userId, counterpart) {
+  await Conversation.updateOne(
+    { _id: conversationId },
+    { $set: { [`counterparts.${String(userId)}`]: counterpart } }
+  );
+}
+
+/**
+ * A conversation as one participant should see it: their own counterpart,
+ * their own unread count and mute state.
+ */
+export function conversationForUser(conversation, userId) {
+  const obj = conversation.toJSON();
+  const mine = conversation.counterparts?.get?.(String(userId));
+  if (mine?.name) {
+    obj.counterpart = { name: mine.name, image: mine.image || '', subtitle: mine.subtitle || '' };
+  }
+  // Per-user internals never belong in a response.
+  delete obj.counterparts;
+  obj.unreadCount = conversation.unread?.get(String(userId)) || 0;
+  obj.muted = conversation.mutedBy.some((id) => String(id) === String(userId));
+  return obj;
 }
 
 export async function getOwnedConversation(userId, conversationId) {
@@ -106,6 +136,60 @@ export async function sendMessage(user, conversationId, { type = 'text', text = 
     meta: message.meta || null,
     reactions: [],
     readBy: [String(user.id)],
+    at: message.createdAt ? message.createdAt.getTime() : Date.now(),
+  };
+  for (const participantId of conversation.participants) {
+    emitToUser(participantId, SOCKET_EVENTS.CHAT_MESSAGE_NEW, payload);
+  }
+
+  return message;
+}
+
+/**
+ * Post a message from the platform rather than from a participant.
+ *
+ * `senderId` stays null: nobody typed this, and hanging it off either owner
+ * would read as that person having said it. Unread is bumped for *everyone* in
+ * the room for the same reason — there is no sender to exclude.
+ *
+ * Idempotent per type: a match that is processed twice (both owners swiping,
+ * a retried request) must not leave two identical cards in the room.
+ */
+export async function postSystemMessage(conversationId, { type, text = '', once = true }) {
+  const conversation = await Conversation.findById(conversationId);
+  if (!conversation) return null;
+
+  if (once) {
+    const existing = await Message.findOne({ conversationId: conversation.id, type }).select('_id').lean();
+    if (existing) return null;
+  }
+
+  const message = await Message.create({
+    conversationId: conversation.id,
+    senderId: null,
+    type,
+    text,
+    readBy: [],
+  });
+
+  conversation.lastMessage = text;
+  conversation.lastMessageAt = new Date();
+  for (const participantId of conversation.participants) {
+    const key = String(participantId);
+    conversation.unread.set(key, (conversation.unread.get(key) || 0) + 1);
+  }
+  await conversation.save();
+
+  const payload = {
+    conversationId: String(conversation.id),
+    key: String(message.id),
+    senderId: null,
+    type,
+    text: text || null,
+    mediaUrl: null,
+    meta: null,
+    reactions: [],
+    readBy: [],
     at: message.createdAt ? message.createdAt.getTime() : Date.now(),
   };
   for (const participantId of conversation.participants) {

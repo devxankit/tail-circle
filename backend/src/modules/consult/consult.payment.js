@@ -116,21 +116,23 @@ registerPurposeHandler('consult_overage', {
  */
 async function creditVetLedger(call, booking) {
   try {
-    const { postLedgerEntry } = await import('../vendor/vendor.service.js');
-    const { VendorProfile } = await import('../vendor/vendor.models.js');
+    const { postLedgerEntry, commissionFor } = await import('../vendor/vendor.service.js');
 
     const vendorId = call.clinicVendorId
       || (await Doctor.findById(call.doctorId).select('clinicVendorId'))?.clinicVendorId;
     if (!vendorId) return;
 
-    const profile = await VendorProfile.findOne({ userId: vendorId });
+    // Overage belongs to the clinic line — a vet who also runs a shop must not
+    // have consultation time settled at their retail commission.
+    const commissionRate = await commissionFor(vendorId, 'clinic');
     await postLedgerEntry({
       vendorId,
       refType: 'consult_overage',
       refId: call._id,
       label: `Extra consultation time — ${booking?.bookingNo || call.bookingId}`,
       gross: toPaise(call.overage.amount),
-      commissionRate: profile?.commissionRate ?? 0.15,
+      commissionRate,
+      vendorType: 'clinic',
     });
   } catch (err) {
     logger.warn(`Overage ledger entry failed for call ${call._id}: ${err.message}`);

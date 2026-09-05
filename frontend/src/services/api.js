@@ -15,6 +15,16 @@ const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const ACCESS_KEY = 'tc_access_token';
 const REFRESH_KEY = 'tc_refresh_token';
+/**
+ * Which of a vendor's business lines the open panel is acting as.
+ *
+ * A vendor can run several (a grooming salon that also takes daycare), so the
+ * API needs to know which one a shared endpoint — profile, payouts, support —
+ * is being called for. Line-specific endpoints derive it from the route and
+ * ignore this. Lives here rather than in the vendor service so every request
+ * carries it without each caller remembering to.
+ */
+const ACTIVE_VENDOR_KEY = 'tc_active_vendor_type';
 
 let accessToken = localStorage.getItem(ACCESS_KEY) || null;
 
@@ -39,12 +49,32 @@ export function clearTokens() {
   accessToken = null;
   localStorage.removeItem(ACCESS_KEY);
   localStorage.removeItem(REFRESH_KEY);
+  localStorage.removeItem(ACTIVE_VENDOR_KEY);
   // Offline copies of this session's API responses must not outlive the session.
   clearOfflineApiCache();
 }
 
 export function getAccessToken() {
   return accessToken;
+}
+
+/** The business line the vendor's open panel is acting as (null for none). */
+export function getActiveVendorType() {
+  try {
+    return localStorage.getItem(ACTIVE_VENDOR_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Set (or clear, with null) the active business line. */
+export function setActiveVendorType(vendorType) {
+  try {
+    if (vendorType) localStorage.setItem(ACTIVE_VENDOR_KEY, vendorType);
+    else localStorage.removeItem(ACTIVE_VENDOR_KEY);
+  } catch {
+    /* private mode — the API just falls back to the vendor's primary line */
+  }
 }
 
 export function isLoggedIn() {
@@ -94,6 +124,10 @@ async function request(method, path, { params, body, headers = {}, _retried = fa
     headers: {
       ...(isForm ? {} : body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      // Tells the API which business line a shared vendor endpoint is for.
+      // Harmless on every other request — the server only reads it behind the
+      // vendor guard.
+      ...(getActiveVendorType() ? { 'X-Vendor-Type': getActiveVendorType() } : {}),
       ...headers,
     },
     body: isForm ? body : body !== undefined ? JSON.stringify(body) : undefined,

@@ -120,7 +120,7 @@ export function BusinessControlCenterView() {
 
   const handleDeleteAccount = () => {
     if (window.confirm('This will submit an account-termination request to the platform admin. Continue?')) {
-      addToast({ message: 'There is no automated account-deletion flow yet — email support@tailcircle.com to request termination.', type: 'info', duration: 6000 });
+      addToast({ message: 'There is no automated account-deletion flow yet — email Partner@tailcircle.in to request termination.', type: 'info', duration: 6000 });
     }
   };
 

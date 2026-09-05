@@ -21,6 +21,7 @@ import {
   reactToMessage,
   deleteMessage,
   markMessagesAsRead,
+  conversationForUser,
 } from './chat.service.js';
 
 import { getMatchDeck, processSwipe, MATCH_ENGINE_CONFIG, updateEngineConfig, resetUserSwipes } from './matchEngine.service.js';
@@ -43,11 +44,22 @@ matchRouter.patch(
   authorize('admin', 'super_admin'),
   validate(
     z.object({
-      weightProximity: z.number().min(0).max(100).optional(),
+      // Every weight below is a live input to the scorer. They are relative to
+      // one another, so they need not total 100.
       weightTemperament: z.number().min(0).max(100).optional(),
-      weightPurpose: z.number().min(0).max(100).optional(),
+      weightProximity: z.number().min(0).max(100).optional(),
       weightActivity: z.number().min(0).max(100).optional(),
+      weightMood: z.number().min(0).max(100).optional(),
+      weightAge: z.number().min(0).max(100).optional(),
+      weightBreed: z.number().min(0).max(100).optional(),
+      weightPurpose: z.number().min(0).max(100).optional(),
+      weightSize: z.number().min(0).max(100).optional(),
+      weightHealth: z.number().min(0).max(100).optional(),
+      maxPoints: z.number().min(1).max(10).optional(),
       defaultMaxDistanceKm: z.number().min(1).max(1000).optional(),
+      crossSpeciesFactor: z.number().min(0).max(1).optional(),
+      priorStrength: z.number().min(0).max(1).optional(),
+      priorRatio: z.number().min(0).max(1).optional(),
       enableAutoReciprocity: z.boolean().optional(),
     }).strict()
   ),
@@ -118,8 +130,16 @@ matchRouter.get(
   asyncHandler(async (req, res) => {
     const matches = await Match.find({ userId: req.user.id })
       .sort({ matchedAt: -1 })
-      .populate('profileId');
-    sendSuccess(res, { data: matches });
+      .populate('profileId')
+      .lean();
+    // Rows created before match points existed carry null; the UI shows those
+    // without a rating rather than inventing one.
+    const data = matches.map((m) => ({
+      ...m,
+      matchPoints: m.matchPoints ?? null,
+      maxMatchPoints: MATCH_ENGINE_CONFIG.maxPoints || 5,
+    }));
+    sendSuccess(res, { data });
   })
 );
 
@@ -136,12 +156,7 @@ chatRouter.get(
       participants: req.user.id,
       blockedBy: { $ne: req.user.id },
     }).sort({ lastMessageAt: -1, updatedAt: -1 });
-    const data = conversations.map((c) => {
-      const obj = c.toJSON();
-      obj.unreadCount = c.unread?.get(String(req.user.id)) || 0;
-      obj.muted = c.mutedBy.some((id) => String(id) === String(req.user.id));
-      return obj;
-    });
+    const data = conversations.map((c) => conversationForUser(c, req.user.id));
     sendSuccess(res, { data });
   })
 );
@@ -151,10 +166,7 @@ chatRouter.get(
   '/conversations/:id',
   asyncHandler(async (req, res) => {
     const conversation = await getOwnedConversation(req.user.id, req.params.id);
-    const obj = conversation.toJSON();
-    obj.unreadCount = conversation.unread.get(String(req.user.id)) || 0;
-    obj.muted = conversation.mutedBy.some((id) => String(id) === String(req.user.id));
-    sendSuccess(res, { data: obj });
+    sendSuccess(res, { data: conversationForUser(conversation, req.user.id) });
   })
 );
 

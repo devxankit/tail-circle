@@ -10,6 +10,16 @@ import { EventPackage, EventAddon, CustomerRequest, EventGalleryItem } from './e
 const STATUS_TO_MOCK = { draft: 'Draft', published: 'Published', completed: 'Completed', cancelled: 'Cancelled' };
 const MOCK_TO_STATUS = { Draft: 'draft', Published: 'published', Completed: 'completed', Cancelled: 'cancelled' };
 
+/** Kept in step with the line item booking.service.js writes. */
+const TRAINER_ITEM_REF = 'trainer_support';
+const TRAINER_ITEM_NAME = 'Trainer / handler support';
+
+/** Matches on the stable ref, falling back to the label for older rows. */
+const trainerItem = (items) =>
+  items?.find((i) => i.refId === TRAINER_ITEM_REF) ||
+  items?.find((i) => i.name === TRAINER_ITEM_NAME) ||
+  null;
+
 function isoDate(d) {
   return d ? new Date(d).toISOString().slice(0, 10) : '';
 }
@@ -31,6 +41,36 @@ export function toVendorEvent(e) {
     status,
     image: e.img || null,
     description: e.desc || '',
+    trainer: {
+      provision: e.trainer?.provision || 'none',
+      pricePerPet: e.trainer?.pricePerPet ?? 0,
+      note: e.trainer?.note || '',
+    },
+  };
+}
+
+/**
+ * Normalise the trainer block off a vendor form.
+ *
+ * Clears the fields that do not apply to the chosen provision rather than
+ * letting a stale price sit behind a 'none' — a hidden price is the kind of
+ * thing that resurfaces as a charge later.
+ */
+export function normaliseTrainer(input) {
+  if (input == null) return null;
+  const provision = ['none', 'included', 'paid'].includes(input.provision)
+    ? input.provision
+    : 'none';
+
+  const price = provision === 'paid' ? Math.max(0, Math.round(Number(input.pricePerPet) || 0)) : 0;
+  if (provision === 'paid' && price <= 0) {
+    throw ApiError.badRequest('Set a price for handler support, or mark it as included');
+  }
+
+  return {
+    provision,
+    pricePerPet: price,
+    note: provision === 'none' ? '' : String(input.note || '').trim().slice(0, 400),
   };
 }
 
@@ -52,6 +92,7 @@ export async function createEvent(vendorId, body) {
     desc: body.description || '',
     startAt: body.date ? new Date(body.date) : null,
     status: MOCK_TO_STATUS[body.status] || 'published',
+    ...(body.trainer ? { trainer: normaliseTrainer(body.trainer) } : {}),
   });
   await invalidate('events:*');
   return toVendorEvent(event);
@@ -84,6 +125,7 @@ export async function updateEvent(vendorId, id, body) {
   if (body.image != null) event.img = body.image;
   if (body.description != null) event.desc = body.description;
   if (body.date != null) event.startAt = body.date ? new Date(body.date) : null;
+  if (body.trainer != null) event.trainer = normaliseTrainer(body.trainer);
   if (body.status && MOCK_TO_STATUS[body.status]) event.status = MOCK_TO_STATUS[body.status];
   await event.save();
   await invalidate('events:*');
@@ -123,12 +165,85 @@ export async function listEventBookings(vendorId) {
     event: b.eventId?.title || '',
     date: b.schedule?.startDate || isoDate(b.createdAt),
     tickets: b.meta?.ticketQty || b.items?.find((i) => i.kind === 'ticket')?.qty || 1,
+    // `amount` is the total. The detail view was rendering it as the base
+    // ticket line *and* as the total, which only looked right while nothing
+    // was ever added to a booking.
     amount: Math.round((b.amounts?.total || 0) / 100),
+    ticketAmount: Math.round((b.amounts?.base || 0) / 100),
     status: BOOKING_STATUS_MOCK[b.status] || b.status,
     payment: b.status === 'refunded' ? 'Refunded' : b.paymentMethod === 'pay_later' ? 'Pending' : 'Paid',
     addOns: b.meta?.addOns || [],
+    /*
+     * The organiser has to know, before the day, which pets arrive expecting a
+     * handler they have already paid for — and which arrive marked reactive
+     * without one.
+     */
+    withTrainer: Boolean(b.meta?.withTrainer),
+    trainerFee: trainerItem(b.items)?.price ?? 0,
+    reactivePet: b.meta?.reactivePet?.traits?.length ? b.meta.reactivePet.traits : null,
     checkedIn: Boolean(b.meta?.checkedIn),
   }));
+}
+
+/**
+ * Admit a ticket from its scanned code.
+ *
+ * The QR carries a URL so a plain phone camera resolves to something useful,
+ * so accept whatever the scanner hands over -- full URL, query string, or the
+ * bare token -- rather than making the gate staff clean it up. Bookings made
+ * before ticket tokens existed fall back to their booking number.
+ */
+export async function checkInByTicketCode(vendorId, rawCode) {
+  const code = String(rawCode || '').trim();
+  if (!code) throw ApiError.badRequest('Scan a ticket, or type its code');
+
+  // Pull the token out of a scanned URL; otherwise treat the input as the code.
+  let token = code;
+  const match = code.match(/[?&]ticket=([^&\s]+)/i);
+  if (match) token = decodeURIComponent(match[1]);
+  token = token.trim();
+
+  const eventIds = await Event.find({ vendorId }).distinct('_id');
+  const booking = await Booking.findOne({
+    type: 'event',
+    eventId: { $in: eventIds },
+    $or: [{ ticketToken: token }, { bookingNo: token.toUpperCase() }],
+  })
+    .populate('userId', 'name')
+    .populate('eventId', 'title');
+
+  // A code that resolves to nothing here is either forged or for somebody
+  // else's event; both are the same answer at the gate.
+  if (!booking) throw ApiError.notFound('That ticket is not valid for any of your events');
+
+  if (['cancelled', 'refunded'].includes(booking.status)) {
+    throw ApiError.badRequest('This ticket was cancelled and cannot be admitted');
+  }
+  if (booking.status === 'pending_payment') {
+    throw ApiError.badRequest('This ticket has not been paid for yet');
+  }
+
+  const summary = {
+    _id: String(booking._id),
+    bookingNo: booking.bookingNo,
+    customer: booking.userId?.name || 'Customer',
+    pet: booking.petSnapshot?.name || '',
+    event: booking.eventId?.title || '',
+    tickets: booking.meta?.ticketQty || 1,
+    withTrainer: Boolean(booking.meta?.withTrainer),
+    reactivePet: booking.meta?.reactivePet?.traits?.length ? booking.meta.reactivePet.traits : null,
+  };
+
+  // Scanning the same pass twice is not an error, it is a fact the gate needs:
+  // refusing outright tells staff nothing about who already went in.
+  if (booking.meta?.checkedIn) {
+    return { ...summary, checkedIn: true, alreadyCheckedIn: true };
+  }
+
+  booking.meta = { ...booking.meta, checkedIn: true, checkedInAt: new Date() };
+  booking.markModified('meta');
+  await booking.save();
+  return { ...summary, checkedIn: true, alreadyCheckedIn: false };
 }
 
 export async function checkInBooking(vendorId, id) {

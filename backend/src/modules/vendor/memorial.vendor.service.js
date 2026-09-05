@@ -1,7 +1,6 @@
 import mongoose from 'mongoose';
 import { ApiError } from '../../utils/ApiError.js';
-import { postLedgerEntry } from './vendor.service.js';
-import { VendorProfile } from './vendor.models.js';
+import { postLedgerEntry, commissionFor } from './vendor.service.js';
 import { MemorialService, MemorialAddon, TeamMember, MemorialRequest } from './memorial.models.js';
 import { Booking } from '../booking/booking.model.js';
 import { Provider } from '../provider/provider.model.js';
@@ -229,11 +228,12 @@ export async function getKpis(vendorId) {
 async function recordMemorialLedger(request) {
   if (!request.amount) return;
   try {
-    const profile = await VendorProfile.findOne({ userId: request.vendorId });
+    // The memorial line's own rate — this account may also run other lines.
+    const commissionRate = await commissionFor(request.vendorId, 'memorial');
     await postLedgerEntry({
       vendorId: request.vendorId, refType: 'booking', refId: request._id,
       label: `Memorial ${request.serviceType || 'service'}`, gross: request.amount,
-      commissionRate: profile?.commissionRate ?? 0.15,
+      commissionRate, vendorType: 'memorial',
     });
   } catch {
     // best-effort

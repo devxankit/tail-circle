@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
-import { PawPrint } from 'lucide-react';
+import { PawPrint, Info } from 'lucide-react';
 import { cn } from '../../utils/cn';
-import { createPet, fetchBreeds } from '../../../../services/pets';
+import { createPet, fetchBreeds, fetchBehaviourOptions } from '../../../../services/pets';
 
 const speciesList = ['Dog', 'Cat', 'Bird', 'Rabbit', 'Other'];
 const fallbackBreeds = [
@@ -11,10 +11,19 @@ const fallbackBreeds = [
   'Pomeranian', 'German Shepherd', 'Indie',
   'Husky', 'Poodle',
 ];
-const behavioursList = [
-  'Friendly', 'Introvert', 'Likes water',
-  'Avoids water', 'Alpha', 'Playful', 'Lazy'
+/*
+ * Fallback only — the live list comes from `GET /pets/behaviours`, which is the
+ * match engine's own taxonomy. Keeping a second hand-maintained copy here was
+ * how the two drift: a chip the engine does not recognise scores as unknown
+ * and quietly weakens every match it appears in.
+ */
+const fallbackBehaviours = [
+  'Friendly', 'Social', 'Playful', 'Energetic', 'Curious', 'Calm', 'Gentle',
+  'Lazy', 'Shy', 'Anxious', 'Introvert', 'Independent', 'Protective', 'Alpha',
+  'Aggressive', 'Trained', 'Likes water', 'Avoids water',
 ];
+/** Matches the API's own cap (`pet.validation.js`). */
+const MAX_BEHAVIOURS = 10;
 
 
 export function Step1Details() {
@@ -29,6 +38,7 @@ export function Step1Details() {
   const [customBreed, setCustomBreed] = useState('');
   const [bio, setBio] = useState('');
   const [behaviours, setBehaviours] = useState([]);
+  const [behavioursList, setBehavioursList] = useState(fallbackBehaviours);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [breedList, setBreedList] = useState([...fallbackBreeds, 'Other']);
@@ -46,6 +56,15 @@ export function Step1Details() {
   useEffect(() => {
     if (!breedList.includes(breed)) setBreed(breedList[0]);
   }, [breedList]);
+
+  // Behaviour chips likewise: the engine's taxonomy is the source of truth.
+  useEffect(() => {
+    fetchBehaviourOptions()
+      .then((options) => {
+        if (Array.isArray(options) && options.length) setBehavioursList(options);
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSave = async () => {
     if (!petName.trim()) {
@@ -97,17 +116,24 @@ export function Step1Details() {
   return (
     <div className="flex flex-col h-full animate-in slide-in-from-right duration-300 pb-10 overflow-y-auto hide-scrollbar pt-2">
       
-      {/* Header Icon & Title */}
-      <div className="flex flex-col items-center justify-center space-y-4 mb-8 mt-2">
-        <div className="w-16 h-16 bg-[#FAF7F2] rounded-3xl flex items-center justify-center">
-          <PawPrint size={32} className="text-[#66B4B1]" />
+      {/* Header Icon, Title & Skip Option */}
+      <div className="flex items-center justify-between mb-6 mt-2">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 bg-[#FAF7F2] rounded-2xl flex items-center justify-center">
+            <PawPrint size={26} className="text-[#66B4B1]" />
+          </div>
+          <div>
+            <h1 className="text-xl font-black text-text-primary">Meet Your Pet!</h1>
+            <p className="text-text-secondary text-xs">Tell us about your furry family member</p>
+          </div>
         </div>
-        <div className="text-center">
-          <h1 className="text-[28px] font-black text-text-primary">Meet Your Pet!</h1>
-          <p className="text-text-secondary text-[15px] mt-1 max-w-[260px] mx-auto leading-tight">
-            Tell us about your furry family member to get started
-          </p>
-        </div>
+        <button
+          type="button"
+          onClick={() => navigate('/welcome')}
+          className="text-xs font-bold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-3.5 py-1.5 rounded-full transition-all shadow-2xs"
+        >
+          Skip for now
+        </button>
       </div>
 
       <div className="flex flex-col space-y-6 flex-1 px-1">
@@ -264,6 +290,15 @@ export function Step1Details() {
         {/* Behaviour / Personality */}
         <div className="flex flex-col gap-2.5">
           <label className="text-[15px] font-bold text-text-primary ml-1">Tell us about his behaviour</label>
+          {/* An owner has no way of knowing this answer is load-bearing unless
+              we say so — and an inaccurate one produces bad matches for both
+              pets, not just theirs. */}
+          <p className="flex items-start gap-2 text-[12.5px] leading-snug text-text-secondary bg-[#FAF7F2] border border-[#66B4B1]/25 rounded-2xl px-3.5 py-2.5 ml-1 mr-1">
+            <Info size={15} className="text-[#66B4B1] shrink-0 mt-[1px]" />
+            <span>
+              Choose your pet’s behaviour carefully. Tail Circle uses this information to understand behavioural compatibility and help you find better matches.
+            </span>
+          </p>
           <div className="flex flex-wrap gap-2.5">
             {behavioursList.map((bh) => {
               const isSelected = behaviours.includes(bh);
@@ -274,15 +309,19 @@ export function Step1Details() {
                   onClick={() => {
                     if (isSelected) {
                       setBehaviours(behaviours.filter(b => b !== bh));
-                    } else {
+                    } else if (behaviours.length < MAX_BEHAVIOURS) {
+                      // The API rejects more than this, and a longer list makes
+                      // the compatibility read mushier, not sharper.
                       setBehaviours([...behaviours, bh]);
                     }
                   }}
+                  disabled={!isSelected && behaviours.length >= MAX_BEHAVIOURS}
                   className={cn(
                     "px-4 py-2 rounded-full text-sm font-semibold transition-colors border",
                     isSelected
                       ? "bg-[#66B4B1] text-white border-[#66B4B1] shadow-sm"
-                      : "bg-white text-text-primary border-border-light hover:border-[#66B4B1]/50 shadow-sm"
+                      : "bg-white text-text-primary border-border-light hover:border-[#66B4B1]/50 shadow-sm",
+                    !isSelected && behaviours.length >= MAX_BEHAVIOURS && "opacity-40"
                   )}
                 >
                   {bh}
@@ -303,10 +342,17 @@ export function Step1Details() {
           />
         </div>
 
-        <div className="pt-6 pb-4">
+        <div className="pt-6 pb-4 flex flex-col gap-3">
           <Button type="button" onClick={handleSave} disabled={isSaving} className="w-full h-14 rounded-full text-lg font-bold shadow-lg shadow-primary-main/30 bg-[#F87B68] hover:bg-[#F87B68]/90 border-0">
             {isSaving ? 'Saving…' : 'Save & Continue'}
           </Button>
+          <button
+            type="button"
+            onClick={() => navigate('/welcome')}
+            className="w-full text-center text-xs font-extrabold text-slate-400 hover:text-slate-600 py-1.5 transition-colors"
+          >
+            Skip for now (I will add my pet later from profile)
+          </button>
         </div>
       </div>
     </div>

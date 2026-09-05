@@ -10,7 +10,7 @@ export function Settings() {
   // General Settings States
   const [appName, setAppName] = useState('TailCircle');
   const [supportPhone, setSupportPhone] = useState('+91 98765 43210');
-  const [supportEmail, setSupportEmail] = useState('support@tailcircle.com');
+  const [supportEmail, setSupportEmail] = useState('Contact@tailcircle.in');
   const [contactAddress, setContactAddress] = useState('12, Outer Ring Road, Indira Nagar, Bangalore - 560038');
   const [logoUrl, setLogoUrl] = useState('https://tailcircle.com/logo.png');
 
@@ -28,7 +28,7 @@ export function Settings() {
   // Notifications / SMTP states
   const [smtpHost, setSmtpHost] = useState('smtp.mailgun.org');
   const [smtpPort, setSmtpPort] = useState(587);
-  const [smtpUser, setSmtpUser] = useState('postmaster@tailcircle.com');
+  const [smtpUser, setSmtpUser] = useState('Partner@tailcircle.in');
   const [smsGateway, setSmsGateway] = useState('Twilio');
 
   // App Config States

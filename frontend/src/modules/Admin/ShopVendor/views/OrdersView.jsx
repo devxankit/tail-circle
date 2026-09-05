@@ -114,7 +114,7 @@ export function OrdersView() {
             </tbody>
           </table>
           <div class="footer">
-            <p>Thank you for shopping with us! For any queries, contact support@tailcircle.com</p>
+            <p>Thank you for shopping with us! For any queries, contact Contact@tailcircle.in</p>
             <p style="margin-top:6px;">TailCircle Shop Partner · Generated on ${new Date().toLocaleDateString('en-IN')}</p>
           </div>
         </body>

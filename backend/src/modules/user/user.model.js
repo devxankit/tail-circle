@@ -55,6 +55,37 @@ const userSchema = new Schema(
       enum: [...VENDOR_TYPES, 'meal_portal', null],
       default: null,
     },
+    /**
+     * Every business line this account operates.
+     *
+     * A vendor may run more than one (a grooming salon that also takes daycare
+     * bookings), so this — not the single `vendorType` above — is the truth for
+     * "what is this account allowed to do". `vendorType` stays as the *primary*
+     * line: the one their panel opens on and the default when a request does
+     * not say which business it is for.
+     *
+     * Kept in step by `syncVendorTypes()` below, so the two can never drift.
+     */
+    vendorTypes: {
+      type: [{ type: String, enum: [...VENDOR_TYPES, 'meal_portal'] }],
+      default: [],
+      index: true,
+    },
+
+    /*
+     * The vendor's own open/closed switch.
+     *
+     * Deliberately separate from `Provider.active` and `approvalStatus`, which
+     * belong to the platform: an admin suspending a business and a groomer
+     * closing for the afternoon are different events, and one flag for both
+     * would let a vendor lift their own suspension.
+     *
+     * Defaults to open, and absent on every row written before this existed --
+     * so all the reads below treat "not false" as online rather than testing
+     * for true.
+     */
+    vendorOnline: { type: Boolean, default: true },
+    vendorOfflineAt: { type: Date, default: null },
 
     // Admin staff RBAC (role: 'admin').
     adminRole: {
@@ -73,6 +104,23 @@ const userSchema = new Schema(
   },
   { timestamps: true }
 );
+
+/**
+ * Keep `vendorType` (primary) and `vendorTypes` (all lines) consistent.
+ *
+ * Rows written before multi-line support have only `vendorType`, and older code
+ * paths still set just that one. Normalising on save means every read can trust
+ * `vendorTypes` to be the complete list, with `vendorType` always a member of
+ * it — no call site has to handle the half-populated case.
+ */
+userSchema.pre('save', function syncVendorTypes() {
+  if (this.role !== 'vendor') return;
+  const types = new Set((this.vendorTypes || []).filter(Boolean));
+  if (this.vendorType) types.add(this.vendorType);
+  this.vendorTypes = [...types];
+  // Primary must be one of the lines; fall back to the first if it was cleared.
+  if (!this.vendorType && this.vendorTypes.length) this.vendorType = this.vendorTypes[0];
+});
 
 userSchema.set('toJSON', {
   virtuals: true,

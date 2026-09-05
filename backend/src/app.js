@@ -50,7 +50,10 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  // 'X-Vendor-Type' names the business line a multi-line vendor's open panel is
+  // acting as. This list is an allowlist, so omitting it would make the browser
+  // fail the preflight and every vendor API call with it.
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'X-Vendor-Type'],
 };
 
 app.use(cors(corsOptions));

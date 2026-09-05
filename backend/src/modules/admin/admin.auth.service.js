@@ -31,13 +31,14 @@ export async function adminPasswordLogin(emailInput, password, ip = '') {
 
   let user = await User.findOne({ email, role: 'admin' }).select('+passwordHash');
 
-  // Auto-bootstrap default super-admin if database was reset and logging in as admin@tailcircle.com
-  if (!user && email === 'admin@tailcircle.com') {
+  // Auto-bootstrap default super-admin if database was reset and logging in as Contact@tailcircle.in or admin@tailcircle.com
+  const defaultEmail = (process.env.ADMIN_EMAIL || 'Contact@tailcircle.in').toLowerCase();
+  if (!user && (email === defaultEmail || email === 'admin@tailcircle.com' || email === 'contact@tailcircle.in')) {
     const defaultPassword = process.env.ADMIN_PASSWORD || 'admin123';
     const passwordHash = await bcrypt.hash(defaultPassword, 10);
     user = await User.create({
       name: 'System Admin',
-      email: 'admin@tailcircle.com',
+      email: defaultEmail,
       role: 'admin',
       adminRole: 'super',
       permissions: ['*'],

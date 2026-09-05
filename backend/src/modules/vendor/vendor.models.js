@@ -25,11 +25,18 @@ export const APPROVAL_STATUSES = ['pending', 'approved', 'rejected', 'suspended'
 
 const vendorProfileSchema = new mongoose.Schema(
   {
+    /**
+     * The owning login. NOT unique — one account may run several business
+     * lines (a grooming salon that also takes daycare bookings), and each line
+     * is its own profile row so it carries its own approval state, commission
+     * rate, KYC documents and storefront toggle. Uniqueness is on the
+     * (userId, vendorType) pair, declared below.
+     */
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
-      unique: true,
+      index: true,
     },
     businessName: { type: String, required: true, trim: true },
     registrationNo: { type: String, unique: true }, // generated (TCV-XXXXXX)
@@ -83,6 +90,16 @@ const vendorProfileSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+/*
+ * One profile per business line per account.
+ *
+ * This replaces a plain unique index on `userId`, which allowed a vendor only
+ * one line for their lifetime — a groomer who also ran daycare had to register
+ * a second account under a different email. The pair still blocks the genuine
+ * duplicate (registering the same line twice).
+ */
+vendorProfileSchema.index({ userId: 1, vendorType: 1 }, { unique: true });
+
 vendorProfileSchema.pre('save', function assignRegNo() {
   if (!this.registrationNo) {
     this.registrationNo = `TCV-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -100,6 +117,16 @@ const vendorLedgerEntrySchema = new mongoose.Schema(
   {
     vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     refType: { type: String, enum: ['order', 'booking', 'subscription'], required: true },
+    /**
+     * Which of the vendor's business lines earned this.
+     *
+     * Entries are keyed by `vendorId` — the account — so a vendor who runs both
+     * grooming and daycare sees one combined earnings list. That is the right
+     * total (they are paid out together), but without this they could not tell
+     * which business produced which row. Null on rows written before multi-line
+     * support.
+     */
+    vendorType: { type: String, default: null, index: true },
     refId: { type: mongoose.Schema.Types.ObjectId, required: true },
     label: { type: String, default: '' }, // display ("Order ORD-1234")
     gross: { type: Number, required: true }, // paise

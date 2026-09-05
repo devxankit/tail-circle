@@ -12,6 +12,30 @@ import { Doctor, modeForVisitType } from '../provider/doctor.model.js';
 import { getDoctorSlots } from '../provider/availability.service.js';
 import { Event } from '../provider/event.model.js';
 import { Pet } from '../pet/pet.model.js';
+import { isReactive } from '../social/behaviour.service.js';
+import { assertVendorOnline } from '../vendor/availability.service.js';
+
+/** Kept in step with events.vendor.service.js, which reads them back. */
+const TRAINER_ITEM_REF = 'trainer_support';
+const TRAINER_ITEM_NAME = 'Trainer / handler support';
+
+/**
+ * Keys under `meta` that only the server may write.
+ *
+ * `meta` is a free-form bag so each vertical can stash its own answers, and it
+ * is copied verbatim from the request. That is fine for questionnaire replies,
+ * but several keys are read back as though the server had set them: a client
+ * posting `{ withTrainer: true }` got "Trainer paid" on the organiser's list
+ * and a notification telling them to arrange a handler, without paying for
+ * one, and `{ checkedIn: true }` marked its own ticket as admitted.
+ */
+const SERVER_OWNED_META = ['withTrainer', 'reactivePet', 'checkedIn', 'ticketQty'];
+
+function sanitiseClientMeta(meta) {
+  const clean = { ...(meta || {}) };
+  for (const key of SERVER_OWNED_META) delete clean[key];
+  return clean;
+}
 import { Address } from '../address/address.model.js';
 import { SlotBooking } from './slot.model.js';
 import { Booking, CANCELLABLE_BOOKING_STATUSES } from './booking.model.js';
@@ -288,7 +312,7 @@ async function buildBooking(user, payload) {
       durationDays: payload.schedule?.durationDays || null,
     },
     visitType: payload.visitType || null,
-    meta: payload.meta || {},
+    meta: sanitiseClientMeta(payload.meta),
     items: [],
   };
 
@@ -325,6 +349,12 @@ async function buildBooking(user, payload) {
       active: true,
     });
     if (!provider) throw ApiError.badRequest('Provider not found');
+    /*
+     * The listing already hides a closed business, so getting here means a
+     * stale tab, a saved link, or a booking begun in the seconds after they
+     * switched off. Refuse it rather than book someone into a shut salon.
+     */
+    await assertVendorOnline(provider.vendorUserId, provider.name || 'This provider');
     base.providerId = provider.id;
 
     if (payload.addressId) {
@@ -436,6 +466,7 @@ async function buildBooking(user, payload) {
       active: true,
     });
     if (!doctor) throw ApiError.badRequest('Doctor not found');
+    await assertVendorOnline(doctor.userId, doctor.name ? `Dr ${doctor.name}` : 'This vet');
     base.doctorId = doctor.id;
 
     const visitType = payload.visitType || 'clinic';
@@ -548,7 +579,44 @@ async function buildBooking(user, payload) {
       status: 'published',
     });
     if (!event) throw ApiError.badRequest('Event not found');
+    await assertVendorOnline(event.vendorId, 'This organiser');
     const qty = Math.max(1, Math.min(10, payload.ticketQty || 1));
+
+    /*
+     * Handler support.
+     *
+     * Purely optional, and purely the organiser's service: the platform does
+     * not supply, roster or hold places for trainers. If the owner opts in,
+     * the fee rides along with the ticket to the organiser and the organiser
+     * is told the booking includes a handler. Nothing here blocks a sale — an
+     * owner who declines still gets their ticket, having been shown where the
+     * responsibility sits.
+     *
+     * Priced per pet needing supervision, and a booking names exactly one pet,
+     * so the quantity is one however many tickets are bought — the extra
+     * tickets are the humans coming along.
+     */
+    const trainer = event.trainer || {};
+    const offersTrainer = trainer.provision === 'included' || trainer.provision === 'paid';
+    const wantsTrainer = Boolean(payload.withTrainer);
+    /*
+     * Fail rather than quietly book them in without it.
+     *
+     * The owner ticked a box, saw the fee in their total, and is expecting a
+     * handler to be there. If the organiser has withdrawn the service since
+     * the sheet was opened, silently dropping it charges the right amount but
+     * leaves them believing supervision is arranged -- which is exactly the
+     * situation this whole feature exists to avoid.
+     */
+    if (wantsTrainer && !offersTrainer) {
+      throw ApiError.badRequest(
+        'This event no longer offers trainer support. Reopen the event to book without it.'
+      );
+    }
+
+    // Reclaim seats from checkouts nobody finished, so an event does not read
+    // as sold out on the strength of abandoned Razorpay windows.
+    await releaseStaleTicketHolds(event.id).catch(() => {});
 
     // Atomic capacity guard on ticket sales.
     const res = await Event.updateOne(
@@ -559,10 +627,48 @@ async function buildBooking(user, payload) {
 
     base.eventId = event.id;
     base.meta.ticketQty = qty;
-    base._eventRelease = { eventId: event.id, qty };
     base.items = [
       { kind: 'ticket', refId: String(event.legacyId ?? event.id), name: event.title, price: event.price, qty },
     ];
+
+    if (wantsTrainer) {
+      base.meta.withTrainer = true;
+      base.items.push({
+        kind: 'addon',
+        // A stable handle. The organiser's receipt used to find this line by
+        // its display name, so renaming the label would have silently zeroed
+        // the fee on every booking already taken.
+        refId: TRAINER_ITEM_REF,
+        name: TRAINER_ITEM_NAME,
+        // An included handler is still a line item, so the ticket and the
+        // organiser's attendee list both show one was booked.
+        price: trainer.provision === 'paid' ? trainer.pricePerPet : 0,
+        qty: 1,
+      });
+    }
+
+    /*
+     * Record a reactive pet either way.
+     *
+     * The owner is shown at checkout that responsibility for any incident is
+     * theirs, not the platform's or the organiser's; storing the traits and
+     * whether they took a handler is what makes that claim evidenced rather
+     * than asserted, and it puts the pet on the organiser's list before the
+     * day rather than at the gate.
+     */
+    // Read the stored pet, never a flag from the client.
+    const petTraits = base.petId
+      ? (await Pet.findById(base.petId).select('temperament').lean())?.temperament || []
+      : [];
+    if (isReactive(petTraits)) {
+      base.meta.reactivePet = {
+        traits: petTraits,
+        handlerBooked: wantsTrainer,
+        // The disclaimer the owner passed through on their way here.
+        acknowledgedAt: new Date(),
+      };
+    }
+
     // The Review Booking screen displays a ₹49 platform fee; the quick ticket
     // sheet doesn't — the fee is charged only where the UI shows it.
     if (payload.meta?.withPlatformFee && event.price > 0) {
@@ -591,6 +697,60 @@ async function buildBooking(user, payload) {
     total: Math.max(0, baseAmount + addonAmount - discount),
   };
   return base;
+}
+
+/**
+ * How long an unpaid ticket keeps holding its seat.
+ *
+ * Capacity is claimed when the booking is created, before payment, so the
+ * ticket cannot be sold out from under someone mid-checkout. Nothing ever gave
+ * it back though: a closed Razorpay window left `sold` incremented for good,
+ * and a popular event drifted towards a permanent phantom "Fully Booked".
+ * Releasing on payment failure is not the fix -- that path deliberately leaves
+ * the booking retryable, and releasing there would let the retry oversell.
+ */
+const PENDING_TICKET_TTL_MS = 30 * 60 * 1000;
+
+/**
+ * Hand back seats held by checkouts that were never completed.
+ *
+ * Lazy rather than scheduled: it runs just before a new sale on the same
+ * event, which is exactly when a stale hold matters and keeps the work
+ * proportional to demand. Each row is claimed with a conditional update, so
+ * two simultaneous buyers cannot both release the same booking and drive
+ * `sold` below what is genuinely sold.
+ */
+async function releaseStaleTicketHolds(eventId) {
+  const cutoff = new Date(Date.now() - PENDING_TICKET_TTL_MS);
+  const stale = await Booking.find({
+    type: 'event',
+    eventId,
+    status: 'pending_payment',
+    createdAt: { $lt: cutoff },
+  })
+    .select('meta')
+    .limit(50)
+    .lean();
+  if (!stale.length) return;
+
+  let released = 0;
+  for (const row of stale) {
+    const claimed = await Booking.findOneAndUpdate(
+      { _id: row._id, status: 'pending_payment' },
+      {
+        $set: { status: 'cancelled' },
+        $push: { timeline: { status: 'cancelled', note: 'Checkout not completed - ticket released' } },
+      }
+    );
+    if (claimed) released += claimed.meta?.ticketQty || 1;
+  }
+
+  if (released) {
+    await Event.updateOne({ _id: eventId }, { $inc: { sold: -released } });
+    // Never let a double-release push the counter negative; a negative `sold`
+    // would silently raise the event's effective capacity.
+    await Event.updateOne({ _id: eventId, sold: { $lt: 0 } }, { $set: { sold: 0 } });
+  }
 }
 
 /** Roll back whatever capacity the failed/cancelled booking held. */
@@ -667,38 +827,45 @@ export async function createBooking(user, payload) {
 async function recordBookingLedger(booking) {
   if (!booking.amounts?.total) return;
   try {
-    const { postLedgerEntry } = await import('../vendor/vendor.service.js');
-    const { VendorProfile } = await import('../vendor/vendor.models.js');
+    const { postLedgerEntry, commissionFor } = await import('../vendor/vendor.service.js');
 
     let vendorId = null;
     let label = '';
+    // Which of the vendor's business lines earned this booking. One account can
+    // run grooming AND daycare at different commission rates, so settling both
+    // at "the vendor's rate" would silently pay one of them wrong.
+    let vendorType = null;
 
     if (booking.type === 'event' && booking.eventId) {
       const event = await Event.findById(booking.eventId).select('vendorId');
       vendorId = event?.vendorId || null;
+      vendorType = 'events';
       label = `Event booking ${booking.bookingNo}`;
     } else if (booking.type === 'doctor' && booking.doctorId) {
       // Consultation revenue belongs to the clinic that owns the vet.
       const doctor = await Doctor.findById(booking.doctorId).select('clinicVendorId name');
       vendorId = doctor?.clinicVendorId || null;
+      vendorType = 'clinic';
       const kind = MODE_LABEL[booking.consult?.mode] || 'Consultation';
       label = `${kind} ${booking.bookingNo}${doctor?.name ? ` — ${doctor.name}` : ''}`;
     } else if ((booking.type === 'grooming' || booking.type === 'daycare') && booking.providerId) {
       const provider = await Provider.findById(booking.providerId).select('vendorUserId name');
       vendorId = provider?.vendorUserId || null;
+      vendorType = booking.type;
       const kind = booking.type === 'grooming' ? 'Grooming' : 'Daycare';
       label = `${kind} booking ${booking.bookingNo}${provider?.name ? ` — ${provider.name}` : ''}`;
     }
 
     if (!vendorId) return;
-    const profile = await VendorProfile.findOne({ userId: vendorId });
+    const commissionRate = await commissionFor(vendorId, vendorType);
     await postLedgerEntry({
       vendorId,
       refType: 'booking',
       refId: booking._id,
       label,
       gross: booking.amounts.total,
-      commissionRate: profile?.commissionRate ?? 0.15,
+      commissionRate,
+      vendorType,
     });
   } catch {
     // ledger is best-effort
@@ -727,6 +894,32 @@ async function notifyBookingConfirmed(booking) {
         type: 'booking',
         link: '/vendor/doctor/consultations?view=appointments_list',
         data: { bookingId: String(booking._id), type: 'doctor' },
+      }).catch(() => {});
+    }
+  }
+
+  /*
+   * Events had no vendor notification at all, which matters more now: a
+   * handler the owner has already paid for is something the organiser has to
+   * arrange, and they cannot arrange it if they only find out by refreshing a
+   * bookings tab.
+   */
+  if (booking.type === 'event' && booking.eventId) {
+    const event = await Event.findById(booking.eventId).select('vendorId title');
+    if (event?.vendorId) {
+      const pet = booking.petSnapshot?.name;
+      const parts = [`${pet ? `${pet} is` : 'Someone is'} coming to ${event.title}.`];
+      if (booking.meta?.withTrainer) {
+        parts.push('Handler support booked and paid for — please arrange a trainer.');
+      } else if (booking.meta?.reactivePet) {
+        parts.push('This pet is marked reactive and no handler was booked.');
+      }
+      await notify(event.vendorId, {
+        title: booking.meta?.withTrainer ? 'New Booking — Handler Requested' : 'New Event Booking',
+        body: parts.join(' '),
+        type: 'booking',
+        link: '/vendor/events-organizer/bookings',
+        data: { bookingId: String(booking._id), type: 'event' },
       }).catch(() => {});
     }
   }

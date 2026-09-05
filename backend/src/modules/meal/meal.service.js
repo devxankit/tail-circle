@@ -4,6 +4,7 @@ import {
   createOrder as createPaymentOrder,
 } from '../payment/payment.service.js';
 import { MealPlan, Meal, MealAccount, MealOrder } from './meal.models.js';
+import { assertVendorOnline } from '../vendor/availability.service.js';
 
 const toPaise = (rupees) => Math.round(rupees * 100);
 
@@ -65,6 +66,9 @@ export async function getAccount(userId) {
 export async function purchasePackage(user, planLegacyId) {
   const plan = await MealPlan.findOne({ ...byHandle(planLegacyId), active: true });
   if (!plan) throw ApiError.badRequest('Plan not found');
+  // A kitchen that has closed cannot take a new prepaid package, however the
+  // customer got to this plan.
+  await assertVendorOnline(plan.providerId, 'This meal provider');
 
   const order = await MealOrder.create({
     userId: user.id,
@@ -130,16 +134,18 @@ registerPurposeHandler('subscription', {
 async function recordMealLedger(order) {
   if (!order.providerId || !order.total) return;
   try {
-    const { postLedgerEntry } = await import('../vendor/vendor.service.js');
-    const { VendorProfile } = await import('../vendor/vendor.models.js');
-    const profile = await VendorProfile.findOne({ userId: order.providerId });
+    const { postLedgerEntry, commissionFor } = await import('../vendor/vendor.service.js');
+    // Settle at the meal line's rate — a kitchen that also runs a shop has two
+    // commission rates on one account.
+    const commissionRate = await commissionFor(order.providerId, 'meal_subscription');
     await postLedgerEntry({
       vendorId: order.providerId,
       refType: 'subscription',
       refId: order._id,
       label: `Meal order ${order.orderNo}`,
       gross: order.total,
-      commissionRate: profile?.commissionRate ?? 0.15,
+      commissionRate,
+      vendorType: 'meal_subscription',
     });
   } catch {
     // ledger is best-effort

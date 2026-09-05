@@ -1,10 +1,14 @@
-import { api, setTokens, clearTokens } from './api';
+import { api, setTokens, clearTokens, getActiveVendorType, setActiveVendorType } from './api';
 
 /**
  * Vendor portal API. Vendors authenticate separately from pet-parent users but
  * share the same token client (a vendor session overwrites the user session in
- * this browser — the portals are distinct entry points). Login/register map the
- * VendorAuth form's role slugs (shop/doctor/meal/event/memorial) to the backend.
+ * this browser — the portals are distinct entry points).
+ *
+ * One account can run several business lines at once — a grooming salon that
+ * also takes daycare bookings — so a session holds `profiles`, one per line,
+ * and an *active* line saying which panel is open. Login no longer asks for a
+ * category: the lines come back with the credentials.
  */
 
 const VENDOR_KEY = 'vendor_info';
@@ -17,15 +21,67 @@ export function getStoredVendor() {
   }
 }
 
-function storeSession({ accessToken, refreshToken, user, profile }) {
-  setTokens({ accessToken, refreshToken });
-  localStorage.setItem(VENDOR_KEY, JSON.stringify({ user, profile }));
-  return { user, profile };
+/** Every business line on the signed-in account (empty if signed out). */
+export function getVendorLines() {
+  const stored = getStoredVendor();
+  if (!stored) return [];
+  // Sessions stored before multi-line support hold a single `profile`.
+  return stored.profiles?.length ? stored.profiles : [stored.profile].filter(Boolean);
 }
 
-export function updateStoredVendor(updatedProfile) {
-  const current = getStoredVendor() || {};
-  localStorage.setItem(VENDOR_KEY, JSON.stringify({ ...current, profile: { ...current.profile, ...updatedProfile } }));
+/** True when this vendor runs more than one business — what reveals the switcher. */
+export function isMultiLineVendor() {
+  return getVendorLines().length > 1;
+}
+
+/** The profile for the currently active line, falling back to the primary. */
+export function getActiveVendorProfile() {
+  const lines = getVendorLines();
+  if (!lines.length) return null;
+  const active = getActiveVendorType();
+  return lines.find((p) => p.vendorType === active) || lines[0];
+}
+
+export { getActiveVendorType, setActiveVendorType };
+
+function storeSession({ accessToken, refreshToken, user, profile, profiles }) {
+  setTokens({ accessToken, refreshToken });
+  const lines = profiles?.length ? profiles : [profile].filter(Boolean);
+  localStorage.setItem(VENDOR_KEY, JSON.stringify({ user, profile: lines[0] || profile, profiles: lines }));
+  // A single-line vendor has exactly one answer, so activate it immediately and
+  // send them straight to their panel. A multi-line vendor picks at the hub —
+  // guessing for them would open the wrong business.
+  setActiveVendorType(lines.length === 1 ? lines[0]?.vendorType : null);
+  return { user, profile: lines[0] || profile, profiles: lines };
+}
+
+/**
+ * Merge updated fields into the stored copy of one business line.
+ *
+ * Patches the active line by default. Both `profile` (the primary, which older
+ * screens read) and the matching entry in `profiles` are updated, so the two
+ * can never disagree about the same business.
+ */
+export function updateStoredVendor(updatedProfile, vendorType = null) {
+  const current = getStoredVendor();
+  if (!current) return;
+  const target = vendorType || updatedProfile?.vendorType || getActiveVendorType();
+  const lines = getVendorLines();
+
+  const next = lines.map((p) =>
+    p.vendorType === (target || lines[0]?.vendorType) ? { ...p, ...updatedProfile } : p
+  );
+  const primary = next.find((p) => p.vendorType === current.profile?.vendorType) || next[0];
+
+  localStorage.setItem(VENDOR_KEY, JSON.stringify({ ...current, profile: primary, profiles: next }));
+}
+
+/** Replace the stored line list — used after adding a business line. */
+export function storeVendorLines(profiles) {
+  const current = getStoredVendor();
+  if (!current || !profiles?.length) return;
+  const primary = profiles.find((p) => p.vendorType === current.profile?.vendorType) || profiles[0];
+  localStorage.setItem(VENDOR_KEY, JSON.stringify({ ...current, profile: primary, profiles }));
 }
 
 export function vendorLogout() {
@@ -40,7 +96,10 @@ export async function registerVendor(form) {
     businessName: form.businessName,
     email: form.email,
     phone: form.phone,
-    role: form.role,
+    // A vendor may sign up for several categories at once. `role` stays for the
+    // single-category case so nothing that still sends it breaks.
+    roles: form.roles?.length ? form.roles : undefined,
+    role: form.roles?.length ? undefined : form.role,
     city: form.city,
     address: form.address,
     password: form.password || undefined,
@@ -57,19 +116,45 @@ export async function registerVendor(form) {
   return data; // { registrationNo, approvalStatus }
 }
 
-export async function loginVendorPassword(email, password, role = null) {
-  const { data } = await api.post('/vendor/login', { email, password, role, vendorType: role });
+/*
+ * No category is sent with any of these: which businesses an account runs is
+ * decided by its credentials. Asking a vendor to pick one at login could only
+ * ever be a way to get it wrong — and a vendor who runs two had no right
+ * answer to give.
+ */
+export async function loginVendorPassword(email, password) {
+  const { data } = await api.post('/vendor/login', { email, password });
   return storeSession(data);
 }
 
-export async function requestVendorOtp(identifier, role = null) {
-  const { data } = await api.post('/vendor/request-otp', { registrationNo: identifier, identifier, role, vendorType: role });
+export async function requestVendorOtp(identifier) {
+  const { data } = await api.post('/vendor/request-otp', { registrationNo: identifier, identifier });
   return data;
 }
 
-export async function loginVendorOtp(identifier, code, role = null) {
-  const { data } = await api.post('/vendor/verify-otp', { registrationNo: identifier, identifier, code, role, vendorType: role });
+export async function loginVendorOtp(identifier, code) {
+  const { data } = await api.post('/vendor/verify-otp', { registrationNo: identifier, identifier, code });
   return storeSession(data);
+}
+
+/* ── Business lines ───────────────────────────────────────── */
+
+/** Every business line on this account, refreshed from the API. */
+export async function fetchVendorLines() {
+  const { data } = await api.get('/vendor/lines');
+  storeVendorLines(data);
+  return data;
+}
+
+/**
+ * Add a business line to the signed-in account.
+ *
+ * Starts `pending` and goes through the same admin review as a fresh signup.
+ */
+export async function addVendorLine(payload) {
+  const { data } = await api.post('/vendor/lines', payload);
+  await fetchVendorLines();
+  return data;
 }
 
 /* ── Common ───────────────────────────────────────────────── */
@@ -81,7 +166,9 @@ export async function fetchVendorProfile() {
 
 export async function updateVendorProfile(patch) {
   const { data } = await api.patch('/vendor/profile', patch);
-  if (data) updateStoredVendor(data);
+  // The response says which line it edited, so the stored copy of that exact
+  // business is the one refreshed.
+  if (data) updateStoredVendor(data, data.vendorType);
   return data;
 }
 
@@ -240,6 +327,17 @@ export async function sendRiderLocation(id, coords) {
 
 /* ── Events Partner portal ──────────────────────────── */
 
+/* ── availability (all vendor panels) ────────────────────── */
+
+/** Whether this account is currently open for business. */
+export async function fetchVendorAvailability() {
+  return (await api.get('/vendor/availability')).data;
+}
+
+export async function setVendorAvailability(online) {
+  return (await api.patch('/vendor/availability', { online })).data;
+}
+
 export async function fetchEvents() {
   const { data } = await api.get('/vendor/events');
   return data;
@@ -260,6 +358,16 @@ export async function fetchEventBookings() {
   const { data } = await api.get('/vendor/event-bookings');
   return data;
 }
+/**
+ * Admit a ticket from its scanned code.
+ *
+ * Accepts whatever the scanner produced -- the full URL the QR carries, or a
+ * booking number typed in by hand when a phone will not focus.
+ */
+export async function scanEventTicket(code) {
+  return (await api.post('/vendor/event-bookings/scan', { code })).data;
+}
+
 export async function checkInEventBooking(id) {
   const { data } = await api.post(`/vendor/event-bookings/${id}/checkin`);
   return data;

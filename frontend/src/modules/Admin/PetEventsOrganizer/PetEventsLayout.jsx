@@ -11,6 +11,8 @@ import {
 import { cn } from '../../user/utils/cn';
 
 import VerificationBanner from '../components/VerificationBanner';
+import { BusinessSwitcher } from '../vendor/BusinessSwitcher';
+import { VendorAvailabilityToggle } from '../vendor/VendorAvailabilityToggle';
 
 export function PetEventsLayout() {
   const { profile, notifications, markAllRead } = usePetEvents();
@@ -158,9 +160,14 @@ export function PetEventsLayout() {
               <Menu size={24} />
             </button>
             <h1 className="text-xl font-black text-slate-900 hidden sm:block">Event Operations</h1>
+            <BusinessSwitcher />
           </div>
 
           <div className="flex items-center gap-3 sm:gap-6">
+          {/* Open/closed switch. Top of every panel on purpose: a vendor who
+              forgets they are offline loses enquiries silently. */}
+          <VendorAvailabilityToggle />
+
             {/* Global Search */}
             <div className="hidden md:flex items-center bg-slate-50 border border-slate-200 rounded-full px-4 py-2.5 w-64 focus-within:ring-2 focus-within:ring-slate-300 focus-within:border-slate-400 transition-all">
               <Search size={16} className="text-slate-400" />

@@ -282,6 +282,26 @@ export async function subscribeToConversation(conversationId, onMessage) {
   }
 }
 
+/**
+ * New matches, pushed to whichever side did not complete the swipe.
+ *
+ * Both owners of a match get this; the swiper also has it in their swipe
+ * response, so the listener de-duplicates on `conversationId`.
+ */
+export async function subscribeToNewMatches(onMatch) {
+  try {
+    const { connectSocket } = await import('./socket');
+    const socket = connectSocket();
+    const handler = (payload) => {
+      if (payload) onMatch(payload);
+    };
+    socket.on('match:new', handler);
+    return () => socket.off('match:new', handler);
+  } catch {
+    return () => {};
+  }
+}
+
 /* ── stories ──────────────────────────────────────────── */
 
 export async function fetchStories() {

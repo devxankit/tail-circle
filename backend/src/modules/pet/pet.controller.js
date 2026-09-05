@@ -4,6 +4,7 @@ import { ApiError } from '../../utils/ApiError.js';
 import { Pet } from './pet.model.js';
 import { PetVaccination } from './petVaccination.model.js';
 import { syncPetToMatchProfile } from '../social/matchEngine.service.js';
+import { isReactive, reactiveTraits } from '../social/behaviour.service.js';
 
 const MAX_PETS = 20;
 const MAX_PHOTOS = 6;
@@ -14,10 +15,28 @@ async function getOwnedPet(userId, petId) {
   return pet;
 }
 
+/**
+ * Decorate a pet with the platform's reading of its behaviour.
+ *
+ * Computed here rather than in the client so "is this pet reactive?" has
+ * exactly one answer, owned by the behaviour taxonomy. A screen re-deriving it
+ * by string-matching 'Aggressive' would silently disagree the moment a trait
+ * was added — and the screens asking this question are the ones deciding
+ * whether a handler is needed at an event.
+ */
+function withBehaviour(pet) {
+  const json = pet.toJSON();
+  return {
+    ...json,
+    isReactive: isReactive(json.temperament),
+    reactiveTraits: reactiveTraits(json.temperament),
+  };
+}
+
 /** GET /pets — my pets. */
 export const listPets = asyncHandler(async (req, res) => {
   const pets = await Pet.find({ ownerId: req.user.id, deletedAt: null }).sort({ createdAt: -1 });
-  sendSuccess(res, { data: pets });
+  sendSuccess(res, { data: pets.map(withBehaviour) });
 });
 
 /** POST /pets — add a pet (onboarding step 1 / AddPet screen). */
@@ -33,7 +52,7 @@ export const createPet = asyncHandler(async (req, res) => {
 /** GET /pets/:id */
 export const getPet = asyncHandler(async (req, res) => {
   const pet = await getOwnedPet(req.user.id, req.params.id);
-  sendSuccess(res, { data: pet });
+  sendSuccess(res, { data: withBehaviour(pet) });
 });
 
 /** PATCH /pets/:id — onboarding steps 2–3 and edits. */

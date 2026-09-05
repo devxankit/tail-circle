@@ -42,11 +42,31 @@ export function resolveVendorType(slug) {
 }
 
 /**
- * 5-step KYC registration → creates a pending vendor User + VendorProfile.
- * Login stays blocked until an admin approves (Phase 11 / approve script).
+ * The business lines a signup asked for, de-duplicated and validated.
+ *
+ * Accepts the modern `roles: []` and the original single `role`, so an older
+ * client (or a saved cURL) keeps working unchanged.
+ */
+export function resolveVendorTypes(payload) {
+  const raw = Array.isArray(payload.roles) && payload.roles.length
+    ? payload.roles
+    : [payload.role].filter(Boolean);
+  if (!raw.length) throw ApiError.badRequest('Select at least one partner category');
+  return [...new Set(raw.map(resolveVendorType))];
+}
+
+/**
+ * KYC registration → a pending vendor User plus one VendorProfile per business
+ * line the applicant selected.
+ *
+ * One account can serve several lines (a grooming salon that also runs
+ * daycare). Each gets its own profile so it carries its own registration
+ * number, KYC documents, commission rate and approval state — admin reviews
+ * and approves them independently. Login stays blocked until at least one is
+ * approved.
  */
 export async function registerVendor(payload) {
-  const vendorType = resolveVendorType(payload.role);
+  const vendorTypes = resolveVendorTypes(payload);
   const email = payload.email?.toLowerCase().trim();
   const phone = normalizePhone(payload.phone);
 
@@ -57,11 +77,87 @@ export async function registerVendor(payload) {
     email,
     phone,
     role: 'vendor',
-    vendorType,
+    // The first selected line is the primary: the panel their login opens on.
+    vendorType: vendorTypes[0],
+    vendorTypes,
     isPhoneVerified: false,
     ...(payload.password ? { passwordHash: await bcrypt.hash(payload.password, 10) } : {}),
   });
 
+  const created = [];
+  for (const vendorType of vendorTypes) {
+    created.push(await createVendorLine(user, vendorType, payload));
+  }
+
+  return {
+    // Single-line signups keep the exact response they had — the success screen
+    // and any saved integration still read `registrationNo`.
+    registrationNo: created[0].registrationNo,
+    registrationNos: created.map((p) => ({ vendorType: p.vendorType, registrationNo: p.registrationNo })),
+    vendorTypes,
+    approvalStatus: created[0].approvalStatus,
+  };
+}
+
+/**
+ * Add a business line to an account that already exists.
+ *
+ * Without this a groomer who later wants to offer daycare would have to
+ * register a whole second account under a different email, splitting their
+ * earnings, reviews and support history in two. The new line starts `pending`
+ * and goes through the same admin review as a fresh signup — adding a line is
+ * not a way around approval.
+ */
+export async function addVendorLine(userId, payload) {
+  const vendorType = resolveVendorType(payload.role || payload.vendorType);
+
+  const user = await User.findById(userId);
+  if (!user || user.role !== 'vendor') throw ApiError.notFound('Vendor account not found');
+
+  if (await VendorProfile.findOne({ userId: user._id, vendorType })) {
+    throw ApiError.conflict(`You already run a ${vendorTypeLabel(vendorType)} business on this account`);
+  }
+
+  // Details default to the account's first line, so a vendor adding a second
+  // business only has to fill in what actually differs.
+  const primary = await VendorProfile.findOne({ userId: user._id }).sort({ createdAt: 1 }).select('+bank.accountNumberEnc');
+  const merged = {
+    city: primary?.city ?? '',
+    address: primary?.address ?? '',
+    bankName: primary?.bank?.bankName ?? '',
+    accountHolder: primary?.bank?.accountHolder ?? '',
+    ifscCode: primary?.bank?.ifsc ?? '',
+    accountType: primary?.bank?.accountType ?? 'Saving',
+    hasGst: primary?.gst?.hasGst ?? false,
+    gstNumber: primary?.gst?.number ?? '',
+    ...payload,
+    businessName: payload.businessName || primary?.businessName || user.name,
+  };
+  // The bank account number is stored encrypted and never decrypted for
+  // display, so it can only be carried over as ciphertext, not re-derived.
+  const inheritedBankEnc = payload.accountNumber ? null : primary?.bank?.accountNumberEnc ?? null;
+
+  const profile = await createVendorLine(user, vendorType, merged, { inheritedBankEnc });
+
+  user.vendorTypes = [...new Set([...(user.vendorTypes || []), vendorType])];
+  await user.save();
+
+  return {
+    registrationNo: profile.registrationNo,
+    vendorType,
+    approvalStatus: profile.approvalStatus,
+  };
+}
+
+/**
+ * Create one business line: its VendorProfile plus whatever customer-facing
+ * record that vertical is backed by.
+ *
+ * Shared by signup and by adding a line later, so the two can never drift — a
+ * daycare line added from the dashboard gets the same Provider a daycare
+ * signup would have got.
+ */
+async function createVendorLine(user, vendorType, payload, { inheritedBankEnc = null } = {}) {
   const documents = [];
   if (payload.licenseUrl) documents.push({ kind: 'license', url: payload.licenseUrl });
   if (payload.ownerIdUrl) documents.push({ kind: 'owner_id', url: payload.ownerIdUrl });
@@ -71,15 +167,15 @@ export async function registerVendor(payload) {
     userId: user._id,
     businessName: payload.businessName,
     vendorType,
-    email,
-    phone,
+    email: user.email,
+    phone: user.phone,
     city: payload.city || '',
     address: payload.address || '',
     documents,
     bank: {
       bankName: payload.bankName || '',
       accountHolder: payload.accountHolder || payload.businessName,
-      accountNumberEnc: encryptField(payload.accountNumber),
+      accountNumberEnc: payload.accountNumber ? encryptField(payload.accountNumber) : inheritedBankEnc,
       ifsc: payload.ifscCode || '',
       accountType: payload.accountType || 'Saving',
     },
@@ -101,7 +197,7 @@ export async function registerVendor(payload) {
     await createProviderForVendor(user, PROVIDER_BACKED[vendorType], payload);
   }
 
-  return { registrationNo: profile.registrationNo, approvalStatus: profile.approvalStatus };
+  return profile;
 }
 
 /**
@@ -202,160 +298,144 @@ async function createVetProfile(user, payload) {
   });
 }
 
-/** Approval-gated: approved and pending vendors receive tokens. */
-function assertApproved(profile) {
-  if (!profile) throw ApiError.forbidden('No vendor profile found');
-  if (profile.approvalStatus === 'approved' || profile.approvalStatus === 'pending') return;
+/**
+ * Approval gate for the account as a whole.
+ *
+ * A vendor gets in if *any* of their business lines is approved or pending —
+ * one rejected line must not lock them out of a business they are already
+ * trading through. Which lines they can actually open is then decided per line
+ * by `requireType` in the vendor guard.
+ */
+function assertApproved(profiles) {
+  const lines = Array.isArray(profiles) ? profiles : [profiles].filter(Boolean);
+  if (!lines.length) throw ApiError.forbidden('No vendor profile found');
+  if (lines.some((p) => p.approvalStatus === 'approved' || p.approvalStatus === 'pending')) return;
+
   const messages = {
     rejected: 'Your vendor application was rejected.',
     suspended: 'Your vendor account is suspended. Contact support.',
   };
-  throw new ApiError(403, messages[profile.approvalStatus] || 'Vendor account inactive', {
-    details: { approvalStatus: profile.approvalStatus },
+  // Every line is blocked; report the first one's reason.
+  const worst = lines[0].approvalStatus;
+  throw new ApiError(403, messages[worst] || 'Vendor account inactive', {
+    details: { approvalStatus: worst },
   });
 }
 
-/** Email + password login (role vendor only). */
-export async function vendorPasswordLogin(email, password, expectedRoleOrType = null) {
+/** All business lines on an account, oldest (primary) first. */
+async function linesFor(userId) {
+  return VendorProfile.find({ userId }).select('+bank.accountNumberEnc').sort({ createdAt: 1 });
+}
+
+/**
+ * The session payload every login path returns.
+ *
+ * `profile` stays the primary line so existing screens that read a single
+ * profile keep working; `profiles` is the full set the panel switcher and the
+ * hub are built on.
+ */
+function sessionFor(user, profiles) {
+  return {
+    user,
+    profile: profiles[0],
+    profiles,
+    vendorTypes: profiles.map((p) => p.vendorType),
+  };
+}
+
+/**
+ * Email + password login (role vendor only).
+ *
+ * The vendor's business lines are derived from their credentials — they are
+ * never asked to pick a category at login. A vendor who runs both grooming and
+ * daycare has one password, so making them choose a category up front could
+ * only ever be a way to get it wrong.
+ */
+export async function vendorPasswordLogin(email, password) {
   const user = await User.findOne({ email: email.toLowerCase().trim(), role: 'vendor' }).select('+passwordHash');
   if (!user || !user.passwordHash) throw ApiError.unauthorized('Invalid email or password');
   if (!(await bcrypt.compare(password, user.passwordHash))) {
     throw ApiError.unauthorized('Invalid email or password');
   }
-  const profile = await VendorProfile.findOne({ userId: user._id }).select('+bank.accountNumberEnc');
-  assertApproved(profile);
-
-  if (expectedRoleOrType) {
-    const expectedVendorType = resolveVendorType(expectedRoleOrType);
-    const actualType = user.vendorType || profile?.vendorType;
-    if (actualType && actualType !== expectedVendorType) {
-      throw ApiError.forbidden(
-        `This account is registered under ${vendorTypeLabel(actualType)}, not ${vendorTypeLabel(expectedVendorType)}. Please select your correct vendor category.`
-      );
-    }
-  }
+  const profiles = await linesFor(user._id);
+  assertApproved(profiles);
 
   user.lastLoginAt = new Date();
-  await user.save();
+  await syncUserLines(user, profiles);
   const tokens = await issueTokens(user);
-  return { user, profile, tokens };
+  return { ...sessionFor(user, profiles), tokens };
 }
 
-/** Registration-no OR registered Mobile Number → send OTP to the vendor's registered phone. */
-export async function vendorRequestOtp(identifier, expectedRoleOrType = null) {
+/**
+ * Keep `User.vendorTypes` in step with the profiles that actually exist.
+ *
+ * Self-healing on login covers rows written before multi-line support and any
+ * line added directly in the database — the panel switcher reads this list, so
+ * a stale one would hide a business the vendor really does run.
+ */
+async function syncUserLines(user, profiles) {
+  const types = profiles.map((p) => p.vendorType);
+  const current = user.vendorTypes || [];
+  const stale = types.length !== current.length || types.some((t) => !current.includes(t));
+  if (stale) user.vendorTypes = types;
+  if (types.length && !types.includes(user.vendorType)) user.vendorType = types[0];
+  await user.save();
+}
+
+/**
+ * Find the account behind a registration number or mobile number.
+ *
+ * Any one of a multi-line vendor's registration numbers identifies the same
+ * account, so a groomer who also runs daycare can type either and still reach
+ * their own login.
+ */
+async function findVendorByIdentifier(identifier) {
   const trimmed = identifier.trim();
   const rawDigits = trimmed.replace(/\D/g, '');
-  
+
   let profile = await VendorProfile.findOne({ registrationNo: trimmed.toUpperCase() });
-  
+
   if (!profile && rawDigits.length >= 7) {
     const normalized = normalizePhone(trimmed);
     const last10 = rawDigits.slice(-10);
     const phoneRegex = new RegExp(last10 + '$');
-    
-    profile = await VendorProfile.findOne({
-      $or: [
-        { phone: normalized },
-        { phone: trimmed },
-        { phone: phoneRegex }
-      ]
-    });
-    
+    const byPhone = { $or: [{ phone: normalized }, { phone: trimmed }, { phone: phoneRegex }] };
+
+    profile = await VendorProfile.findOne(byPhone);
     if (!profile) {
-      const user = await User.findOne({
-        role: 'vendor',
-        $or: [
-          { phone: normalized },
-          { phone: trimmed },
-          { phone: phoneRegex }
-        ]
-      });
-      if (user) {
-        profile = await VendorProfile.findOne({ userId: user._id });
-      }
+      const user = await User.findOne({ role: 'vendor', ...byPhone });
+      if (user) profile = await VendorProfile.findOne({ userId: user._id });
     }
   }
-  
+
   if (!profile) throw ApiError.notFound('No vendor found with that registration number or mobile number');
 
-  if (expectedRoleOrType) {
-    const expectedVendorType = resolveVendorType(expectedRoleOrType);
-    const actualType = profile.vendorType;
-    if (actualType && actualType !== expectedVendorType) {
-      throw ApiError.forbidden(
-        `This account is registered under ${vendorTypeLabel(actualType)}, not ${vendorTypeLabel(expectedVendorType)}. Please select your correct vendor category.`
-      );
-    }
-  }
-  
-  const vendorUser = await User.findById(profile.userId);
-  const phoneToUse = (rawDigits.length >= 7 ? normalizePhone(trimmed) : (profile.phone || vendorUser?.phone));
-  await requestOtp(phoneToUse);
+  const user = await User.findById(profile.userId);
+  const profiles = await linesFor(profile.userId);
+  const phone = rawDigits.length >= 7 ? normalizePhone(trimmed) : profile.phone || user?.phone;
+  return { user, profiles, phone };
+}
+
+/** Registration-no OR registered Mobile Number → send OTP to the vendor's registered phone. */
+export async function vendorRequestOtp(identifier) {
+  const { phone } = await findVendorByIdentifier(identifier);
+  await requestOtp(phone);
   return { expiresInMinutes: 5 };
 }
 
 /** Registration-no OR registered Mobile Number + OTP login. */
-export async function vendorVerifyOtp(identifier, code, expectedRoleOrType = null) {
-  const trimmed = identifier.trim();
-  const rawDigits = trimmed.replace(/\D/g, '');
+export async function vendorVerifyOtp(identifier, code) {
+  const { profiles, phone } = await findVendorByIdentifier(identifier);
+  assertApproved(profiles);
 
-  let profile = await VendorProfile.findOne({ registrationNo: trimmed.toUpperCase() }).select('+bank.accountNumberEnc');
+  const { user, tokens } = await verifyOtp(phone, code);
 
-  if (!profile && rawDigits.length >= 7) {
-    const normalized = normalizePhone(trimmed);
-    const last10 = rawDigits.slice(-10);
-    const phoneRegex = new RegExp(last10 + '$');
+  // If the account wasn't marked a vendor, mark it now, and either way make
+  // sure its line list matches the profiles that exist.
+  if (user.role !== 'vendor') user.role = 'vendor';
+  await syncUserLines(user, profiles);
 
-    profile = await VendorProfile.findOne({
-      $or: [
-        { phone: normalized },
-        { phone: trimmed },
-        { phone: phoneRegex }
-      ]
-    }).select('+bank.accountNumberEnc');
-
-    if (!profile) {
-      const user = await User.findOne({
-        role: 'vendor',
-        $or: [
-          { phone: normalized },
-          { phone: trimmed },
-          { phone: phoneRegex }
-        ]
-      });
-      if (user) {
-        profile = await VendorProfile.findOne({ userId: user._id }).select('+bank.accountNumberEnc');
-      }
-    }
-  }
-
-  if (!profile) throw ApiError.notFound('No vendor found with that registration number or mobile number');
-  assertApproved(profile);
-
-  if (expectedRoleOrType) {
-    const expectedVendorType = resolveVendorType(expectedRoleOrType);
-    const actualType = profile.vendorType;
-    if (actualType && actualType !== expectedVendorType) {
-      throw ApiError.forbidden(
-        `This account is registered under ${vendorTypeLabel(actualType)}, not ${vendorTypeLabel(expectedVendorType)}. Please select your correct vendor category.`
-      );
-    }
-  }
-
-  // Find the exact User owning this vendor profile
-  let vendorUser = await User.findById(profile.userId);
-  const phoneToUse = (rawDigits.length >= 7 ? normalizePhone(trimmed) : (profile.phone || vendorUser?.phone));
-
-  const { user, tokens } = await verifyOtp(phoneToUse, code);
-
-  // If user account wasn't set to vendor, set it now
-  if (user.role !== 'vendor') {
-    user.role = 'vendor';
-    if (profile.vendorType) user.vendorType = profile.vendorType;
-    await user.save();
-  }
-
-  return { user, profile, tokens };
+  return { ...sessionFor(user, profiles), tokens };
 }
 
 /** Change the vendor's own login password (requires the current one). */

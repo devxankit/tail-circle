@@ -3,6 +3,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useShopVendor } from './context/ShopVendorContext';
 import { ToastProvider } from './components/Toast';
 import { GlobalSearch } from './components/GlobalSearch';
+import { BusinessSwitcher } from '../vendor/BusinessSwitcher';
 import {
   LayoutDashboard, ShoppingBag, ShoppingCart,
   Package, RefreshCcw, Star, Wallet, Settings,
@@ -13,6 +14,7 @@ import { cn } from '../../user/utils/cn';
 import { updateVendorProfile } from '../../../services/vendor';
 
 import VerificationBanner from '../components/VerificationBanner';
+import { VendorAvailabilityToggle } from '../vendor/VendorAvailabilityToggle';
 
 export function ShopVendorLayout() {
   const { profile, setProfile, notifications, setNotifications } = useShopVendor();
@@ -244,6 +246,7 @@ export function ShopVendorLayout() {
                   </div>
                 )}
               </div>
+              <BusinessSwitcher />
             </div>
 
             <div className="flex items-center gap-3 sm:gap-4">
@@ -356,6 +359,10 @@ export function ShopVendorLayout() {
                       <p className="text-sm font-black text-slate-900">{profile.businessName}</p>
                       <p className="text-xs font-medium text-slate-500 mt-0.5">{profile.email}</p>
                       <div className="flex items-center gap-1.5 mt-1.5">
+            {/* Open/closed switch. Top of every panel on purpose: a vendor who
+                forgets they are offline loses enquiries silently. */}
+            <VendorAvailabilityToggle />
+
                         <div className={cn("w-1.5 h-1.5 rounded-full", storeOpen ? "bg-emerald-500" : "bg-slate-400")} />
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{storeOpen ? 'Online' : 'Offline'}</span>
                       </div>

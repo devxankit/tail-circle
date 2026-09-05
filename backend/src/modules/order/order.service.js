@@ -7,14 +7,14 @@ import {
   createOrder as createPaymentOrder,
 } from '../payment/payment.service.js';
 import { notify } from '../../services/notify.js';
-import { postLedgerEntry } from '../vendor/vendor.service.js';
-import { VendorProfile } from '../vendor/vendor.models.js';
+import { postLedgerEntry, commissionFor } from '../vendor/vendor.service.js';
 import { Payment } from '../payment/payment.model.js';
 import { Product } from '../shop/product.model.js';
 import { resolveBundleDiscounts } from '../shop/bundle.service.js';
 import { Address } from '../address/address.model.js';
 import { Cart } from '../cart/cart.model.js';
 import { Order, CANCELLABLE_STATUSES } from './order.model.js';
+import { offlineVendorIds } from '../vendor/availability.service.js';
 
 // Mirrors the UI's summary math exactly: 5% tax, free delivery.
 const TAX_RATE = 0.05;
@@ -30,11 +30,21 @@ async function buildOrderItems(lines) {
     deletedAt: null,
   });
   const byId = new Map(products.map((p) => [String(p.id), p]));
+  // Fetched once for the whole cart rather than per line.
+  const offlineSellers = await offlineVendorIds();
 
   const items = [];
   for (const line of lines) {
     const product = byId.get(String(line.productId));
     if (!product) throw ApiError.badRequest('An item in your cart is no longer available');
+    /*
+     * A cart outlives the listing it was filled from, so a seller can close
+     * between adding an item and checking out. Named rather than generic:
+     * "something is unavailable" makes the buyer re-check every line.
+     */
+    if (product.vendorId && offlineSellers.includes(String(product.vendorId))) {
+      throw ApiError.badRequest(`${product.name} is from a seller who is not taking orders right now`);
+    }
     const pack = product.packSizes[line.packSizeIndex];
     if (!pack) throw ApiError.badRequest(`Invalid pack size for ${product.name}`);
     if (pack.stock < line.qty) {
@@ -200,7 +210,10 @@ async function recordVendorLedger(order) {
     try {
       const share = subtotal > 0 ? linesPaise / subtotal : 0;
       const gross = linesPaise + Math.round(extras * share);
-      const profile = await VendorProfile.findOne({ userId: vendorId });
+      // A seller may also run other business lines (a shop that offers
+      // grooming), each with its own negotiated commission — so read the rate
+      // from the shop profile specifically, not from whichever came first.
+      const commissionRate = await commissionFor(vendorId, 'shop');
       await postLedgerEntry({
         vendorId,
         refType: 'order',
@@ -211,7 +224,8 @@ async function recordVendorLedger(order) {
         refId: order._id,
         label: `Order ${order.orderNo}`,
         gross,
-        commissionRate: profile?.commissionRate ?? 0.15,
+        commissionRate,
+        vendorType: 'shop',
       });
     } catch {
       // ledger is best-effort — never block fulfilment

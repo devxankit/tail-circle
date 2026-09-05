@@ -78,9 +78,19 @@ export function HelpSupport() {
             <MessageCircle size={20} className="text-primary-main mr-3" />
             <span className="flex-1 text-left text-sm font-semibold text-text-primary">Raise a Support Ticket</span>
           </button>
-          <a href="mailto:support@tailcircle.in" className="w-full flex items-center p-4 hover:bg-bg-secondary transition-colors border-b border-border-light/50">
+          <a href="mailto:Contact@tailcircle.in" className="w-full flex items-center p-4 hover:bg-bg-secondary transition-colors border-b border-border-light/50">
             <Mail size={20} className="text-primary-main mr-3" />
-            <span className="flex-1 text-left text-sm font-semibold text-text-primary">Email Us</span>
+            <div className="flex flex-col text-left flex-1">
+              <span className="text-sm font-semibold text-text-primary">Contact Support</span>
+              <span className="text-xs text-text-secondary">Contact@tailcircle.in</span>
+            </div>
+          </a>
+          <a href="mailto:Partner@tailcircle.in" className="w-full flex items-center p-4 hover:bg-bg-secondary transition-colors border-b border-border-light/50">
+            <Mail size={20} className="text-[#66B4B1] mr-3" />
+            <div className="flex flex-col text-left flex-1">
+              <span className="text-sm font-semibold text-text-primary">Partner & Business Inquiries</span>
+              <span className="text-xs text-text-secondary">Partner@tailcircle.in</span>
+            </div>
           </a>
           <a href="tel:+919000000000" className="w-full flex items-center p-4 hover:bg-bg-secondary transition-colors border-b border-border-light/50">
             <Phone size={20} className="text-primary-main mr-3" />

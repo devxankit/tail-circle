@@ -4,14 +4,33 @@ import { usePetEvents } from '../context/PetEventsContext';
 import { uploadVendorFile } from '../../../../services/vendor';
 import {
   ArrowLeft, ArrowRight, Check, Image as ImageIcon,
-  MapPin, Calendar, Clock, Upload, IndianRupee, Eye, Users, MessageSquare, Loader2
+  MapPin, Calendar, Clock, Upload, IndianRupee, Eye, Users, MessageSquare, Loader2, ShieldCheck
 } from 'lucide-react';
 import { cn } from '../../../user/utils/cn';
 
+const EMPTY_TRAINER = { provision: 'none', pricePerPet: 300, note: '' };
+
 const EMPTY_FORM = {
   title: '', category: 'Social Meetup', date: '', time: '',
-  location: '', capacity: 20, price: 500, description: '', image: null
+  location: '', capacity: 20, price: 500, description: '', image: null,
+  trainer: EMPTY_TRAINER,
 };
+
+/*
+ * Owners mark their own pets as reactive, and the app suggests handler support
+ * to them at checkout. That only works if you have said whether a handler is
+ * on site and what it costs. If someone books one, the fee comes to you with
+ * the ticket and providing the handler on the day is yours to arrange.
+ *
+ * 'Included' and 'Paid' are separate answers rather than a price of zero,
+ * because "the handler is free" and "there is no handler" must not look the
+ * same to an owner deciding whether it is safe to bring their pet.
+ */
+const TRAINER_OPTIONS = [
+  { value: 'none', label: 'Not provided', hint: 'No handler on site' },
+  { value: 'included', label: 'Included', hint: 'Free with every ticket' },
+  { value: 'paid', label: 'Paid add-on', hint: 'Owners pay per pet' },
+];
 
 export function CreateEventView() {
   const navigate = useNavigate();
@@ -26,6 +45,9 @@ export function CreateEventView() {
   const fileInputRef = React.useRef(null);
 
   const [formData, setFormData] = useState(EMPTY_FORM);
+  const trainer = formData.trainer || EMPTY_TRAINER;
+  const setTrainer = (patch) =>
+    setFormData((f) => ({ ...f, trainer: { ...(f.trainer || EMPTY_TRAINER), ...patch } }));
 
   useEffect(() => {
     if (isEdit) {
@@ -35,6 +57,7 @@ export function CreateEventView() {
           title: source.title, category: source.category, date: source.date, time: source.time,
           location: source.location, capacity: source.capacity, price: source.price,
           description: source.description || '', image: source.image || null,
+          trainer: { ...EMPTY_TRAINER, ...(source.trainer || {}) },
         });
       }
     }
@@ -56,7 +79,9 @@ export function CreateEventView() {
       const url = await uploadVendorFile(file, 'event-cover');
       setFormData((f) => ({ ...f, image: url }));
     } catch (err) {
-      setError(err?.response?.data?.message || 'Could not upload image');
+      // ApiClientError carries the server's message directly; it has no
+      // `.response`, so the axios-shaped read here always fell through.
+      setError(err?.message || 'Could not upload image');
     } finally {
       setUploadingImage(false);
     }
@@ -73,7 +98,7 @@ export function CreateEventView() {
       }
       navigate('/vendor/events-organizer/events');
     } catch (err) {
-      setError(err?.response?.data?.message || 'Could not save this event');
+      setError(err?.message || 'Could not save this event');
     } finally {
       setSaving(false);
     }
@@ -138,6 +163,70 @@ export function CreateEventView() {
               <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2"><IndianRupee size={14} className="inline mr-1 -mt-0.5"/> Ticket Price</label>
               <input type="number" value={formData.price} onChange={e => setFormData({...formData, price: parseInt(e.target.value)})} className="w-full px-5 py-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-semibold text-slate-900"/>
             </div>
+          </div>
+
+          {/* -- Handler / trainer support -- */}
+          <div className="border-t border-slate-100 pt-6">
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+              <ShieldCheck size={14} className="inline mr-1 -mt-0.5"/> Trainer / Handler Support
+            </label>
+            <p className="text-xs font-medium text-slate-500 mb-3 leading-relaxed">
+              Optional for the owner. We suggest it to anyone whose pet is marked reactive; if they
+              take it, the fee comes to you with the ticket and you arrange the handler on the day.
+            </p>
+
+            <div className="grid grid-cols-3 gap-3">
+              {TRAINER_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setTrainer({ provision: opt.value })}
+                  className={cn(
+                    "px-3 py-3 rounded-xl border text-left transition cursor-pointer",
+                    trainer.provision === opt.value
+                      ? "border-[#F87B68] bg-orange-50/60 ring-2 ring-orange-500/15"
+                      : "border-slate-200 hover:border-slate-300"
+                  )}
+                >
+                  <span className="block text-sm font-black text-slate-900">{opt.label}</span>
+                  <span className="block text-[11px] font-medium text-slate-500 mt-0.5">{opt.hint}</span>
+                </button>
+              ))}
+            </div>
+
+            {trainer.provision !== 'none' && (
+              <div className="mt-4 space-y-4 animate-in fade-in slide-in-from-top-2">
+                {trainer.provision === 'paid' && (
+                  <div className="max-w-xs">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                      <IndianRupee size={14} className="inline mr-1 -mt-0.5"/> Price Per Pet
+                    </label>
+                    <input
+                      type="number" min="1"
+                      value={trainer.pricePerPet}
+                      onChange={(e) => setTrainer({ pricePerPet: e.target.value })}
+                      className="w-full px-5 py-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-semibold text-slate-900"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">What The Handler Does</label>
+                  <textarea
+                    rows={2}
+                    value={trainer.note}
+                    onChange={(e) => setTrainer({ note: e.target.value })}
+                    placeholder="e.g. Certified handler stays with the pet for the full session and manages introductions."
+                    className="w-full px-5 py-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-semibold text-slate-900 resize-none"
+                  />
+                </div>
+
+                <p className="text-[11px] font-medium text-slate-500 bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 leading-relaxed">
+                  Every booking that includes a handler is flagged in your Bookings list and sent to
+                  you as a notification. Arranging the trainer on the day is your responsibility.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       );

@@ -1,25 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ChevronDown, Upload, Check, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { cn } from '../../../modules/user/utils/cn';
-import { VENDOR_CATEGORIES, slugLabel } from '../../../constants/vendorTypes';
+import { VENDOR_CATEGORIES, postLoginPath } from '../../../constants/vendorTypes';
 import {
   registerVendor,
   loginVendorPassword,
   requestVendorOtp,
   loginVendorOtp,
 } from '../../../services/vendor';
-
-const ROLE_ROUTES = {
-  doctor: '/vendor/doctor/consultations',
-  meal: '/vendor/meal/plans',
-  event: '/vendor/events-organizer',
-  memorial: '/vendor/memorial-provider',
-  shop: '/vendor/shop-provider',
-  grooming: '/vendor/grooming-provider',
-  daycare: '/vendor/daycare-provider',
-  adoption: '/vendor/adoption-partner',
-};
 
 
 export function VendorAuth() {
@@ -35,14 +24,15 @@ export function VendorAuth() {
 
   const [formData, setFormData] = useState({
     businessName: '', email: '', phone: '', password: '', city: 'Indore', address: '',
-    role: 'shop',
-    loginEmail: '', loginPassword: '', loginRegisterNo: '', loginOtp: '', loginRole: 'shop'
+    // A vendor may serve several categories from one account — a grooming salon
+    // that also runs daycare — so signup collects a set, not a single choice.
+    roles: ['shop'],
+    loginEmail: '', loginPassword: '', loginRegisterNo: '', loginOtp: ''
   });
 
   const [errors, setErrors] = useState({});
   const [successSignup, setSuccessSignup] = useState(false);
   const [toast, setToast] = useState(null);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   useEffect(() => {
     let timer;
@@ -64,6 +54,17 @@ export function VendorAuth() {
     }
   };
 
+  /** Toggle one partner category on the signup form. */
+  const toggleRole = (slug) => {
+    setFormData((prev) => {
+      const has = prev.roles.includes(slug);
+      // Never let the last one be removed — an application with no category is
+      // not a thing the backend can create.
+      if (has && prev.roles.length === 1) return prev;
+      return { ...prev, roles: has ? prev.roles.filter((r) => r !== slug) : [...prev.roles, slug] };
+    });
+  };
+
   const validateStep1 = () => {
     const errs = {};
     if (!formData.businessName) errs.businessName = 'Required';
@@ -82,7 +83,7 @@ export function VendorAuth() {
   const handleSendOtp = async () => {
     if (!formData.loginRegisterNo) return showToast('Enter registered mobile number or registration number');
     try {
-      await requestVendorOtp(formData.loginRegisterNo, formData.loginRole);
+      await requestVendorOtp(formData.loginRegisterNo);
       setOtpSent(true); setOtpCountdown(30); showToast('OTP sent!', 'success');
     } catch (err) {
       showToast(err.message || 'Could not send OTP');
@@ -91,31 +92,22 @@ export function VendorAuth() {
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.loginRole) return showToast('Please select your vendor category');
     if (loginMethod === 'password') {
       if (!formData.loginEmail || !formData.loginPassword) return showToast('Enter email and password');
     } else {
       if (!formData.loginRegisterNo || !formData.loginOtp) return showToast('Enter mobile/reg number and OTP');
     }
     try {
-      const { profile } = loginMethod === 'password'
-        ? await loginVendorPassword(formData.loginEmail, formData.loginPassword, formData.loginRole)
-        : await loginVendorOtp(formData.loginRegisterNo, formData.loginOtp, formData.loginRole);
-      
+      // No category is sent. The account's business lines come back with the
+      // credentials, which is the only place they were ever really known.
+      const { profiles } = loginMethod === 'password'
+        ? await loginVendorPassword(formData.loginEmail, formData.loginPassword)
+        : await loginVendorOtp(formData.loginRegisterNo, formData.loginOtp);
+
       showToast('Login successful!', 'success');
-      
-      const VENDOR_HOME = {
-        shop: '/vendor/shop-provider',
-        clinic: '/vendor/doctor/consultations',
-        meal_subscription: '/vendor/meal-provider/dashboard',
-        events: '/vendor/events-organizer',
-        memorial: '/vendor/memorial-provider',
-        grooming: '/vendor/grooming-provider',
-        daycare: '/vendor/daycare-provider',
-        adoption: '/vendor/adoption-partner',
-      };
-      
-      const targetPath = VENDOR_HOME[profile?.vendorType] || ROLE_ROUTES[formData.loginRole] || '/vendor/login';
+
+      // One business goes straight to its panel; several go to the hub to pick.
+      const targetPath = postLoginPath((profiles || []).map((p) => p.vendorType));
       setTimeout(() => navigate(targetPath), 800);
     } catch (err) {
       showToast(err.message || 'Login failed');
@@ -142,7 +134,7 @@ export function VendorAuth() {
         email: formData.email,
         phone: formData.phone,
         password: formData.password,
-        role: formData.role,
+        roles: formData.roles,
         city: formData.address || formData.city,
         address: formData.address,
       });
@@ -230,54 +222,10 @@ export function VendorAuth() {
 
                 <form onSubmit={handleLoginSubmit} className="space-y-6">
                   
-                  {/* Custom Category Dropdown */}
-                  <div className="relative z-10">
-                    <div 
-                      onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                      className={cn(inputClass, "flex items-center justify-between cursor-pointer")}
-                    >
-                      <span className="truncate">
-                        {slugLabel(formData.loginRole)}
-                      </span>
-                      <ChevronDown size={16} className={cn("text-gray-400 transition-transform duration-200 shrink-0", isDropdownOpen && "rotate-180")} />
-                    </div>
-                    
-                    {isDropdownOpen && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setIsDropdownOpen(false)} />
-                        {/* Capped and scrollable: the full list of partner
-                            categories runs past the fold on a phone, pushing
-                            the login button off screen. ~4.5 rows are visible,
-                            so it reads as scrollable rather than truncated. */}
-                        <div className="absolute top-full left-0 w-full mt-2 bg-white border border-gray-100 rounded-xl shadow-xl z-50 max-h-[220px] overflow-y-auto overflow-x-hidden overscroll-contain animate-in fade-in zoom-in-95 duration-200 py-2">
-                          {VENDOR_CATEGORIES.map(({ slug, label }) => (
-                            <div
-                              key={slug}
-                              // Bring the current choice into view on open —
-                              // otherwise picking a category near the end of
-                              // the list reopens scrolled to the top.
-                              ref={(el) => {
-                                if (el && formData.loginRole === slug) {
-                                  el.scrollIntoView({ block: 'nearest' });
-                                }
-                              }}
-                              onClick={() => {
-                                handleInputChange('loginRole', slug);
-                                setIsDropdownOpen(false);
-                              }}
-                              className={cn(
-                                "px-5 py-3 text-sm cursor-pointer transition-colors flex items-center justify-between",
-                                formData.loginRole === slug ? "bg-[#40716F]/10 text-[#40716F] font-bold" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 font-medium"
-                              )}
-                            >
-                              {label}
-                              {formData.loginRole === slug && <Check size={14} className="text-[#40716F]" />}
-                            </div>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
+                  {/* The partner-category dropdown that used to sit here is
+                      gone. A vendor's business lines are derived from their
+                      credentials — and a vendor who runs both grooming and
+                      daycare had no single right answer to give it. */}
 
                   {/* Login Method Toggle */}
                   <div className="flex gap-6 pt-2 pb-2">
@@ -383,23 +331,51 @@ export function VendorAuth() {
                         )}
 
                         {currentStep === 2 && (
-                          <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
-                            <p className="text-xs text-gray-500 font-medium mb-1">Select Partner Category</p>
-                            <div className="space-y-2 max-h-[240px] overflow-y-auto pr-1">
-                              {VENDOR_CATEGORIES.map(({ slug: r }) => (
-                                <label key={r} className={cn("flex items-center gap-4 cursor-pointer p-3 rounded-lg border transition-colors", formData.role === r ? "border-[#40716F] bg-[#40716F]/5" : "border-gray-200 hover:border-gray-300")}>
-                                  <input type="radio" name="role" checked={formData.role === r} onChange={() => handleInputChange('role', r)} className="hidden" />
-                                  <div className={cn("w-4 h-4 rounded-full border-2 transition-all flex items-center justify-center", formData.role === r ? "border-[#40716F] bg-[#40716F]" : "border-gray-300")}>
-                                    {formData.role === r && <span className="w-1.5 h-1.5 bg-white rounded-full" />}
-                                  </div>
-                                  <span className={cn("text-sm font-medium transition-colors", formData.role === r ? "text-gray-900" : "text-gray-600")}>
-                                    {slugLabel(r)}
-                                  </span>
-                                </label>
-                              ))}
+                          <div className="animate-in slide-in-from-right-4 duration-300">
+                            {/* Heading and live count share a row: the count was
+                                a separate paragraph, which put a third block of
+                                text above the list and pushed it off screen. */}
+                            <div className="flex items-baseline justify-between gap-3 mb-1">
+                              <p className="text-xs text-gray-500 font-medium">Select Partner Categories</p>
+                              {formData.roles.length > 1 && (
+                                <span className="text-[11px] font-semibold text-[#40716F] shrink-0">
+                                  {formData.roles.length} selected
+                                </span>
+                              )}
                             </div>
-                            <p className="text-[11px] text-gray-400 leading-relaxed bg-[#40716F]/5 p-3 rounded-lg border border-[#40716F]/10 mt-2">
-                              KYC documents and bank account details will be configured inside your dashboard settings after registering.
+                            <p className="text-[11px] text-gray-400 mb-3">
+                              Pick every service you offer — each gets its own panel.
+                            </p>
+
+                            {/* ~4.5 rows visible, so the list reads as
+                                scrollable rather than truncated. */}
+                            <div className="space-y-2 max-h-[228px] overflow-y-auto overscroll-contain pr-1 -mr-1">
+                              {VENDOR_CATEGORIES.map(({ slug: r, label }) => {
+                                const checked = formData.roles.includes(r);
+                                return (
+                                  <label key={r} className={cn("flex items-center gap-3 cursor-pointer p-3 rounded-lg border transition-colors", checked ? "border-[#40716F] bg-[#40716F]/5" : "border-gray-200 hover:border-gray-300")}>
+                                    <input type="checkbox" name="roles" checked={checked} onChange={() => toggleRole(r)} className="hidden" />
+                                    <div className={cn("w-4 h-4 rounded border-2 transition-all flex items-center justify-center shrink-0", checked ? "border-[#40716F] bg-[#40716F]" : "border-gray-300")}>
+                                      {checked && <Check size={11} className="text-white" strokeWidth={3} />}
+                                    </div>
+                                    <span className={cn("text-sm font-medium transition-colors", checked ? "text-gray-900" : "text-gray-600")}>
+                                      {label}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+
+                            {/* One hint box, not two. The multi-business note
+                                and the KYC note were separate panels with
+                                identical styling, which read as a glitch. */}
+                            <p className="text-[11px] text-gray-400 leading-relaxed bg-[#40716F]/5 p-3 rounded-lg border border-[#40716F]/10 mt-3">
+                              {formData.roles.length > 1 && (
+                                <span className="text-[#40716F] font-medium">
+                                  Each business is reviewed separately, so one may go live before another.{' '}
+                                </span>
+                              )}
+                              KYC documents and bank account details are configured in your dashboard after registering.
                             </p>
                           </div>
                         )}

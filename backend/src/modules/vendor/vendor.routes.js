@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, authorize } from '../../middleware/auth.js';
 import { withVetScope } from '../../middleware/vetScope.js';
-import { withVendor, requireType } from '../../middleware/vendorGuard.js';
+import { withVendor, withAnyVendor, requireType } from '../../middleware/vendorGuard.js';
 import { validate } from '../../middleware/validate.js';
 import { authLimiter } from '../../middleware/rateLimiter.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
@@ -10,6 +10,7 @@ import { sendSuccess } from '../../utils/ApiResponse.js';
 import { ApiError } from '../../utils/ApiError.js';
 import {
   registerVendor,
+  addVendorLine,
   vendorPasswordLogin,
   vendorRequestOtp,
   vendorVerifyOtp,
@@ -53,6 +54,7 @@ import {
   updateDeliveryStatus,
   broadcastRiderLocation,
 } from './meal.vendor.service.js';
+import { getAvailability, setAvailability } from './availability.service.js';
 import {
   listEvents,
   createEvent,
@@ -60,6 +62,7 @@ import {
   publishEvent,
   listEventBookings,
   checkInBooking,
+  checkInByTicketCode,
   listPackages,
   createPackage,
   updatePackage,
@@ -146,6 +149,32 @@ import {
 
 const router = Router();
 
+/**
+ * The signup slugs the registration form posts. Kept as one constant because
+ * it is now needed by both `/register` and `/lines` — two hand-maintained
+ * copies is how 'adopt' came to be missing from one of them.
+ */
+const PARTNER_CATEGORY = z.enum([
+  'shop', 'doctor', 'meal', 'event', 'memorial', 'grooming', 'daycare', 'adopt',
+]);
+
+/**
+ * The login response.
+ *
+ * `profile` is the primary line, so screens that read a single profile are
+ * unchanged; `profiles` carries every business the account runs, which is what
+ * the panel switcher and the hub are built on.
+ */
+function serializeSession({ user, profile, profiles, vendorTypes, tokens }) {
+  return {
+    user,
+    profile: serializeProfile(profile),
+    profiles: profiles.map(serializeProfile),
+    vendorTypes,
+    ...tokens,
+  };
+}
+
 /* ── Auth (public) ────────────────────────────────────────── */
 
 router.post(
@@ -155,7 +184,12 @@ router.post(
       businessName: z.string().trim().min(2).max(120),
       email: z.string().email(),
       phone: z.string().trim().min(10).max(15),
-      role: z.enum(['shop', 'doctor', 'meal', 'event', 'memorial', 'grooming', 'daycare']),
+      // A vendor may serve several categories from one account (a grooming
+      // salon that also runs daycare), so `roles` is the real input. `role` is
+      // kept for older clients. 'adopt' was missing from this list entirely,
+      // which made adoption partners impossible to register.
+      role: PARTNER_CATEGORY.optional(),
+      roles: z.array(PARTNER_CATEGORY).min(1).max(8).optional(),
       city: z.string().max(80).optional(),
       address: z.string().max(200).optional(),
       password: z.string().min(6).max(72).optional(),
@@ -189,6 +223,9 @@ router.post(
       primarySpecialties: z.array(z.string().max(80)).max(10).optional(),
       speciesTreated: z.array(z.string().max(40)).max(20).optional(),
       languages: z.array(z.string().max(40)).max(15).optional(),
+    }).refine((d) => d.role || (d.roles && d.roles.length), {
+      message: 'Select at least one partner category',
+      path: ['roles'],
     })
   ),
   asyncHandler(async (req, res) => {
@@ -204,14 +241,16 @@ router.post(
     z.object({
       email: z.string().email(),
       password: z.string().min(1),
+      // `vendorType`/`role` are still accepted so an older client keeps
+      // working, but they are no longer read: which businesses an account runs
+      // is derived from its credentials, never from what the form was set to.
       vendorType: z.string().optional(),
       role: z.string().optional(),
     })
   ),
   asyncHandler(async (req, res) => {
-    const expectedType = req.body.vendorType || req.body.role || null;
-    const { user, profile, tokens } = await vendorPasswordLogin(req.body.email, req.body.password, expectedType);
-    sendSuccess(res, { data: { user, profile: serializeProfile(profile), ...tokens } });
+    const session = await vendorPasswordLogin(req.body.email, req.body.password);
+    sendSuccess(res, { data: serializeSession(session) });
   })
 );
 
@@ -231,8 +270,7 @@ router.post(
   ),
   asyncHandler(async (req, res) => {
     const identifier = req.body.registrationNo || req.body.phone || req.body.identifier;
-    const expectedType = req.body.vendorType || req.body.role || null;
-    const data = await vendorRequestOtp(identifier, expectedType);
+    const data = await vendorRequestOtp(identifier);
     sendSuccess(res, { message: 'OTP sent', data });
   })
 );
@@ -254,9 +292,8 @@ router.post(
   ),
   asyncHandler(async (req, res) => {
     const identifier = req.body.registrationNo || req.body.phone || req.body.identifier;
-    const expectedType = req.body.vendorType || req.body.role || null;
-    const { user, profile, tokens } = await vendorVerifyOtp(identifier, req.body.code, expectedType);
-    sendSuccess(res, { data: { user, profile: serializeProfile(profile), ...tokens } });
+    const session = await vendorVerifyOtp(identifier, req.body.code);
+    sendSuccess(res, { data: serializeSession(session) });
   })
 );
 
@@ -267,13 +304,59 @@ router.use(authenticate, authorize('vendor'));
 /* Guards now live in middleware/vendorGuard.js so every vendor router
    shares the same withVendor + requireType pairing. */
 
-router.get('/me', withVendor, asyncHandler(async (req, res) => {
+/*
+ * `withAnyVendor` rather than `withVendor`: a vendor awaiting approval must
+ * still be able to see their own profile and upload the KYC documents the
+ * approval is waiting on. Gating these on approval is a deadlock.
+ */
+router.get('/me', withAnyVendor, asyncHandler(async (req, res) => {
   sendSuccess(res, { data: serializeProfile(req.vendor) });
 }));
 
+/** Every business line on this account — what the panel switcher and hub read. */
+router.get('/lines', withAnyVendor, asyncHandler(async (req, res) => {
+  sendSuccess(res, { data: req.vendorProfiles.map(serializeProfile) });
+}));
+
+/**
+ * Add a business line to an existing account.
+ *
+ * The alternative is telling a groomer who wants to offer daycare to register
+ * again under a different email, which would split their earnings, reviews and
+ * support history across two accounts. The new line starts `pending` and is
+ * reviewed exactly like a fresh signup.
+ */
+router.post(
+  '/lines',
+  withAnyVendor,
+  validate(
+    z.object({
+      role: PARTNER_CATEGORY,
+      businessName: z.string().trim().min(2).max(120).optional(),
+      city: z.string().max(80).optional(),
+      address: z.string().max(200).optional(),
+      licenseUrl: z.string().max(1000).optional(),
+      ownerIdUrl: z.string().max(1000).optional(),
+      bankName: z.string().max(120).optional(),
+      accountHolder: z.string().max(120).optional(),
+      accountNumber: z.string().max(30).optional(),
+      ifscCode: z.string().max(20).optional(),
+      accountType: z.string().max(20).optional(),
+      hasGst: z.boolean().optional(),
+      gstNumber: z.string().max(20).optional(),
+      startingPrice: z.number().min(0).max(1000000).optional(),
+      about: z.string().max(2000).optional(),
+    })
+  ),
+  asyncHandler(async (req, res) => {
+    const result = await addVendorLine(req.user.id, req.body);
+    sendSuccess(res, { statusCode: 201, message: 'Business line submitted for review', data: result });
+  })
+);
+
 router.patch(
   '/profile',
-  withVendor,
+  withAnyVendor,
   validate(
     z.object({
       businessName: z.string().trim().min(2).max(120).optional(),
@@ -291,21 +374,29 @@ router.patch(
     })
   ),
   asyncHandler(async (req, res) => {
-    sendSuccess(res, { message: 'Profile updated', data: await updateVendorProfile(req.user.id, req.body) });
+    sendSuccess(res, {
+      message: 'Profile updated',
+      data: await updateVendorProfile(req.user.id, req.body, req.vendor.vendorType),
+    });
   })
 );
 
+/*
+ * KYC uploads are `withAnyVendor`: a line is `pending` precisely because these
+ * documents are outstanding, so requiring approval to supply them deadlocks
+ * every new business line at the first step.
+ */
 router.post(
   '/documents',
-  withVendor,
+  withAnyVendor,
   validate(z.object({ kind: z.enum(['license', 'owner_id', 'gst']), url: z.string().min(4).max(1000) })),
   asyncHandler(async (req, res) => {
-    sendSuccess(res, { statusCode: 201, data: await addVendorDocument(req.user.id, req.body) });
+    sendSuccess(res, { statusCode: 201, data: await addVendorDocument(req.user.id, req.body, req.vendor.vendorType) });
   })
 );
 
-router.delete('/documents/:index', withVendor, asyncHandler(async (req, res) => {
-  sendSuccess(res, { data: await removeVendorDocument(req.user.id, req.params.index) });
+router.delete('/documents/:index', withAnyVendor, asyncHandler(async (req, res) => {
+  sendSuccess(res, { data: await removeVendorDocument(req.user.id, req.params.index, req.vendor.vendorType) });
 }));
 
 router.patch(
@@ -515,6 +606,30 @@ router.get('/events', ...events, asyncHandler(async (req, res) => {
   sendSuccess(res, { data: await listEvents(req.user.id) });
 }));
 
+/*
+ * Availability is not scoped to a business line: it is the account saying it is
+ * open or closed, so every vendor panel talks to the same pair of endpoints
+ * and no vertical needs its own.
+ */
+router.get(
+  '/availability',
+  asyncHandler(async (req, res) => {
+    sendSuccess(res, { data: await getAvailability(req.user.id) });
+  })
+);
+
+router.patch(
+  '/availability',
+  validate(z.object({ online: z.boolean() })),
+  asyncHandler(async (req, res) => {
+    const data = await setAvailability(req.user.id, req.body.online);
+    sendSuccess(res, {
+      message: data.online ? 'You are back online' : 'You are now offline',
+      data,
+    });
+  })
+);
+
 router.post(
   '/events',
   ...events,
@@ -529,6 +644,21 @@ router.post(
       date: z.string().max(40).optional(),
       status: z.string().max(20).optional(),
       image: z.string().max(1000).optional(),
+      description: z.string().max(4000).optional(),
+      /*
+       * Zod strips keys a schema does not name, and `req.body` is replaced with
+       * the parsed result -- so anything missing here never reaches the
+       * service. `description` and `trainer` were both absent, which is why a
+       * newly created event had neither. Values are loose because
+       * `normaliseTrainer` is what actually validates and coerces them.
+       */
+      trainer: z
+        .object({
+          provision: z.enum(['none', 'included', 'paid']).optional(),
+          pricePerPet: z.union([z.number(), z.string()]).optional(),
+          note: z.string().max(4000).optional(),
+        })
+        .optional(),
     })
   ),
   asyncHandler(async (req, res) => {
@@ -547,6 +677,16 @@ router.post('/events/:id/publish', ...events, asyncHandler(async (req, res) => {
 router.get('/event-bookings', ...events, asyncHandler(async (req, res) => {
   sendSuccess(res, { data: await listEventBookings(req.user.id) });
 }));
+
+/** POST /vendor/event-bookings/scan — admit a ticket from its QR code. */
+router.post(
+  '/event-bookings/scan',
+  ...events,
+  validate(z.object({ code: z.string().trim().min(1).max(400) })),
+  asyncHandler(async (req, res) => {
+    sendSuccess(res, { data: await checkInByTicketCode(req.user.id, req.body.code) });
+  })
+);
 
 router.post('/event-bookings/:id/checkin', ...events, asyncHandler(async (req, res) => {
   sendSuccess(res, { data: await checkInBooking(req.user.id, req.params.id) });

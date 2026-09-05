@@ -7,6 +7,8 @@ import {
   Ticket, Mic, X, Loader2
 } from 'lucide-react';
 import { useVoiceSearch } from '../../../../hooks/useVoiceSearch';
+import { cn } from '../../utils/cn';
+import { TicketQR } from '../../../../components/common/TicketQR';
 
 const defaultEventCategories = [
   { id: 'all', name: 'All Events', emoji: '🎟️' },
@@ -171,6 +173,18 @@ const defaultPackageTemplates = [
 export function EventList() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+
+  /*
+   * Voice search. The hook was imported and `toggleListening` / `isListening`
+   * / `transcript` were already referenced in the search bar below, but the
+   * hook was never called — so rendering this screen threw
+   * "toggleListening is not defined" before anything appeared. Same shape the
+   * grooming list uses.
+   */
+  const { isListening, transcript, toggleListening } = useVoiceSearch({
+    onResult: (text) => setSearchQuery(text),
+  });
+
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [activeTab, setActiveTab] = useState('tickets'); // 'tickets' or 'packages'
 
@@ -182,26 +196,29 @@ export function EventList() {
   useEffect(() => {
     import('../../../../services/api').then(({ api }) => {
       const params = selectedCategory !== 'all' ? { category: selectedCategory } : {};
-      api.get('/events', { params }).then(({ data }) =>
-        setTicketEvents(
-          data.map((e) => ({
-            id: e.legacyId ?? e._id,
-            _id: e._id,
-            title: e.title,
-            emoji: e.emoji,
-            img: e.img,
-            date: e.dateDay,
-            month: e.monthText,
-            time: e.timeText,
-            location: e.location,
-            price: e.price,
-            category: e.category,
-            going: e.going,
-            desc: e.desc,
-            avatars: e.avatars || [],
-          }))
+      api.get('/events', { params })
+        .then(({ data }) =>
+          setTicketEvents(
+            data.map((e) => ({
+              id: e.legacyId ?? e._id,
+              _id: e._id,
+              title: e.title,
+              emoji: e.emoji,
+              img: e.img,
+              date: e.dateDay,
+              month: e.monthText,
+              time: e.timeText,
+              location: e.location,
+              price: e.price,
+              category: e.category,
+              going: e.going,
+              desc: e.desc,
+              avatars: e.avatars || [],
+              trainer: e.trainer || null,
+            }))
+          )
         )
-      ).catch(() => {});
+        .catch(() => {});
       api.get('/events/meta').then(({ data }) => {
         if (data.categories?.length) setEventCategories(data.categories);
         if (data.packageTemplates?.length) setPackageTemplates(data.packageTemplates);
@@ -231,6 +248,17 @@ export function EventList() {
   const [isTicketSheetOpen, setIsTicketSheetOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [ticketQty, setTicketQty] = useState(1);
+  const [withTrainer, setWithTrainer] = useState(false);
+  /*
+   * What the completed booking actually contains, as opposed to what the
+   * checkbox says. Read back from the server's response so the confirmation
+   * screen reports the booking that exists, not the intention that produced
+   * it.
+   */
+  const [bookedWithTrainer, setBookedWithTrainer] = useState(false);
+  // The created booking itself, so the pass can render its real ticket code
+  // rather than a picture of a QR.
+  const [confirmedBooking, setConfirmedBooking] = useState(null);
   const [selectedPetId, setSelectedPetId] = useState('max');
   const [ticketSuccess, setTicketSuccess] = useState(false);
   const [generatedTicketId, setGeneratedTicketId] = useState('');
@@ -254,6 +282,9 @@ export function EventList() {
     setSelectedEvent(event);
     setTicketQty(1);
     setTicketSuccess(false);
+    setBookedWithTrainer(false);
+    setConfirmedBooking(null);
+
     if (pets.length > 0) {
       setSelectedPetId(pets[0].id);
     } else {
@@ -261,6 +292,40 @@ export function EventList() {
     }
     setIsTicketSheetOpen(true);
   };
+
+  /*
+   * Handler support for the pet attending.
+   *
+   * `isReactive` comes from the server's behaviour taxonomy, so this screen and
+   * the booking endpoint agree on what "reactive" means. The trainer block is
+   * shown to everyone the event offers it to -- a nervous owner of a perfectly
+   * friendly dog may want one too -- but it is only pre-selected, and only
+   * escalated to a warning, for a pet the owner has actually marked reactive.
+   */
+  const attendingPet = pets.find((p) => p.id === selectedPetId) || null;
+  const petIsReactive = Boolean(attendingPet?.isReactive);
+  const eventTrainer = selectedEvent?.trainer || null;
+  const trainerOffered = eventTrainer?.provision === 'included' || eventTrainer?.provision === 'paid';
+  const trainerPrice = eventTrainer?.provision === 'paid' ? Number(eventTrainer.pricePerPet) || 0 : 0;
+  const ticketTotal = selectedEvent ? selectedEvent.price * ticketQty + (withTrainer ? trainerPrice : 0) : 0;
+
+  /*
+   * Default the handler on for a reactive pet, off otherwise.
+   *
+   * Pre-ticking it for an owner who has told us their pet is reactive is the
+   * point: the safe option should be the one they actively decline, not the one
+   * they have to think to find.
+   *
+   * Keyed on the pet as well as the event, so switching the attending pet
+   * inside an open sheet re-decides. The previous choice was made about a
+   * different animal, so carrying it over would be wrong in both directions:
+   * a handler silently dropped when switching to the reactive pet, or silently
+   * charged for when switching away from it.
+   */
+  useEffect(() => {
+    if (!isTicketSheetOpen) return;
+    setWithTrainer(trainerOffered && petIsReactive);
+  }, [isTicketSheetOpen, selectedPetId, selectedEvent?.id, trainerOffered, petIsReactive]);
 
   // Confirm ticket — real booking + Razorpay payment
   const [ticketError, setTicketError] = useState('');
@@ -276,6 +341,9 @@ export function EventList() {
         type: 'event',
         eventId: String(selectedEvent.id),
         ticketQty,
+        // Advisory only: the server re-checks the event's own settings and the
+        // stored pet before it charges for or requires a handler.
+        withTrainer,
         ...(selectedPet?._id ? { petId: selectedPet._id } : {}),
         paymentMethod: 'razorpay',
       });
@@ -283,6 +351,8 @@ export function EventList() {
         await payWithRazorpay(data.razorpay, { description: `Tickets — ${selectedEvent.title}` });
       }
       setGeneratedTicketId(data.booking.bookingNo);
+      setConfirmedBooking(data.booking);
+      setBookedWithTrainer(Boolean(data.booking?.meta?.withTrainer));
       setTicketSuccess(true);
     } catch (err) {
       setTicketError(err.message || 'Payment failed');
@@ -802,19 +872,68 @@ export function EventList() {
                   </select>
                 </div>
 
+                {/* Optional handler support, when the organiser offers it. */}
+                {trainerOffered && (
+                  <button
+                    type="button"
+                    onClick={() => setWithTrainer((v) => !v)}
+                    className={cn(
+                      'w-full mb-3 shrink-0 flex items-start gap-3 p-3.5 rounded-[16px] border text-left transition-all',
+                      withTrainer
+                        ? 'border-[#599D9A] bg-[#599D9A]/5'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 mt-0.5 transition',
+                        withTrainer ? 'bg-[#599D9A] border-[#599D9A] text-white' : 'border-gray-300'
+                      )}
+                    >
+                      {withTrainer && <Check size={13} strokeWidth={4} />}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      <span className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[13px] font-black text-gray-900">Add a trainer for my pet</span>
+                        <span className="text-[11px] font-black text-[#599D9A]">
+                          {trainerPrice > 0 ? `+ ₹${trainerPrice}` : 'Included'}
+                        </span>
+                      </span>
+                      <span className="block text-[11.5px] font-medium text-gray-500 leading-snug mt-1">
+                        {eventTrainer.note ||
+                          'The organiser’s trainer stays with your pet and manages introductions with the other pets.'}
+                      </span>
+                      {petIsReactive && (
+                        <span className="block text-[11px] font-bold text-[#599D9A] mt-1.5">
+                          Recommended — {attendingPet?.name} is marked{' '}
+                          {(attendingPet?.reactiveTraits || []).join(', ').toLowerCase() || 'aggressive'}.
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                )}
+
                 {/* Prices & Fee info */}
                 <div className="space-y-2 mb-6 shrink-0 text-[12px] font-bold text-gray-600 bg-gray-50 p-4 rounded-2xl border border-gray-150/40">
                   <div className="flex justify-between">
                     <span>Subtotal</span>
                     <span className="text-gray-900 font-extrabold">₹{selectedEvent.price * ticketQty}</span>
                   </div>
+                  {withTrainer && (
+                    <div className="flex justify-between">
+                      <span>Trainer / handler support</span>
+                      <span className={trainerPrice > 0 ? 'text-gray-900 font-extrabold' : 'text-emerald-600 font-extrabold'}>
+                        {trainerPrice > 0 ? `₹${trainerPrice}` : 'Included'}
+                      </span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span>Convenience Fee</span>
                     <span className="text-emerald-600 font-extrabold">Free</span>
                   </div>
                   <div className="border-t border-gray-200 pt-2 flex justify-between text-[13.5px] text-gray-900 font-black">
                     <span>Total Amount</span>
-                    <span className="text-[#599D9A]">₹{selectedEvent.price * ticketQty}</span>
+                    <span className="text-[#599D9A]">₹{ticketTotal}</span>
                   </div>
                 </div>
 
@@ -842,15 +961,43 @@ export function EventList() {
                 {/* QR Code Graphic Card */}
                 <div className="bg-gray-50 border border-gray-150 p-5 rounded-[24px] flex flex-col items-center justify-center mb-6 w-full max-w-[240px] shadow-sm">
                   <div className="bg-white p-3 rounded-xl shadow-inner mb-3">
-                    <QrCode size={100} className="text-[#599D9A]" />
+                    <TicketQR booking={confirmedBooking} size={124} />
                   </div>
                   <span className="text-[9.5px] font-extrabold text-gray-400 uppercase tracking-widest leading-none">
                     Ticket ID: {generatedTicketId}
                   </span>
                   <span className="text-[11.5px] text-gray-700 font-black mt-2">
-                    Admit {ticketQty} ({pets.find(p => p.id === selectedPetId)?.name || 'Max'})
+                    Admit {ticketQty} ({attendingPet?.name || 'Max'})
                   </span>
+                  {/* Confirm the handler on the ticket itself — it is what the
+                      owner shows at the gate. */}
+                  {bookedWithTrainer && (
+                    <span className="text-[11px] text-[#599D9A] font-black mt-1">
+                      Trainer / handler support booked
+                    </span>
+                  )}
                 </div>
+
+                {/*
+                  Where the responsibility sits, shown once the ticket is
+                  bought and only when no handler was taken.
+                  Before this point it was a warning attached to browsing:
+                  it appeared while the owner was still deciding, and it
+                  appeared even when they had already chosen the trainer that
+                  answers it.
+                */}
+                {petIsReactive && !bookedWithTrainer && (
+                  <div className="w-full mb-6 shrink-0 flex items-start gap-2.5 p-3.5 rounded-[16px] bg-amber-50 border border-amber-200 text-left">
+                    <Info size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-[11.5px] font-semibold text-amber-800 leading-snug">
+                      {attendingPet?.name} is marked{' '}
+                      {(attendingPet?.reactiveTraits || []).join(', ').toLowerCase() || 'aggressive'}{' '}
+                      in nature and is attending without a trainer. TailCircle and the organiser are
+                      not responsible for any mishap at the event — please keep them leashed and let
+                      the organiser know you are coming.
+                    </p>
+                  </div>
+                )}
 
                 {/* Action buttons */}
                 <div className="flex gap-3 w-full shrink-0">
@@ -862,7 +1009,10 @@ export function EventList() {
                   </button>
                   <button 
                     onClick={() => {
-                      alert(`Ticket Details:\nID: ${generatedTicketId}\nEvent: ${selectedEvent.title}\nAdmit: ${ticketQty}`);
+                      // Was an alert() reciting the booking back to the user;
+                      // the pass itself lives on the tickets screen.
+                      setIsTicketSheetOpen(false);
+                      navigate('/app/events/my-tickets');
                     }}
                     className="flex-1 bg-[#599D9A] hover:bg-[#599D9A] text-white py-3.5 rounded-[14px] text-[13px] font-black active:scale-95 transition-all shadow-sm cursor-pointer"
                   >

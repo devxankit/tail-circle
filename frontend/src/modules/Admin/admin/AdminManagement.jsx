@@ -14,9 +14,9 @@ export function AdminManagement() {
 
   // 1. User Moderation state
   const [users, setUsers] = useState([
-    { id: 'USR-001', name: 'Rahul Kumar', email: 'rahul@example.com', city: 'Indore', pets: 3, status: 'Active', kyc: 'Verified' },
-    { id: 'USR-002', name: 'Aisha Khan', email: 'aisha@example.com', city: 'Mumbai', pets: 2, status: 'Pending', kyc: 'Pending' },
-    { id: 'USR-003', name: 'Priya Dev', email: 'priya@example.com', city: 'Pune', pets: 1, status: 'Active', kyc: 'Verified' }
+    { id: 'USR-001', name: 'Rahul Kumar', email: 'Contact@tailcircle.in', city: 'Indore', pets: 3, status: 'Active', kyc: 'Verified' },
+    { id: 'USR-002', name: 'Aisha Khan', email: 'Contact@tailcircle.in', city: 'Mumbai', pets: 2, status: 'Pending', kyc: 'Pending' },
+    { id: 'USR-003', name: 'Priya Dev', email: 'Contact@tailcircle.in', city: 'Pune', pets: 1, status: 'Active', kyc: 'Verified' }
   ]);
 
   // 2. Pet Breed Builder state

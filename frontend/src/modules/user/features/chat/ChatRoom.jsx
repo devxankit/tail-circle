@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, MoreVertical, Plus, Send, Image as ImageIcon, MapPin, User, Bell, BellOff, Flag, Trash2, FileText, Check, CheckCheck, Smile, Download, Sparkles, X } from 'lucide-react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { ReportModal } from '../../../../components/common/ReportModal';
+import { MatchIntroCard } from './MatchIntroCard';
 import {
   fetchMessages,
   sendChatMessage,
@@ -476,8 +477,14 @@ export function ChatRoom() {
         <button onClick={() => navigate(-1)} className="mr-3 p-1 rounded-full hover:bg-bg-secondary">
           <ArrowLeft size={24} />
         </button>
-        <div className="w-10 h-10 rounded-full overflow-hidden shrink-0">
-          <img src={activePet.img} alt={activePet.name} className="w-full h-full object-cover" />
+        <div className="w-10 h-10 rounded-full overflow-hidden shrink-0 bg-bg-secondary flex items-center justify-center">
+          {/* Rendering nothing beats an empty src, which makes the browser
+              re-request the whole page as the image. */}
+          {activePet.img ? (
+            <img src={activePet.img} alt={activePet.name} className="w-full h-full object-cover" />
+          ) : (
+            <span className="text-base">🐾</span>
+          )}
         </div>
         <div className="ml-3 flex-1 cursor-pointer" onClick={() => navigate('/app/profile')}>
           <h2 className="font-bold text-text-primary text-base leading-tight">{activePet.name}</h2>
@@ -540,6 +547,12 @@ export function ChatRoom() {
         <div className="text-center text-xs text-text-disabled my-2 font-medium">Today</div>
         
         {messages.map((m) => (
+          /* The match intro is posted by the platform, not by either owner, so
+             it renders full width instead of as a bubble on one side — and it
+             carries no reactions, delete or read state for the same reason. */
+          m.type === 'match_intro' ? (
+            <MatchIntroCard key={m.id} />
+          ) : (
           <div key={m.id} className={`group relative max-w-[80%] sm:max-w-[75%] ${m.isSelf ? 'self-end' : 'self-start'}`}>
             
             {/* Quick Action Button Bar on Hover / Click */}
@@ -681,6 +694,7 @@ export function ChatRoom() {
               )}
             </div>
           </div>
+          )
         ))}
 
         {/* Peer Typing Animation */}

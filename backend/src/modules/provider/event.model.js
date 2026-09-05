@@ -24,6 +24,26 @@ const eventSchema = new mongoose.Schema(
     startAt: { type: Date, default: null },
     capacity: { type: Number, default: 100 },
     sold: { type: Number, default: 0 },
+
+    /*
+     * Handler / trainer support offered at the event.
+     *
+     * The platform does not run trainers, roster them, or hold places for
+     * them. This is only the organiser's declaration of what they provide and
+     * what they charge: an owner opts in at checkout, the money goes to the
+     * organiser with the ticket, and the organiser is told the booking
+     * includes a handler. Delivering that handler on the day is entirely
+     * theirs.
+     *
+     * `provision` is a tri-state rather than a boolean plus a price, because
+     * "included at no extra cost" and "not offered at all" are different
+     * answers that a price of 0 cannot tell apart.
+     */
+    trainer: {
+      provision: { type: String, enum: ['none', 'included', 'paid'], default: 'none' },
+      pricePerPet: { type: Number, default: 0, min: 0 }, // rupees, only read when 'paid'
+      note: { type: String, default: '' }, // what the organiser's handler does
+    },
     status: {
       type: String,
       enum: ['draft', 'published', 'completed', 'cancelled'],

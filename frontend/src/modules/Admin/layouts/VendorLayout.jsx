@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
 import { Menu, X, Bell, LogOut, LayoutDashboard, Store, ClipboardList, ShieldAlert, Heart, Calendar, HelpCircle, FileText, User, Search, Video, Users, Syringe, Clock, Activity, CreditCard, Award, Settings } from 'lucide-react';
 import { cn } from '../../../modules/user/utils/cn';
-import { getStoredVendor, vendorLogout } from '../../../services/vendor';
+import { BusinessSwitcher } from '../vendor/BusinessSwitcher';
+import { getActiveVendorProfile, vendorLogout } from '../../../services/vendor';
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from '../../../services/notifications';
+import { VendorAvailabilityToggle } from '../vendor/VendorAvailabilityToggle';
 
 // Backend vendorType → the portal role slug the menus/routes use.
 const TYPE_TO_SLUG = {
@@ -23,12 +25,15 @@ export function VendorLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const stored = getStoredVendor();
-  const vendorRole = TYPE_TO_SLUG[stored?.profile?.vendorType] || 'shop';
+  // The menu follows the business whose panel is open, not the account's first
+  // one — a vendor who runs grooming and daycare would otherwise always get the
+  // grooming sidebar, whichever panel they had switched to.
+  const activeProfile = getActiveVendorProfile();
+  const vendorRole = TYPE_TO_SLUG[activeProfile?.vendorType] || 'shop';
 
-  const vendorName = stored?.profile?.businessName || (vendorRole === 'doctor' ? 'Dr.' : 'My Business');
+  const vendorName = activeProfile?.businessName || (vendorRole === 'doctor' ? 'Dr.' : 'My Business');
 
-  const vendorLogo = stored?.profile?.logo;
+  const vendorLogo = activeProfile?.logo;
 
   const handleLogout = () => {
     vendorLogout();
@@ -358,9 +363,14 @@ export function VendorLayout() {
                 {currentPage?.label || 'Dashboard'}
               </h1>
             </div>
+            <BusinessSwitcher />
           </div>
 
           <div className="flex items-center gap-3">
+          {/* Open/closed switch. Top of every panel on purpose: a vendor who
+              forgets they are offline loses enquiries silently. */}
+          <VendorAvailabilityToggle />
+
             {/* Live Indicator */}
             <div className="hidden sm:flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-100 px-3 py-1.5 rounded-full text-[11px] font-bold">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
