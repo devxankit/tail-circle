@@ -6,8 +6,10 @@ import {
 } from 'lucide-react';
 import { cn } from '../../user/utils/cn';
 import { vendorLogout, updateVendorProfile } from '../../../services/vendor';
+import { BusinessSwitcher } from '../vendor/BusinessSwitcher';
 import { useMealProvider } from './context/MealProviderContext';
 import VerificationBanner from '../components/VerificationBanner';
+import { VendorAvailabilityToggle } from '../vendor/VendorAvailabilityToggle';
 
 export function MealProviderLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -142,8 +144,13 @@ export function MealProviderLayout() {
               <Menu size={20} />
             </button>
             <h1 className="text-xl font-bold text-gray-900 hidden sm:block">Operations Dashboard</h1>
+            <BusinessSwitcher />
           </div>
           <div className="flex items-center gap-4">
+          {/* Open/closed switch. Top of every panel on purpose: a vendor who
+              forgets they are offline loses enquiries silently. */}
+          <VendorAvailabilityToggle />
+
             <div className="hidden md:flex items-center gap-2 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-full">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-[11px] font-bold uppercase tracking-widest text-emerald-700">Kitchen Live</span>

@@ -41,7 +41,7 @@ const BANNERS = [
 ];
 
 export async function seedAdmin() {
-  const email = (process.env.ADMIN_EMAIL || 'admin@tailcircle.com').toLowerCase();
+  const email = (process.env.ADMIN_EMAIL || 'Contact@tailcircle.in').toLowerCase();
   const password = process.env.ADMIN_PASSWORD || 'admin123';
   const passwordHash = await bcrypt.hash(password, 10);
 

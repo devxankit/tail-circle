@@ -12,6 +12,7 @@ import {
   registerPurposeHandler,
   createOrder as createPaymentOrder,
 } from '../payment/payment.service.js';
+import { excludeOfflineVendors } from '../vendor/availability.service.js';
 import {
   AdoptionListing,
   AdoptionBreed,
@@ -34,7 +35,10 @@ router.get(
   '/pets',
   cacheResponse('adoption', 120),
   asyncHandler(async (req, res) => {
-    const filter = { status: { $in: ['Available', 'Pending'] } };
+    const filter = {
+      status: { $in: ['Available', 'Pending'] },
+      ...(await excludeOfflineVendors('vendorId')),
+    };
     if (req.query.breed) filter.breed = new RegExp(`^${String(req.query.breed).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
     const pets = await AdoptionListing.find(filter).sort({ legacyId: 1 }).limit(200);
     sendSuccess(res, { data: pets });
@@ -420,16 +424,18 @@ async function creditAdoptionVendor(application) {
   try {
     const listing = await AdoptionListing.findById(application.listingId).select('vendorId name');
     if (!listing?.vendorId) return; // an owner rehoming privately — nothing to settle
-    const { postLedgerEntry } = await import('../vendor/vendor.service.js');
-    const { VendorProfile } = await import('../vendor/vendor.models.js');
-    const profile = await VendorProfile.findOne({ userId: listing.vendorId });
+    const { postLedgerEntry, commissionFor } = await import('../vendor/vendor.service.js');
+    // A shelter that also runs a shop or clinic has a rate per line; adoption
+    // fees settle at the adoption line's.
+    const commissionRate = await commissionFor(listing.vendorId, 'adoption');
     await postLedgerEntry({
       vendorId: listing.vendorId,
       refType: 'booking',
       refId: application._id,
       label: `Adoption ${application.applicationNo} — ${listing.name}`,
       gross: application.feePaise,
-      commissionRate: profile?.commissionRate ?? 0.15,
+      commissionRate,
+      vendorType: 'adoption',
     });
   } catch {
     // ledger is best-effort — never block a completed adoption

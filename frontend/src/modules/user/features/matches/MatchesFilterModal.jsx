@@ -14,6 +14,7 @@ const breedsByPetType = {
 
 const filterOptions = {
   type: ['Any', 'Dog', 'Cat', 'Bird', 'Rabbit', 'Fish', 'Hamster', 'Other'],
+  breedMode: ['All Breeds', 'Same Breed'],
   gender: ['Any', 'Male', 'Female'],
   age: ['Any', '0-1 Year', '1-3 Years', '3-5 Years', '5-8 Years', '8+ Years'],
   distance: ['Anywhere', 'Within 1 KM', 'Within 5 KM', 'Within 10 KM', 'Within 25 KM', 'Within 50 KM'],
@@ -44,6 +45,7 @@ export function MatchesFilterModal({ isOpen, onClose, currentFilters, onApply })
   const handleReset = () => {
     const defaultFilters = {
       type: 'Any',
+      breedMode: 'All Breeds',
       gender: 'Any',
       age: 'Any',
       distance: 'Anywhere',
@@ -132,6 +134,25 @@ export function MatchesFilterModal({ isOpen, onClose, currentFilters, onApply })
                   <Pill key={opt} label={opt} active={localFilters.type === opt} onClick={() => setFilter('type', opt)} />
                 ))}
               </div>
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-sm font-bold text-text-primary">Breed Recommendation</label>
+              <div className="flex flex-wrap gap-2">
+                {filterOptions.breedMode.map(opt => (
+                  <Pill 
+                    key={opt} 
+                    label={opt} 
+                    active={(localFilters.breedMode || 'All Breeds') === opt} 
+                    onClick={() => setFilter('breedMode', opt)} 
+                  />
+                ))}
+              </div>
+              {localFilters.breedMode === 'Same Breed' && (
+                <p className="text-xs text-[#4C8684] font-medium mt-1">
+                  Only pets of the same breed will be recommended.
+                </p>
+              )}
             </div>
 
             {localFilters.type !== 'Any' && (

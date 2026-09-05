@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronLeft, Calendar, MapPin, QrCode, Ticket, Sparkles, CheckCircle2, Clock, X } from 'lucide-react';
 import { api } from '../../../../services/api';
+import { TicketQR } from '../../../../components/common/TicketQR';
 
 export function MyEventTickets() {
   const navigate = useNavigate();
@@ -126,14 +127,13 @@ export function MyEventTickets() {
             <h3 className="text-lg font-black text-gray-900 mb-1">{activeTicket.eventTitle}</h3>
             <p className="text-xs font-bold text-gray-500 mb-4">Official Entry Pass</p>
 
-            {/* QR Mock graphic */}
+            {/* Real, locally rendered pass code. This was a third-party image
+                encoding the booking number: it made the pass depend on someone
+                else's uptime and on signal at the gate, and anyone who saw the
+                printed number could reproduce it. */}
             <div className="p-4 bg-gray-50 rounded-[20px] border border-gray-200/80 inline-block mb-4 shadow-inner">
               <div className="w-40 h-40 bg-white p-2 rounded-[14px] flex items-center justify-center border border-gray-200">
-                <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(activeTicket.bookingNo)}`} 
-                  alt="Ticket QR Code"
-                  className="w-full h-full object-contain" 
-                />
+                <TicketQR booking={activeTicket} size={140} />
               </div>
             </div>
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Save, User, Plus, Check, ShieldAlert, Loader2, Send, Info } from 'lucide-react';
-import { fetchVendorLedger, fetchVendorPayouts, requestVendorPayout, changeVendorPassword } from '../../../services/vendor';
+import { fetchVendorLedger, fetchVendorPayouts, requestVendorPayout, changeVendorPassword, getVendorLines } from '../../../services/vendor';
+import { VENDOR_TYPE_LABEL } from '../../../constants/vendorTypes';
 import { fetchMyTickets, createSupportTicket, replySupportTicket } from '../../../services/support';
 import { DataTable } from '../components/DataTable';
 import { Modal } from '../components/Modal';
@@ -18,6 +19,13 @@ export function VendorPayouts() {
   const [loading, setLoading] = useState(true);
   const [requesting, setRequesting] = useState(false);
   const [error, setError] = useState('');
+  // Earnings are settled per account, not per business, so the totals here are
+  // deliberately the combined figure. This filter only narrows the ledger view
+  // so a vendor running several businesses can see what each one brought in.
+  const [lineFilter, setLineFilter] = useState('all');
+
+  const lines = getVendorLines();
+  const isMultiLine = lines.length > 1;
 
   const load = () => {
     setLoading(true);
@@ -29,6 +37,7 @@ export function VendorPayouts() {
 
   useEffect(() => { load(); }, []);
 
+  const visibleLedger = lineFilter === 'all' ? ledger : ledger.filter((l) => l.vendorType === lineFilter);
   const unsettled = ledger.filter((l) => l.status === 'unsettled');
   const pendingNet = unsettled.reduce((s, l) => s + l.net, 0);
   const settledPayouts = payouts.filter((p) => p.status === 'paid');
@@ -112,16 +121,48 @@ export function VendorPayouts() {
       </div>
 
       <div className="space-y-3">
-        <h4 className="text-sm font-bold text-gray-800 uppercase tracking-wider">Ledger (Unsettled + Settled)</h4>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h4 className="text-sm font-bold text-gray-800 uppercase tracking-wider">Ledger (Unsettled + Settled)</h4>
+
+          {/* Only shown to a vendor who runs more than one business — for
+              everyone else there is nothing to filter between. */}
+          {isMultiLine && (
+            <div className="flex flex-wrap gap-1.5">
+              {[{ vendorType: 'all' }, ...lines].map(({ vendorType }) => (
+                <button
+                  key={vendorType}
+                  type="button"
+                  onClick={() => setLineFilter(vendorType)}
+                  className={
+                    lineFilter === vendorType
+                      ? 'px-3 py-1.5 text-xs font-bold rounded-lg bg-gray-900 text-white cursor-pointer transition'
+                      : 'px-3 py-1.5 text-xs font-bold rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 cursor-pointer transition'
+                  }
+                >
+                  {vendorType === 'all' ? 'All businesses' : VENDOR_TYPE_LABEL[vendorType] || vendorType}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <DataTable
           columns={[
             { key: 'createdAt', label: 'Date', render: (row) => new Date(row.createdAt).toLocaleDateString('en-IN') },
+            ...(isMultiLine
+              ? [{
+                  key: 'vendorType',
+                  label: 'Business',
+                  // Entries written before per-line tagging have no vendorType.
+                  render: (row) => VENDOR_TYPE_LABEL[row.vendorType] || '—',
+                }]
+              : []),
             { key: 'refType', label: 'Source' },
             { key: 'gross', label: 'Gross', render: (row) => `₹${rupees(row.gross).toLocaleString('en-IN')}` },
             { key: 'net', label: 'Net', render: (row) => `₹${rupees(row.net).toLocaleString('en-IN')}` },
             { key: 'status', label: 'Status' },
           ]}
-          data={ledger}
+          data={visibleLedger}
           emptyMessage="No ledger entries yet."
         />
       </div>

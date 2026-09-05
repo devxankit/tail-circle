@@ -13,6 +13,7 @@ import { getDoctorSlots } from './availability.service.js';
 import { authenticate } from '../../middleware/auth.js';
 import { reportEmergency } from '../vendor/clinic.vendor.service.js';
 import { User } from '../user/user.model.js';
+import { excludeOfflineVendors, assertVendorOnline } from '../vendor/availability.service.js';
 
 const router = Router();
 
@@ -66,7 +67,12 @@ function calculateHaversineDistanceKm(lat1, lon1, lat2, lon2) {
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const filter = { active: true, approvalStatus: 'approved' };
+    /*
+     * A vendor who has switched themselves off disappears from browse. Kept
+     * separate from `active`/`approvalStatus` above, which are the platform's
+     * controls rather than the vendor's.
+     */
+    const filter = { active: true, approvalStatus: 'approved', ...(await excludeOfflineVendors('vendorUserId')) };
     if (req.query.type) {
       if (!PROVIDER_TYPES.includes(req.query.type)) throw ApiError.badRequest('Invalid type');
       filter.type = req.query.type;
@@ -117,7 +123,13 @@ router.get(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const provider = await Provider.findOne({ ...idOrLegacy(req.params.id), active: true });
+    const provider = await Provider.findOne({
+      ...idOrLegacy(req.params.id),
+      active: true,
+      // Hiding a closed business from the list is not enough on its own: a
+      // saved link or an open tab would otherwise walk straight into booking.
+      ...(await excludeOfflineVendors('vendorUserId')),
+    });
     if (!provider) throw ApiError.notFound('Provider not found');
 
     const offerings = await ServiceOffering.find({
@@ -196,6 +208,7 @@ doctorRouter.get(
     const doctors = await Doctor.find({
       active: true,
       'credentials.verification.status': 'approved',
+      ...(await excludeOfflineVendors('userId')),
     })
       .select(PUBLIC_DOCTOR_PROJECTION)
       .sort({ rating: -1 });
@@ -274,9 +287,13 @@ doctorRouter.get(
   asyncHandler(async (req, res) => {
     const or = [{ legacyId: Number(req.params.id) || -1 }];
     if (mongoose.isValidObjectId(req.params.id)) or.push({ _id: req.params.id });
-    const doctor = await Doctor.findOne({ $or: or, active: true }).select(
-      PUBLIC_DOCTOR_PROJECTION
-    );
+    // Same reasoning as the provider detail route: hiding a closed clinic from
+    // the list is not enough while a saved link still opens their profile.
+    const doctor = await Doctor.findOne({
+      $or: or,
+      active: true,
+      ...(await excludeOfflineVendors('userId')),
+    }).select(PUBLIC_DOCTOR_PROJECTION);
     if (!doctor) throw ApiError.notFound('Doctor not found');
     sendSuccess(res, { data: doctor });
   })
@@ -293,7 +310,7 @@ eventRouter.get(
   '/',
   cacheResponse('events', 120),
   asyncHandler(async (req, res) => {
-    const filter = { status: 'published' };
+    const filter = { status: 'published', ...(await excludeOfflineVendors('vendorId')) };
     if (req.query.category && req.query.category !== 'all') {
       filter.category = new RegExp(`^${String(req.query.category).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
     }

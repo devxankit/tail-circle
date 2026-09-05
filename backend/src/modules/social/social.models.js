@@ -83,6 +83,10 @@ const matchProfileSchema = new mongoose.Schema(
     vaccinationStatus: { type: String, default: '' },
     neutered: { type: String, default: '' },
     activityLevel: { type: String, default: '' },
+    // Current vibe, mirrored from the Pet. It reached the card only inside the
+    // free-text `tags` array before, so the engine could not compare two pets'
+    // moods even though both had one.
+    mood: { type: String, default: '' },
     temperament: { type: [String], default: [] },
     compatibility: { type: [String], default: [] },
     purpose: { type: String, default: '' },
@@ -125,7 +129,30 @@ const matchSchema = new mongoose.Schema(
   {
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     profileId: { type: mongoose.Schema.Types.ObjectId, ref: 'MatchProfile', required: true },
+    /*
+     * Which of my pets this match is for.
+     *
+     * An owner with two pets was previously matched — and scored — against
+     * whichever pet Mongo happened to return first, with nothing recording
+     * which one it had picked. The celebration screen then guessed again on
+     * the client and could show a third answer.
+     */
+    petId: { type: mongoose.Schema.Types.ObjectId, ref: 'Pet', default: null },
     conversationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Conversation', default: null },
+    /*
+     * The compatibility reading taken when the match was made.
+     *
+     * Stored rather than recomputed on read: both pets' profiles drift (a mood
+     * changes, an owner moves city), and the matches list should keep showing
+     * the score the two owners actually matched on. Null on rows created
+     * before points existed.
+     */
+    matchPoints: { type: Number, default: null },
+    matchScore: { type: Number, default: null },
+    matchFactors: {
+      type: [{ _id: false, key: String, label: String, known: Boolean, value: Number, display: String, weight: Number }],
+      default: [],
+    },
     matchedAt: { type: Date, default: Date.now },
   },
   { timestamps: true }
@@ -147,10 +174,33 @@ const conversationSchema = new mongoose.Schema(
       required: true,
     },
     refId: { type: mongoose.Schema.Types.ObjectId, default: null }, // profile / listing
+    /*
+     * Who the *other* side is — which is a different answer for each
+     * participant.
+     *
+     * Both owners of a match share one conversation, so a single counterpart
+     * could only ever be right for one of them: the second owner saw their own
+     * pet's name and photo in the chat header. `counterparts` holds one entry
+     * per user id and the API resolves it for whoever is asking; `counterpart`
+     * stays as the fallback for rows written before this and for contexts
+     * (adoption, support) with only one real participant.
+     */
     counterpart: {
       name: { type: String, default: '' },
       image: { type: String, default: '' },
       subtitle: { type: String, default: '' },
+    },
+    counterparts: {
+      type: Map,
+      of: new mongoose.Schema(
+        {
+          name: { type: String, default: '' },
+          image: { type: String, default: '' },
+          subtitle: { type: String, default: '' },
+        },
+        { _id: false }
+      ),
+      default: {},
     },
     lastMessage: { type: String, default: '' },
     lastMessageAt: { type: Date, default: null },
@@ -173,8 +223,17 @@ const messageSchema = new mongoose.Schema(
       ref: 'Conversation',
       required: true,
     },
-    senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    type: { type: String, enum: ['text', 'image', 'location', 'document', 'story_reply'], default: 'text' },
+    /*
+     * Null for messages the platform itself posts — the match intro card has
+     * no author, and attributing it to either owner would read as that person
+     * having said it.
+     */
+    senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    type: {
+      type: String,
+      enum: ['text', 'image', 'location', 'document', 'story_reply', 'match_intro'],
+      default: 'text',
+    },
     text: { type: String, default: '', maxlength: 2000 },
     mediaUrl: { type: String, default: null },
     meta: {

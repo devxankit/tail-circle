@@ -6,6 +6,7 @@ import { ApiError } from '../../utils/ApiError.js';
 import { cacheResponse } from '../../services/cache.service.js';
 import { Product } from './product.model.js';
 import { ProductCategory } from './productCategory.model.js';
+import { excludeOfflineVendors } from '../vendor/availability.service.js';
 
 const router = Router();
 
@@ -22,7 +23,8 @@ router.get(
   cacheResponse('shop', 120),
   asyncHandler(async (req, res) => {
     const q = req.query;
-    const filter = { active: true, deletedAt: null };
+    // `vendorId: null` marks platform stock, which no vendor can close.
+    const filter = { active: true, deletedAt: null, ...(await excludeOfflineVendors('vendorId')) };
 
     if (q.category && q.category !== 'All') filter.category = q.category;
     if (q.petType && q.petType !== 'All Pets') filter.petType = q.petType;

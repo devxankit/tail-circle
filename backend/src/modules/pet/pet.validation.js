@@ -5,19 +5,20 @@ const url = z.string().max(2000000);
 
 const petFields = {
   name: z.string().trim().min(1).max(40),
-  type: z.enum(PET_TYPES),
+  type: z.enum(PET_TYPES).or(z.string()),
   typeText: z.string().trim().max(40),
-  breed: z.string().trim().min(1).max(60),
-  gender: z.enum(['male', 'female', 'unknown']),
+  breed: z.string().trim().max(60),
+  gender: z.enum(['male', 'female', 'unknown']).or(z.string()),
   dob: z.coerce.date().max(new Date()),
-  ageText: z.string().trim().max(20),
+  ageText: z.string().trim().max(40),
   weightKg: z.coerce.number().min(0).max(200),
   avatarUrl: url,
   photos: z.array(url).max(6),
   bio: z.string().trim().max(500),
-  temperament: z.array(z.string().trim().max(30)).max(10),
+  temperament: z.array(z.string().trim().max(40)).max(20),
   diet: z.string().trim().max(100),
-  mood: z.string().trim().max(40),
+  mood: z.string().trim().max(60),
+  purpose: z.string().trim().max(60),
   health: z
     .object({
       vaccinated: z.boolean().optional(),
@@ -27,10 +28,10 @@ const petFields = {
       conditions: z.array(z.string().trim().max(60)).max(20).optional(),
       lastVetVisit: z.coerce.date().max(new Date()).optional(),
     })
-    .strict(),
+    .passthrough(),
   isMatchProfile: z.boolean(),
-  activityLevel: z.enum(['low', 'medium', 'high']),
-  size: z.enum(['small', 'medium', 'large']),
+  activityLevel: z.string().trim().max(60).nullable().optional(),
+  size: z.string().trim().max(60).nullable().optional(),
 };
 
 // Staged onboarding: only the name is mandatory to create.
@@ -38,9 +39,9 @@ export const createPetSchema = z
   .object({ ...petFields, name: petFields.name })
   .partial()
   .required({ name: true })
-  .strict();
+  .passthrough();
 
-export const updatePetSchema = z.object(petFields).partial().strict();
+export const updatePetSchema = z.object(petFields).partial().passthrough();
 
 export const addVaccinationSchema = z.object({
   vaccine: z.string().trim().min(2).max(80),

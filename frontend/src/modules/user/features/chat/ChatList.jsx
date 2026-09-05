@@ -82,7 +82,9 @@ export function ChatList({ setView }) {
             msg: c.lastMessage || 'Say hi! 👋',
             time: chatTime(c.lastMessageAt),
             unread: c.unreadCount || 0,
-            img: c.counterpart?.image || '',
+            // null, not '': an empty src makes the browser re-request the
+            // whole page as the image.
+            img: c.counterpart?.image || null,
           }))
         );
       })
@@ -265,8 +267,12 @@ export function ChatList({ setView }) {
             className="flex items-center p-4 hover:bg-bg-secondary cursor-pointer transition-colors"
             onClick={() => navigate('/app/chat/room', { state: { pet: { name: chat.name, img: chat.img }, conversationId: chat.conversationId } })}
           >
-            <div className="w-14 h-14 rounded-full overflow-hidden bg-bg-secondary shrink-0 border border-border-light">
-              <img src={chat.img} alt={chat.name} className="w-full h-full object-cover" />
+            <div className="w-14 h-14 rounded-full overflow-hidden bg-bg-secondary shrink-0 border border-border-light flex items-center justify-center">
+              {chat.img ? (
+                <img src={chat.img} alt={chat.name} className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-xl">🐾</span>
+              )}
             </div>
             <div className="ml-4 min-w-0 flex-1 border-b border-border-light/50 pb-4">
               <div className="flex justify-between items-center gap-2 mb-1">

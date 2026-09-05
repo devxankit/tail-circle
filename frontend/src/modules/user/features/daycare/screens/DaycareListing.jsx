@@ -164,6 +164,12 @@ export function DaycareListing() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Same defect the events list had: the hook was imported and its state used
+  // in the search bar below, but never called, so this screen threw on render.
+  const { isListening, transcript, toggleListening } = useVoiceSearch({
+    onResult: (text) => setSearchQuery(text),
+  });
+
   // Heart state (saved) — real wishlist via /saved-items (targetType 'provider'),
   // shared with every other "save" heart in the app instead of a local-only list.
   const [savedDaycares, setSavedDaycares] = useState([]);

@@ -116,7 +116,7 @@ export function AdminLogin() {
                        type="email" 
                        value={email}
                        onChange={(e) => setEmail(e.target.value)}
-                       placeholder="admin@tailcircle.com"
+                       placeholder="Contact@tailcircle.in"
                        className="w-full pl-11 pr-4 py-3 text-sm border border-gray-200 rounded-xl focus:outline-none focus:border-[#66B4B1] bg-white font-medium text-slate-800 transition"
                        required
                      />

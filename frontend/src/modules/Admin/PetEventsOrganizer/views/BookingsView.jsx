@@ -1,13 +1,56 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { usePetEvents } from '../context/PetEventsContext';
 import { 
   Ticket, Search, Filter, CheckCircle, XCircle, 
-  ChevronRight, Calendar, User, IndianRupee, QrCode
+  ChevronRight, Calendar, User, IndianRupee, QrCode, ShieldCheck, AlertTriangle
 } from 'lucide-react';
 import { cn } from '../../../user/utils/cn';
 
 export function BookingsView() {
-  const { bookings, events, checkInBooking } = usePetEvents();
+  const { bookings, events, checkInBooking, scanTicket } = usePetEvents();
+
+  /*
+   * Gate check-in.
+   *
+   * The ticket QR carries a URL pointing here with `?ticket=<code>`, so a plain
+   * phone camera lands on this screen with the pass already filled in and one
+   * tap admits it. The same box takes a typed booking number for the times a
+   * camera will not focus or a screen is cracked -- a gate that only works
+   * when the scan works is not a gate.
+   */
+  const [scanParams, setScanParams] = useSearchParams();
+  const [scanCode, setScanCode] = useState('');
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanResult, setScanResult] = useState(null);
+  const [scanError, setScanError] = useState('');
+  const scanInputRef = useRef(null);
+
+  const runScan = async (code) => {
+    const value = String(code || '').trim();
+    if (!value || scanBusy) return;
+    setScanBusy(true);
+    setScanError('');
+    setScanResult(null);
+    try {
+      setScanResult(await scanTicket(value));
+      setScanCode('');
+    } catch (err) {
+      setScanError(err?.message || 'Could not read that ticket');
+    } finally {
+      setScanBusy(false);
+    }
+  };
+
+  // A code arriving in the URL is consumed once and cleared, so a refresh or a
+  // back-navigation does not silently re-admit the same pass.
+  const urlTicket = scanParams.get('ticket');
+  useEffect(() => {
+    if (!urlTicket) return;
+    runScan(urlTicket);
+    scanParams.delete('ticket');
+    setScanParams(scanParams, { replace: true });
+  }, [urlTicket]);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterEvent, setFilterEvent] = useState('All');
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -23,7 +66,7 @@ export function BookingsView() {
       try {
         await checkInBooking(id);
       } catch (err) {
-        alert(err?.response?.data?.message || 'Could not check in this booking');
+        alert(err?.message || 'Could not check in this booking');
       }
     }
   };
@@ -71,6 +114,93 @@ export function BookingsView() {
           </div>
         </div>
 
+        {/* ── Gate check-in ── */}
+        <div className="bg-white rounded-3xl border border-slate-100 shadow-sm p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <QrCode size={18} className="text-[#F87B68]" />
+            <h3 className="text-sm font-black text-slate-900">Check in a ticket</h3>
+          </div>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              runScan(scanCode);
+            }}
+            className="flex flex-col sm:flex-row gap-3"
+          >
+            <input
+              ref={scanInputRef}
+              type="text"
+              value={scanCode}
+              onChange={(e) => setScanCode(e.target.value)}
+              placeholder="Scan the pass QR, or type a booking number"
+              autoComplete="off"
+              className="flex-1 px-5 py-3 text-sm border border-slate-200 rounded-xl font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500"
+            />
+            <button
+              type="submit"
+              disabled={scanBusy || !scanCode.trim()}
+              className="px-6 py-3 bg-slate-900 hover:bg-black disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition shadow-sm cursor-pointer"
+            >
+              {scanBusy ? 'Checking…' : 'Admit'}
+            </button>
+          </form>
+
+          {scanError && (
+            <div className="mt-3 flex items-start gap-2.5 p-3.5 rounded-xl bg-red-50 border border-red-200">
+              <XCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+              <p className="text-xs font-bold text-red-700">{scanError}</p>
+            </div>
+          )}
+
+          {scanResult && (
+            <div
+              className={cn(
+                'mt-3 flex items-start gap-2.5 p-3.5 rounded-xl border',
+                scanResult.alreadyCheckedIn
+                  ? 'bg-amber-50 border-amber-200'
+                  : 'bg-emerald-50 border-emerald-200'
+              )}
+            >
+              {scanResult.alreadyCheckedIn ? (
+                <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+              ) : (
+                <CheckCircle size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+              )}
+              <div className="min-w-0">
+                <p
+                  className={cn(
+                    'text-sm font-black',
+                    scanResult.alreadyCheckedIn ? 'text-amber-800' : 'text-emerald-800'
+                  )}
+                >
+                  {/* Staff need to know a repeat scan is a repeat, not a fresh
+                      admission -- that is the difference between one guest and
+                      a pass being reused. */}
+                  {scanResult.alreadyCheckedIn ? 'Already checked in' : 'Admitted'}
+                  {' — '}
+                  {scanResult.customer}
+                  {scanResult.pet ? ` (${scanResult.pet})` : ''}
+                </p>
+                <p className="text-xs font-semibold text-slate-600 mt-0.5">
+                  {scanResult.event} · {scanResult.tickets} ticket
+                  {scanResult.tickets === 1 ? '' : 's'} · {scanResult.bookingNo}
+                </p>
+                {scanResult.withTrainer && (
+                  <p className="text-xs font-black text-teal-700 mt-1 flex items-center gap-1">
+                    <ShieldCheck size={13} strokeWidth={3} /> Handler paid for — a trainer is expected
+                  </p>
+                )}
+                {scanResult.reactivePet && !scanResult.withTrainer && (
+                  <p className="text-xs font-black text-amber-700 mt-1 flex items-center gap-1">
+                    <AlertTriangle size={13} strokeWidth={3} /> Marked{' '}
+                    {scanResult.reactivePet.join(', ').toLowerCase()} — no handler booked
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Table */}
         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
@@ -93,6 +223,20 @@ export function BookingsView() {
                     <td className="p-4">
                       <p className="text-sm font-bold text-slate-800">{b.customer}</p>
                       <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">{b.pet}</p>
+                      {(b.withTrainer || b.reactivePet) && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {b.withTrainer && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-teal-50 border border-teal-200 text-[9.5px] font-black uppercase tracking-wide text-teal-700">
+                              <ShieldCheck size={10} strokeWidth={3} /> Trainer paid
+                            </span>
+                          )}
+                          {b.reactivePet && !b.withTrainer && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-50 border border-amber-200 text-[9.5px] font-black uppercase tracking-wide text-amber-700">
+                              <AlertTriangle size={10} strokeWidth={3} /> Reactive, no trainer
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="p-4">
                       <p className="text-sm font-bold text-slate-700">{b.event}</p>
@@ -151,10 +295,18 @@ export function BookingsView() {
 
             <div className="p-6 space-y-6 flex-1 custom-scrollbar">
               
-              {/* QR Code Section */}
+              {/* Was a lucide glyph pretending to be this attendee's pass. The
+                  organiser never needs to display a ticket -- they need to
+                  admit one, which is what the scanner at the top of this screen
+                  does. */}
               <div className="bg-slate-50 rounded-3xl p-6 flex flex-col items-center justify-center border border-slate-100 text-center">
-                <div className="w-32 h-32 bg-white rounded-xl shadow-sm border border-slate-200 flex items-center justify-center mb-4">
-                  <QrCode size={80} className={cn(selectedBooking.checkedIn ? "text-slate-300" : "text-slate-800")} />
+                <div
+                  className={cn(
+                    'w-16 h-16 rounded-full flex items-center justify-center mb-4',
+                    selectedBooking.checkedIn ? 'bg-emerald-100 text-emerald-600' : 'bg-white border border-slate-200 text-slate-400'
+                  )}
+                >
+                  {selectedBooking.checkedIn ? <CheckCircle size={32} /> : <QrCode size={32} />}
                 </div>
                 {selectedBooking.checkedIn ? (
                   <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 px-4 py-2 rounded-lg border border-emerald-100">
@@ -190,6 +342,39 @@ export function BookingsView() {
                     <p className="text-xs font-bold text-slate-500 mt-0.5">Pet: {selectedBooking.pet}</p>
                   </div>
                 </div>
+
+                {/* What the organiser has to actually do on the day. */}
+                {(selectedBooking.withTrainer || selectedBooking.reactivePet) && (
+                  <div
+                    className={cn(
+                      'mt-4 flex items-start gap-2.5 p-3.5 rounded-2xl border',
+                      selectedBooking.withTrainer
+                        ? 'bg-teal-50 border-teal-200'
+                        : 'bg-amber-50 border-amber-200'
+                    )}
+                  >
+                    {selectedBooking.withTrainer ? (
+                      <ShieldCheck size={16} className="text-teal-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                    )}
+                    <p
+                      className={cn(
+                        'text-xs font-semibold leading-relaxed',
+                        selectedBooking.withTrainer ? 'text-teal-800' : 'text-amber-800'
+                      )}
+                    >
+                      {selectedBooking.withTrainer
+                        ? 'This booking has paid for handler support. Please have a trainer on site for this pet.'
+                        : 'This pet is marked reactive and no handler was booked.'}
+                      {selectedBooking.reactivePet && (
+                        <span className="block mt-1 font-bold">
+                          Owner-declared: {selectedBooking.reactivePet.join(', ')}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Receipt */}
@@ -198,8 +383,20 @@ export function BookingsView() {
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3">
                   <div className="flex justify-between text-sm font-semibold text-slate-600">
                     <span>Base Ticket (x{selectedBooking.tickets})</span>
-                    <span>₹{selectedBooking.amount.toLocaleString()}</span>
+                    <span>
+                      ₹{(selectedBooking.ticketAmount ?? selectedBooking.amount).toLocaleString()}
+                    </span>
                   </div>
+                  {selectedBooking.withTrainer && (
+                    <div className="flex justify-between text-sm font-semibold text-slate-600">
+                      <span>Trainer / handler support</span>
+                      <span>
+                        {selectedBooking.trainerFee > 0
+                          ? `₹${selectedBooking.trainerFee.toLocaleString()}`
+                          : 'Included'}
+                      </span>
+                    </div>
+                  )}
                   {selectedBooking.addOns.map((addon, i) => (
                     <div key={i} className="flex justify-between text-sm font-semibold text-slate-600">
                       <span>Add-on: {addon}</span>

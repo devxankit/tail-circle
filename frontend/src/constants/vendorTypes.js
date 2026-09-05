@@ -44,4 +44,35 @@ export const VENDOR_CATEGORIES = [
 export const slugLabel = (slug) =>
   VENDOR_CATEGORIES.find((c) => c.slug === slug)?.label || 'Select your category';
 
+/**
+ * Stored `vendorType` → the portal that business line is run from.
+ *
+ * The one place this mapping is written. It was duplicated across App.jsx and
+ * VendorAuth.jsx, which is how a vendor could be sent to a route that no longer
+ * existed after one copy was updated and the other was not.
+ */
+export const VENDOR_HOME = {
+  shop: '/vendor/shop-provider',
+  clinic: '/vendor/doctor/consultations',
+  meal_subscription: '/vendor/meal-provider/dashboard',
+  events: '/vendor/events-organizer',
+  memorial: '/vendor/memorial-provider',
+  grooming: '/vendor/grooming-provider',
+  daycare: '/vendor/daycare-provider',
+  adoption: '/vendor/adoption-partner',
+};
+
+/** Where a vendor's panel for one business line opens. */
+export const vendorHome = (vendorType) => VENDOR_HOME[vendorType] || '/vendor/login';
+
+/**
+ * Where to send a vendor after login.
+ *
+ * One business line goes straight to its panel, exactly as before. Several go
+ * to the hub to choose — opening one of them arbitrarily would drop a vendor
+ * into whichever business the code happened to list first.
+ */
+export const postLoginPath = (vendorTypes = []) =>
+  vendorTypes.length === 1 ? vendorHome(vendorTypes[0]) : vendorTypes.length ? '/vendor/hub' : '/vendor/login';
+
 export default VENDOR_TYPE_LABEL;

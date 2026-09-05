@@ -30,6 +30,18 @@ export async function fetchBreeds(petType) {
   return data;
 }
 
+/**
+ * Behaviour chips for the pet profile screen.
+ *
+ * Served by the match engine so the options the UI offers are exactly the ones
+ * the compatibility model understands — a chip the taxonomy does not know
+ * scores as unknown and silently weakens every match it appears in.
+ */
+export async function fetchBehaviourOptions() {
+  const { data } = await api.get('/pets/behaviours');
+  return data;
+}
+
 /** Upload image files → array of Cloudinary URLs. */
 export async function uploadPetPhotos(files, folder = 'pets') {
   if (!files.length) return [];
@@ -62,15 +74,25 @@ export function toLegacyPet(pet) {
     breed: pet.breed,
     species: pet.type,
     gender: pet.gender,
+    size: pet.size,
+    activityLevel: pet.activityLevel,
+    purpose: pet.purpose,
     image: pet.avatarUrl || pet.photos?.[0] || null,
     mediaGallery: pet.photos || [],
     age: petAgeText(pet) || '—',
     weight: pet.weightKg ? `${pet.weightKg} Kg` : '—',
+    weightKg: pet.weightKg ?? null,
     vaccinated: petVaccinatedText(pet),
+    isVaccinated: Boolean(pet.health?.vaccinated),
     neutered: pet.health?.neutered ? 'Yes' : 'No',
+    isNeutered: Boolean(pet.health?.neutered),
     mood: pet.mood || 'Happy 😊',
-    diet: pet.diet || 'General Diet Plan',
-    bio: pet.bio,
+    diet: pet.diet || '',
+    bio: pet.bio || '',
     behaviours: pet.temperament || [],
+    // The server's reading, not a client-side string match on 'Aggressive'
+    // -- the booking flow gates handler support on this.
+    isReactive: Boolean(pet.isReactive),
+    reactiveTraits: pet.reactiveTraits || [],
   };
 }

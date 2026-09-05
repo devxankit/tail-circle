@@ -33,6 +33,9 @@ const createBookingSchema = z.object({
   visitType: z.enum(['salon', 'home', 'clinic', 'video', 'instant_video', 'instant', 'emergency']).optional(),
   addressId: objectId.optional(),
   ticketQty: z.number().int().min(1).max(10).optional(),
+  // Event handler support. Whether it is allowed, priced or mandatory is
+  // decided server-side from the event; this is only the owner's request.
+  withTrainer: z.boolean().optional(),
   paymentMethod: z.enum(['razorpay', 'pay_later']).default('razorpay'),
   meta: z.record(z.string(), z.unknown()).optional(),
 });

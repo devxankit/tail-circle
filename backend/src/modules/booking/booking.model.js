@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { randomBytes } from 'node:crypto';
 
 export const BOOKING_TYPES = ['daycare', 'grooming', 'doctor', 'event', 'memorial'];
 
@@ -26,6 +27,16 @@ export const CANCELLABLE_BOOKING_STATUSES = ['pending_payment', 'confirmed'];
 const bookingSchema = new mongoose.Schema(
   {
     bookingNo: { type: String, unique: true },
+    /*
+     * What the ticket QR encodes.
+     *
+     * Deliberately not `bookingNo`: that is printed on the ticket in plain
+     * text, is only eight digits, and is quoted in support threads and
+     * receipts — anything that can read it could mint a matching QR. This is
+     * random, high-entropy and never displayed, so presenting the code is
+     * itself evidence of holding the ticket.
+     */
+    ticketToken: { type: String, default: null, index: true, sparse: true },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -104,6 +115,11 @@ bookingSchema.index({ userId: 1, createdAt: -1 });
 bookingSchema.index({ providerId: 1, 'schedule.startDate': 1 });
 
 bookingSchema.pre('save', function assignBookingNo() {
+  if (this.type === 'event' && !this.ticketToken) {
+    // 32 hex chars from the CSPRNG. `Math.random` is fine for a display
+    // reference like bookingNo but must not back a credential.
+    this.ticketToken = randomBytes(16).toString('hex');
+  }
   if (!this.bookingNo) {
     this.bookingNo = `TCG${Math.floor(10000000 + Math.random() * 90000000)}`;
   }

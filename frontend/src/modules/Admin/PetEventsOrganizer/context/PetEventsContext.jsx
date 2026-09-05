@@ -6,6 +6,7 @@ import {
   updateEvent as apiUpdateEvent,
   fetchEventBookings,
   checkInEventBooking,
+  scanEventTicket as apiScanEventTicket,
   fetchEventPackages,
   createEventPackage,
   updateEventPackage,
@@ -115,6 +116,12 @@ export const PetEventsProvider = ({ children }) => {
       date: event.date,
       status: event.status,
       image: event.image || undefined,
+      // Both of these were missing from this whitelist, so the create form
+      // collected them and then threw them away: a new event always saved with
+      // no description and no trainer settings, and the organiser had to edit
+      // the event they had just made to get either to stick.
+      description: event.description || undefined,
+      trainer: event.trainer || undefined,
     });
     setEvents((prev) => [created, ...prev]);
     return created;
@@ -129,6 +136,17 @@ export const PetEventsProvider = ({ children }) => {
   // Only "checked in" is real — there is no no-show/refund concept on the
   // backend for event bookings, so those actions were removed from the UI
   // rather than left pointing at nothing.
+  /*
+   * Admit a scanned ticket. Refreshes afterwards so the row on screen matches
+   * what the gate just did -- staff work off this list, and a stale "Awaiting
+   * scan" next to someone already inside is how a pass gets used twice.
+   */
+  const scanTicket = async (code) => {
+    const result = await apiScanEventTicket(code);
+    await refresh();
+    return result;
+  };
+
   const checkInBooking = async (id) => {
     const booking = bookings.find((b) => b.id === id);
     if (!booking?._id) return;
@@ -203,6 +221,7 @@ export const PetEventsProvider = ({ children }) => {
       addEvent,
       updateEvent,
       checkInBooking,
+      scanTicket,
       updateRequest,
       replyFeedback,
       markAllRead,

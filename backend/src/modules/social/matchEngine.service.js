@@ -1,24 +1,56 @@
 import { MatchProfile, Swipe, Match } from './social.models.js';
-import { ensureConversation } from './chat.service.js';
+import { ensureConversation, postSystemMessage, setCounterpartFor } from './chat.service.js';
 import { emitToUser } from '../../sockets/index.js';
 import { SOCKET_EVENTS } from '../../sockets/events.js';
 import { notify } from '../../services/notify.js';
 import { Pet } from '../pet/pet.model.js';
 import { User } from '../user/user.model.js';
 import { getOrSet } from '../../services/cache.service.js';
+import { behaviourCompatibility } from './behaviour.service.js';
 
 /**
- * Customizable Match Engine configuration tokens & weightings.
- * Allows administrative / algorithmic tuning over match score calculations.
+ * Match engine weights, tunable at runtime via PATCH /matches/engine/config.
+ *
+ * Every `weight*` below is a real input to `scoreMatch()` — they are summed to
+ * form the denominator, so the numbers are relative to each other rather than
+ * required to total 100. Raising `weightBreed` to 40 genuinely makes breed
+ * matter more; there is no separate hardcoded table behind them.
  */
 export let MATCH_ENGINE_CONFIG = {
-  weightProximity: 30,
-  weightTemperament: 30,
-  weightPurpose: 20,
-  weightActivity: 20,
-  defaultMaxDistanceKm: 50,
+  // How much two pets have in common.
+  weightTemperament: 20, // shared interests / traits
+  weightProximity: 16, // close enough to actually meet
+  weightActivity: 13, // energy levels that suit each other
+  weightMood: 11, // current vibe
+  weightAge: 11, // life stage
+  weightBreed: 10,
+  weightPurpose: 8, // both here for the same thing
+  weightSize: 6, // safe play pairing
+  weightHealth: 5, // vaccination alignment
+
+  // Presentation + behaviour.
+  maxPoints: 5, // score is shown out of this many points
+  defaultMaxDistanceKm: 50, // distance at which proximity scores zero
+  crossSpeciesFactor: 0.45, // a dog and a cat can meet, but rarely a top match
+  // Confidence shrinkage. Applied in proportion to how much of the profile is
+  // MISSING, so two fully-filled pets that align on everything still reach a
+  // clean 5/5, while a near-empty profile cannot score top marks off one lucky
+  // factor. Set `priorStrength` to 0 to score purely on what is known.
+  priorStrength: 0.6, // how hard unknown factors pull toward the prior
+  priorRatio: 0.6, // the neutral compatibility an unknown factor stands in for
   enableAutoReciprocity: false,
 };
+
+/**
+ * The opening card dropped into every new match conversation.
+ *
+ * Stored as the message text so it also reads correctly wherever a plain
+ * string is all there is — the chat list's last-message line, a push preview,
+ * a client too old to know the `match_intro` type.
+ */
+export const MATCH_INTRO_TEXT =
+  "Hey, it's a Match! Looks like your pets are interested in meeting each other. " +
+  'Why not take the next step and meet in person?';
 
 /**
  * Update controllable match engine configuration params.
@@ -31,39 +63,266 @@ export function updateEngineConfig(newConfig = {}) {
   return MATCH_ENGINE_CONFIG;
 }
 
-/**
- * Calculates a 0-100% compatibility score between a user's pet context and candidate pet profile.
+/* ── Per-factor scorers ───────────────────────────────────────────────────
+ *
+ * Each returns 0..1, or `null` meaning "not knowable for this pair".
+ *
+ * `null` matters: a factor neither pet has filled in is dropped from BOTH
+ * sides of the average rather than scored zero. Otherwise every pet with a
+ * sparse profile would look like a bad match for everyone, which punishes the
+ * owner for not filling a form rather than describing the pets.
  */
-export function calculateCompatibilityScore(myPet, candidate) {
-  let score = 72; // base score
 
-  if (myPet && candidate) {
-    // Temperament overlap
-    if (myPet.temperament && candidate.temperament) {
-      const mySet = new Set(myPet.temperament.map((t) => t.toLowerCase()));
-      const overlap = candidate.temperament.filter((t) => mySet.has(t.toLowerCase())).length;
-      score += overlap * 6;
-    }
+const norm = (v) => String(v || '').trim().toLowerCase();
 
-    // Purpose match
-    if (myPet.purpose && candidate.purpose && myPet.purpose === candidate.purpose) {
-      score += 12;
-    }
+/**
+ * Number, but `null`/`undefined`/`''` stay unknown.
+ *
+ * Plain `Number()` turns all three into 0, which read as "newborn" for age and
+ * "0 km away" — a perfect proximity score — for a candidate whose distance was
+ * never computed. `MatchProfile.distance` defaults to null, so scoring a stored
+ * profile handed out full marks for being nowhere.
+ */
+function num(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 
-    // Activity level match
-    if (myPet.activityLevel && candidate.activityLevel && myPet.activityLevel === candidate.activityLevel) {
-      score += 8;
-    }
+/** Ordinal closeness — same band = 1, one band apart = 0.5, two = 0. */
+function scoreOrdinal(mine, theirs, order) {
+  const x = order[norm(mine)];
+  const y = order[norm(theirs)];
+  if (x == null || y == null) return null;
+  const gap = Math.abs(x - y);
+  return gap === 0 ? 1 : gap === 1 ? 0.5 : 0;
+}
+
+const ACTIVITY_ORDER = { low: 0, medium: 1, high: 2 };
+const SIZE_ORDER = { small: 0, medium: 1, large: 2 };
+
+/**
+ * Free-text moods grouped into families, so "playful" and "energetic" read as
+ * the same vibe instead of a miss.
+ */
+const MOOD_FAMILY = {
+  playful: 'energetic', energetic: 'energetic', hyper: 'energetic',
+  active: 'energetic', zoomies: 'energetic', excited: 'energetic',
+  calm: 'relaxed', chill: 'relaxed', lazy: 'relaxed',
+  sleepy: 'relaxed', relaxed: 'relaxed', mellow: 'relaxed',
+  friendly: 'social', social: 'social', affectionate: 'social',
+  cuddly: 'social', loving: 'social', happy: 'social',
+  curious: 'curious', adventurous: 'curious', explorer: 'curious', smart: 'curious',
+  protective: 'guardian', loyal: 'guardian', alert: 'guardian', watchful: 'guardian',
+  shy: 'reserved', anxious: 'reserved', timid: 'reserved', reserved: 'reserved',
+};
+
+function scoreMood(mine, theirs) {
+  const x = norm(mine);
+  const y = norm(theirs);
+  if (!x || !y) return null;
+  if (x === y) return 1;
+  const fx = MOOD_FAMILY[x];
+  const fy = MOOD_FAMILY[y];
+  if (fx && fy && fx === fy) return 0.7;
+  // Different vibes still get on; they just are not the same vibe.
+  return 0.15;
+}
+
+/** Life stage. Within a year is a full match, six years apart is none. */
+function scoreAge(mine, theirs) {
+  const a = num(mine);
+  const b = num(theirs);
+  if (a === null || b === null) return null;
+  const gap = Math.abs(a - b);
+  if (gap <= 1) return 1;
+  if (gap >= 6) return 0;
+  return 1 - (gap - 1) / 5;
+}
+
+const isMixed = (breed) => /mixed|mix|unknown|indie|desi/.test(norm(breed));
+
+function scoreBreed(mine, theirs, sameSpecies) {
+  const a = norm(mine);
+  const b = norm(theirs);
+  if (!a || !b) return null;
+  if (a === b) return 1;
+  // "Mixed Breed" is a wildcard rather than a mismatch — it says little either
+  // way, so it should not read as a strong negative.
+  if (isMixed(a) || isMixed(b)) return 0.5;
+  return sameSpecies ? 0.35 : 0;
+}
+
+/** Close enough to realistically meet up. */
+function scoreProximity(km, maxKm) {
+  const d = num(km);
+  if (d === null || d < 0) return null;
+  const ceiling = Math.max(3, num(maxKm) || 50);
+  if (d <= 2) return 1;
+  if (d >= ceiling) return 0;
+  return 1 - (d - 2) / (ceiling - 2);
+}
+
+function scoreExact(mine, theirs, partial = 0.2) {
+  const a = norm(mine);
+  const b = norm(theirs);
+  if (!a || !b) return null;
+  return a === b ? 1 : partial;
+}
+
+/** Vaccination alignment — the safety precondition for a real-world meetup. */
+function scoreHealth(mine, theirs) {
+  const vaxed = (v) => {
+    if (typeof v === 'boolean') return v;
+    const t = norm(v);
+    if (!t) return null;
+    return t === 'vaccinated' || t === 'yes' || t === 'true';
+  };
+  const a = vaxed(mine);
+  const b = vaxed(theirs);
+  if (a == null || b == null) return null;
+  if (a && b) return 1;
+  return a || b ? 0.4 : 0;
+}
+
+/**
+ * Full compatibility breakdown between the viewer's pet and a candidate.
+ *
+ * Returns the headline points (out of `maxPoints`) plus the per-factor detail
+ * the card renders, so a user can see *why* two pets scored what they scored
+ * instead of being handed an unexplained number.
+ */
+export function scoreMatch(myPet, candidate) {
+  const cfg = MATCH_ENGINE_CONFIG;
+  const maxPoints = Number(cfg.maxPoints) || 5;
+
+  if (!candidate) {
+    return {
+      points: null, score: null, maxPoints, factors: [], knownFactors: 0,
+      confidence: 'unknown', behaviour: null,
+    };
   }
 
-  // Distance adjustment
-  const dist = Number(candidate.distance) || 5;
-  if (dist <= 2) score += 8;
-  else if (dist <= 5) score += 4;
-  else if (dist > 25) score -= 6;
+  const sameSpecies = !myPet?.type || !candidate.type || norm(myPet.type) === norm(candidate.type);
 
-  // Clamp compatibility score between 68% and 99%
-  return Math.min(99, Math.max(68, Math.round(score)));
+  const candidateAge = num(candidate.age);
+  const myAge = num(myPet?.age ?? myPet?.ageYears);
+  const ageGap = myAge !== null && candidateAge !== null ? Math.abs(myAge - candidateAge) : null;
+  const km = num(candidate.distance);
+
+  /*
+   * Behaviour is scored once and returned alongside the number, not just
+   * folded into it. The verdict ("Moderate", plus what to do about it) is the
+   * part an owner can act on before the two pets actually meet.
+   */
+  const behaviour = behaviourCompatibility(myPet?.temperament, candidate.temperament);
+
+  /*
+   * `display` overrides the percentage in the breakdown for factors where a
+   * real value says more than a ratio. "Nearby 100%" is ambiguous — it reads
+   * equally as "very close" or "maximally far" — whereas "1.2 km" cannot be
+   * misread. The percentage still drives the bar and the score.
+   */
+  const definitions = [
+    { key: 'temperament', label: 'Behaviour', weight: cfg.weightTemperament,
+      value: behaviour?.value ?? null },
+    { key: 'proximity', label: 'Nearby', weight: cfg.weightProximity,
+      value: scoreProximity(candidate.distance, cfg.defaultMaxDistanceKm),
+      display: km === null ? null : km < 1 ? `${Math.round(km * 1000)} m` : `${km} km` },
+    { key: 'activity', label: 'Energy level', weight: cfg.weightActivity,
+      value: scoreOrdinal(myPet?.activityLevel, candidate.activityLevel, ACTIVITY_ORDER) },
+    { key: 'mood', label: 'Mood', weight: cfg.weightMood,
+      value: scoreMood(myPet?.mood, candidate.mood) },
+    { key: 'age', label: 'Age', weight: cfg.weightAge,
+      value: scoreAge(myAge, candidateAge),
+      display: ageGap === null ? null
+        : ageGap < 0.5 ? 'Same age'
+        : `${Math.round(ageGap * 10) / 10} yr${ageGap >= 2 ? 's' : ''} apart` },
+    { key: 'breed', label: 'Breed', weight: cfg.weightBreed,
+      value: scoreBreed(myPet?.breed, candidate.breed, sameSpecies) },
+    { key: 'purpose', label: 'Looking for', weight: cfg.weightPurpose,
+      value: scoreExact(myPet?.purpose, candidate.purpose) },
+    { key: 'size', label: 'Size', weight: cfg.weightSize,
+      value: scoreOrdinal(myPet?.size, candidate.size, SIZE_ORDER) },
+    { key: 'health', label: 'Vaccination', weight: cfg.weightHealth,
+      value: scoreHealth(myPet?.vaccinated ?? myPet?.health?.vaccinated, candidate.vaccinationStatus) },
+  ];
+
+  let earned = 0;
+  let possible = 0;
+  const factors = [];
+
+  for (const d of definitions) {
+    const weight = Number(d.weight) || 0;
+    if (d.value == null || weight <= 0) {
+      // Reported so the UI can show "add your pet's mood to sharpen this".
+      factors.push({ key: d.key, label: d.label, known: false, value: null, weight });
+      continue;
+    }
+    earned += d.value * weight;
+    possible += weight;
+    factors.push({
+      key: d.key,
+      label: d.label,
+      known: true,
+      value: Math.round(d.value * 100) / 100,
+      display: d.display || null,
+      weight,
+      points: Math.round(d.value * weight * 10) / 10,
+    });
+  }
+
+  const knownFactors = factors.filter((f) => f.known).length;
+
+  if (!possible) {
+    // Nothing comparable on either side — say so rather than invent a number.
+    return { points: null, score: null, maxPoints, factors, knownFactors: 0, confidence: 'unknown', behaviour };
+  }
+
+  /*
+   * Shrink toward a neutral prior in proportion to what is MISSING.
+   *
+   * Without this, a profile listing only a breed and a location could score a
+   * flawless 5/5 off two factors and outrank a pet that genuinely matches on
+   * eight — an empty profile would be the best match on the deck.
+   *
+   * The pull is sized by the weight of the unknown factors, not a flat
+   * constant, so a pair that agrees on everything we can actually check still
+   * scores a clean 5/5. Only unanswered questions drag a score toward average.
+   */
+  const totalWeight = definitions.reduce((sum, d) => sum + (Number(d.weight) || 0), 0);
+  const missingWeight = Math.max(0, totalWeight - possible);
+  const prior = missingWeight * (num(cfg.priorStrength) ?? 0.6);
+  const priorRatio = num(cfg.priorRatio) ?? 0.6;
+  let ratio = (earned + prior * priorRatio) / (possible + prior);
+
+  // A dog and a cat can absolutely be friends, but they should not top a deck
+  // over a well-matched same-species pair.
+  if (!sameSpecies) ratio *= num(cfg.crossSpeciesFactor) ?? 0.45;
+
+  const score = Math.max(0, Math.min(100, Math.round(ratio * 100)));
+  // Half-point granularity: "4.5 / 5" reads as a rating, "4.37 / 5" does not.
+  const points = Math.round(ratio * maxPoints * 2) / 2;
+
+  return {
+    points: Math.max(0, Math.min(maxPoints, points)),
+    score,
+    maxPoints,
+    factors,
+    knownFactors,
+    // Few known factors means the number is a guess; the card can soften it.
+    confidence: knownFactors >= 6 ? 'high' : knownFactors >= 3 ? 'medium' : 'low',
+    behaviour,
+  };
+}
+
+/**
+ * Percentage compatibility, kept for callers and stored records that predate
+ * the points breakdown.
+ */
+export function calculateCompatibilityScore(myPet, candidate) {
+  const { score } = scoreMatch(myPet, candidate);
+  return score == null ? 75 : score;
 }
 
 /**
@@ -114,6 +373,55 @@ function getCandidateCoords(cand, baseLat, baseLng) {
 }
 
 /**
+ * Normalise a raw `Pet` into the same shape as a `MatchProfile` card.
+ *
+ * The scorer compares field for field, so the viewer's pet has to speak the
+ * card's vocabulary: years rather than a date of birth, a vaccination string
+ * rather than a nested boolean, and the same capitalisation for enums.
+ */
+export function toComparablePet(pet) {
+  if (!pet) return null;
+
+  let age = null;
+  if (pet.dob) {
+    age = Math.max(0, Math.round(((new Date() - new Date(pet.dob)) / (1000 * 60 * 60 * 24 * 365.25)) * 10) / 10);
+  } else if (pet.ageText) {
+    const n = parseFloat(pet.ageText);
+    if (!isNaN(n)) age = n;
+  } else if (pet.age != null) {
+    const n = parseFloat(pet.age);
+    if (!isNaN(n)) age = n;
+  }
+
+  return {
+    type: pet.type || pet.species || '',
+    breed: pet.breed || '',
+    size: pet.size || '',
+    age,
+    mood: pet.mood || '',
+    temperament: pet.temperament || [],
+    activityLevel: pet.activityLevel || '',
+    // Every synced card is created with purpose 'Playdate'; mirroring that
+    // keeps the factor meaningful instead of silently unknown on both sides.
+    purpose: pet.purpose || 'Playdate',
+    vaccinated: pet.health?.vaccinated ?? pet.vaccinated ?? pet.vaccinationStatus ?? null,
+  };
+}
+
+/**
+ * The pet an owner matches as.
+ *
+ * `Pet.findOne({ ownerId })` returns whatever Mongo reaches first, which for a
+ * two-pet owner is not stable between calls: the deck could be built for one
+ * pet and the swipe scored against the other. Ordering by creation date makes
+ * it the same pet every time — their first pet — until there is a UI for
+ * choosing which one you are swiping as.
+ */
+export function getPrimaryPet(userId) {
+  return Pet.findOne({ ownerId: userId, deletedAt: null }).sort({ createdAt: 1 }).lean();
+}
+
+/**
  * Generate Discovery Swipe Deck according to user filters & ranked by match compatibility.
  */
 export async function getMatchDeck({ userId, filters = {}, limit = 50 }) {
@@ -123,7 +431,7 @@ export async function getMatchDeck({ userId, filters = {}, limit = 50 }) {
   // Run swiped profile lookup & user pet lookup in parallel
   const [swipedIds, userPet] = await Promise.all([
     Swipe.find({ userId }).distinct('profileId'),
-    Pet.findOne({ ownerId: userId, deletedAt: null }).lean(),
+    getPrimaryPet(userId),
   ]);
 
   // Build MongoDB query
@@ -135,42 +443,60 @@ export async function getMatchDeck({ userId, filters = {}, limit = 50 }) {
 
   // Filter: Type / Species
   if (filters.type && filters.type !== 'Any') {
-    query.type = filters.type;
+    query.type = { $regex: new RegExp(`^${filters.type.trim()}$`, 'i') };
   }
 
   // Filter: Gender
   if (filters.gender && filters.gender !== 'Any') {
-    query.gender = filters.gender;
+    query.gender = { $regex: new RegExp(`^${filters.gender.trim()}$`, 'i') };
   }
 
-  // Filter: Breed
-  if (filters.breed && filters.breed !== 'Any') {
-    query.breed = filters.breed;
+  // Filter: Breed & Breed Recommendation Mode (Same Breed vs All Breeds)
+  if (filters.breedMode === 'Same Breed' || filters.breedMode === 'same_breed' || filters.sameBreed === 'true' || filters.sameBreed === true) {
+    let targetBreed = userPet?.breed;
+    if (!targetBreed && filters.breed && filters.breed !== 'Any') {
+      targetBreed = filters.breed;
+    }
+    if (targetBreed) {
+      const escaped = targetBreed.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      query.breed = { $regex: new RegExp(`^${escaped}$`, 'i') };
+    }
+    if (userPet?.type) {
+      query.type = userPet.type;
+    }
+  } else if (filters.breed && filters.breed !== 'Any') {
+    const escaped = filters.breed.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    query.breed = { $regex: new RegExp(`^${escaped}$`, 'i') };
   }
 
   // Filter: Size
   if (filters.size && filters.size !== 'Any') {
-    query.size = filters.size;
+    query.size = { $regex: new RegExp(`^${filters.size.trim()}$`, 'i') };
   }
 
   // Filter: Vaccination Status
   if (filters.vaccinationStatus && filters.vaccinationStatus !== 'Any') {
-    query.vaccinationStatus = filters.vaccinationStatus;
+    query.vaccinationStatus = { $regex: new RegExp(`^${filters.vaccinationStatus.trim()}$`, 'i') };
   }
 
   // Filter: Neutered / Spayed
   if (filters.neutered && filters.neutered !== 'Any') {
-    query.neutered = filters.neutered;
+    query.neutered = { $regex: new RegExp(`^${filters.neutered.trim()}$`, 'i') };
   }
 
   // Filter: Activity Level
   if (filters.activityLevel && filters.activityLevel !== 'Any') {
-    query.activityLevel = filters.activityLevel;
+    query.activityLevel = { $regex: new RegExp(`^${filters.activityLevel.trim()}$`, 'i') };
   }
 
   // Filter: Purpose
   if (filters.purpose && filters.purpose !== 'Any') {
-    query.purpose = filters.purpose;
+    query.purpose = { $regex: new RegExp(`^${filters.purpose.trim()}$`, 'i') };
+  }
+
+  // Filter: Availability
+  if (filters.availability && filters.availability !== 'Any') {
+    query.availability = { $regex: new RegExp(`^${filters.availability.trim()}$`, 'i') };
   }
 
   // Filter: Max Distance
@@ -183,8 +509,13 @@ export async function getMatchDeck({ userId, filters = {}, limit = 50 }) {
   }
 
   // Filter: Temperaments array overlap
-  if (Array.isArray(filters.temperament) && filters.temperament.length > 0) {
-    query.temperament = { $in: filters.temperament };
+  const temperaments = Array.isArray(filters.temperament)
+    ? filters.temperament
+    : typeof filters.temperament === 'string' && filters.temperament.trim().length > 0
+    ? [filters.temperament.trim()]
+    : [];
+  if (temperaments.length > 0) {
+    query.temperament = { $in: temperaments.map((t) => new RegExp(`^${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')) };
   }
 
   // Filter: Age Range
@@ -196,9 +527,18 @@ export async function getMatchDeck({ userId, filters = {}, limit = 50 }) {
     else if (filters.age === '8+ Years') query.age = { $gte: 8 };
   }
 
-  // Filter: Compatibility Tags overlap
-  if (Array.isArray(filters.compatibility) && filters.compatibility.length > 0) {
-    query.tags = { $in: filters.compatibility };
+  // Filter: Compatibility Tags overlap (checks both tags and compatibility fields)
+  const compatibilities = Array.isArray(filters.compatibility)
+    ? filters.compatibility
+    : typeof filters.compatibility === 'string' && filters.compatibility.trim().length > 0
+    ? [filters.compatibility.trim()]
+    : [];
+  if (compatibilities.length > 0) {
+    const compatRegexes = compatibilities.map((c) => new RegExp(`^${c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'));
+    query.$or = [
+      { tags: { $in: compatRegexes } },
+      { compatibility: { $in: compatRegexes } },
+    ];
   }
 
   // Execute query
@@ -254,6 +594,14 @@ export async function getMatchDeck({ userId, filters = {}, limit = 50 }) {
     { name: 'Neha', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=300&q=80', bio: 'Passionate about animal care, healthy treats & happy tail wags!' },
   ];
 
+  /*
+   * The viewer's own pet, reshaped to match a candidate card's field names so
+   * the scorer compares like with like. A raw Pet stores age as `dob`,
+   * vaccination under `health`, and enums in lower case, none of which line up
+   * with a MatchProfile.
+   */
+  const myPetContext = userPet ? toComparablePet(userPet) : null;
+
   // Compute compatibility score & format candidates with ownerInfo
   const scoredDeck = filteredCandidates.map((cand, idx) => {
     const realDistance = cand._computedDistance;
@@ -277,20 +625,37 @@ export async function getMatchDeck({ userId, filters = {}, limit = 50 }) {
       ownerAvatar: ownerInfo.avatar,
       ownerBio: ownerInfo.bio,
     };
-    const score = calculateCompatibilityScore(userPet, updatedCand);
+    const breakdown = scoreMatch(myPetContext, updatedCand);
     return {
       ...updatedCand,
       id: cand._id.toString(),
-      compatibilityScore: score,
+      // Headline rating, e.g. 4.5 out of 5.
+      matchPoints: breakdown.points,
+      maxMatchPoints: breakdown.maxPoints,
+      matchConfidence: breakdown.confidence,
+      // Per-factor detail so the card can explain the number.
+      matchFactors: breakdown.factors,
+      // Behavioural read on the pairing — level plus what to do about it.
+      behaviourMatch: breakdown.behaviour,
+      compatibilityScore: breakdown.score == null ? 75 : breakdown.score,
     };
   });
 
-  // Rank Nearest Profiles First (distance ascending, then compatibility score descending)
+  /*
+   * Best match first.
+   *
+   * This used to sort on raw distance, with the score only breaking ties —
+   * and since distance is a float, ties essentially never happened, so the
+   * compatibility number had no effect on what a user actually saw. Proximity
+   * is already one of the weighted factors inside the score, so ranking on the
+   * score keeps distance influential without letting it drown out everything
+   * two pets have in common. Distance still breaks genuine ties.
+   */
   scoredDeck.sort((a, b) => {
-    if (a.distance !== b.distance) {
-      return a.distance - b.distance;
+    if (b.compatibilityScore !== a.compatibilityScore) {
+      return b.compatibilityScore - a.compatibilityScore;
     }
-    return b.compatibilityScore - a.compatibilityScore;
+    return a.distance - b.distance;
   });
 
   return scoredDeck.slice(0, limit);
@@ -357,6 +722,29 @@ export async function processSwipe({ userId, profileId, action }) {
   const otherOwnerId = profile.ownerId ? String(profile.ownerId) : null;
   const isRealCounterpart = otherOwnerId && otherOwnerId !== String(userId);
 
+  /*
+   * Score the pair once, here, and store it on both Match rows.
+   *
+   * The matches list then shows the rating the two owners actually matched on,
+   * rather than one recomputed later against profiles that have since drifted.
+   */
+  const myPet = await getPrimaryPet(userId);
+  const rating = scoreMatch(myPet ? toComparablePet(myPet) : null, profile.toObject ? profile.toObject() : profile);
+  const ratingFields = {
+    petId: myPet?._id || null,
+    matchPoints: rating.points,
+    matchScore: rating.score,
+    matchFactors: rating.factors,
+  };
+
+  /* What each owner should see as "my pet" on the celebration screen — the
+     client used to guess this by fetching the owner's pets and taking the
+     first, which is a third independent answer to a question the server has
+     already settled. */
+  const myPetCard = myPet
+    ? { name: myPet.name, image: myPet.avatarUrl || myPet.photos?.[0] || '' }
+    : null;
+
   let match = await Match.findOne({ userId, profileId: profile.id });
   if (!match) {
     const conversation = await ensureConversation({
@@ -372,11 +760,37 @@ export async function processSwipe({ userId, profileId, action }) {
       userId,
       profileId: profile.id,
       conversationId: conversation.id,
+      ...ratingFields,
     });
 
+    /*
+     * Break the ice for them.
+     *
+     * A fresh match opens onto an empty room, and someone has to send the
+     * first message into a silence — which is exactly where most matches die.
+     * Both owners share this one conversation, so a single card greets both,
+     * and the copy stays name-neutral because each side sees the other's pet
+     * name, not their own. The client turns it into the two booking CTAs.
+     */
+    await postSystemMessage(conversation.id, {
+      type: 'match_intro',
+      text: MATCH_INTRO_TEXT,
+    }).catch(() => {});
+
+    /*
+     * Everything the celebration screen needs, so the owner who did *not*
+     * complete the match gets the same screen as the one who did — previously
+     * this payload carried no photo and no behaviour verdict, and nothing on
+     * the client listened for it at all.
+     */
     emitToUser(userId, SOCKET_EVENTS.MATCH_NEW, {
       profileName: profile.name,
+      profileImage: profile.img,
       conversationId: conversation.id,
+      matchPoints: rating.points,
+      maxMatchPoints: rating.maxPoints,
+      behaviourMatch: rating.behaviour,
+      myPet: myPetCard,
     });
 
     await notify(userId, {
@@ -397,14 +811,54 @@ export async function processSwipe({ userId, profileId, action }) {
       });
       if (theirLike) {
         const myProfile = await MatchProfile.findById(theirLike.profileId).lean();
+        // Scored from their side: their pet against mine. Compatibility is
+        // symmetric for most factors, but each owner's profile completeness
+        // differs, so the two readings are computed independently.
+        const theirPet = await getPrimaryPet(otherOwnerId);
+        const theirRating = scoreMatch(theirPet ? toComparablePet(theirPet) : null, myProfile);
         await Match.updateOne(
           { userId: otherOwnerId, profileId: theirLike.profileId },
-          { $setOnInsert: { conversationId: conversation.id, matchedAt: new Date() } },
+          {
+            $setOnInsert: {
+              petId: theirPet?._id || null,
+              conversationId: conversation.id,
+              matchedAt: new Date(),
+              matchPoints: theirRating.points,
+              matchScore: theirRating.score,
+              matchFactors: theirRating.factors,
+            },
+          },
           { upsert: true }
         );
+
+        /*
+         * Each owner sees the *other* pet in the chat header.
+         *
+         * `ensureConversation` stored a single counterpart — the profile the
+         * swiper liked — so the other owner opened the room and found their
+         * own pet's name and photo looking back at them.
+         */
+        await setCounterpartFor(conversation.id, userId, {
+          name: profile.name,
+          image: profile.img,
+          subtitle: profile.breed,
+        }).catch(() => {});
+        await setCounterpartFor(conversation.id, otherOwnerId, {
+          name: myProfile?.name || '',
+          image: myProfile?.img || '',
+          subtitle: myProfile?.breed || '',
+        }).catch(() => {});
+
         emitToUser(otherOwnerId, SOCKET_EVENTS.MATCH_NEW, {
           profileName: myProfile?.name || 'a new pet',
+          profileImage: myProfile?.img || '',
           conversationId: conversation.id,
+          matchPoints: theirRating.points,
+          maxMatchPoints: theirRating.maxPoints,
+          behaviourMatch: theirRating.behaviour,
+          myPet: theirPet
+            ? { name: theirPet.name, image: theirPet.avatarUrl || theirPet.photos?.[0] || '' }
+            : null,
         });
         await notify(otherOwnerId, {
           title: 'New Match!',
@@ -423,6 +877,16 @@ export async function processSwipe({ userId, profileId, action }) {
     conversationId: match.conversationId,
     profileName: profile.name,
     profileImage: profile.img,
+    matchPoints: match.matchPoints ?? rating.points,
+    maxMatchPoints: rating.maxPoints,
+    matchFactors: match.matchFactors?.length ? match.matchFactors : rating.factors,
+    myPet: myPetCard,
+    /*
+     * "It's a match" on its own is not enough when one pet is marked
+     * aggressive and the other shy. The celebration screen shows this level
+     * and its advice so the pair meet on the right terms.
+     */
+    behaviourMatch: rating.behaviour,
   };
 }
 
@@ -612,8 +1076,9 @@ export async function syncPetToMatchProfile(pet) {
     vaccinationStatus: formatVaccinated(pet.health?.vaccinated),
     neutered: formatNeutered(pet.health?.neutered),
     activityLevel: capitalize(pet.activityLevel || 'medium'),
+    mood: pet.mood || '',
     temperament: pet.temperament || [],
-    purpose: 'Playdate',
+    purpose: pet.purpose || 'Playdate',
     availability: 'Available',
     prompts: generatedPrompts,
     tags,

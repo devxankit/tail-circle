@@ -7,6 +7,7 @@ import { sendSuccess } from '../../utils/ApiResponse.js';
 import { cacheResponse } from '../../services/cache.service.js';
 import { MealPlan, Meal } from './meal.models.js';
 import * as mealService from './meal.service.js';
+import { excludeOfflineVendors } from '../vendor/availability.service.js';
 
 const router = Router();
 
@@ -74,7 +75,7 @@ router.get(
   '/recipes',
   cacheResponse('meals', 300),
   asyncHandler(async (req, res) => {
-    const filter = { active: true };
+    const filter = { active: true, ...(await excludeOfflineVendors('providerId')) };
     if (req.query.category) filter.category = req.query.category;
     const meals = await Meal.find(filter).sort({ legacyId: 1 });
     sendSuccess(res, { data: meals.map(withPublicId) });

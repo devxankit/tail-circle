@@ -7,11 +7,57 @@ import { VendorProfile, VendorLedgerEntry, Payout } from './vendor.models.js';
 
 const oid = (id) => new mongoose.Types.ObjectId(String(id));
 
-/** Load the caller's vendor profile (404 if none). Includes the masked bank field. */
-export async function getVendorProfile(userId) {
-  const profile = await VendorProfile.findOne({ userId }).select('+bank.accountNumberEnc');
-  if (!profile) throw ApiError.notFound('Vendor profile not found');
-  return profile;
+/**
+ * Every business line this account runs, oldest first.
+ *
+ * A vendor may operate several (grooming + daycare); each is its own profile
+ * with its own approval state and commission. The order is stable so "the
+ * first one" means the same thing on every request.
+ */
+export async function getVendorProfiles(userId) {
+  return VendorProfile.find({ userId }).select('+bank.accountNumberEnc').sort({ createdAt: 1 });
+}
+
+/**
+ * Load one of the caller's vendor profiles (404 if none).
+ *
+ * `vendorType` picks the business line. Omitting it returns the primary — the
+ * oldest line — which is what a request that does not say which business it is
+ * for should act on. An unrecognised `vendorType` falls back to the primary
+ * rather than 404ing, so a stale value in a browser tab degrades to "your main
+ * business" instead of locking the vendor out of their own panel.
+ */
+export async function getVendorProfile(userId, vendorType = null) {
+  const profiles = await getVendorProfiles(userId);
+  if (!profiles.length) throw ApiError.notFound('Vendor profile not found');
+  if (vendorType) {
+    const match = profiles.find((p) => p.vendorType === vendorType);
+    if (match) return match;
+  }
+  return profiles[0];
+}
+
+/**
+ * The profile for one specific business line, or null.
+ *
+ * Used wherever a commission rate is read while posting a ledger entry: a
+ * shop order must bill the shop line's rate, never whichever line happens to
+ * be first. Callers that find nothing fall back to the platform default.
+ */
+export async function profileFor(userId, vendorType) {
+  if (!userId) return null;
+  const exact = await VendorProfile.findOne({ userId, vendorType });
+  if (exact) return exact;
+  // Pre-migration rows, and vendors whose line was renamed, still have exactly
+  // one profile — using it keeps historical settlement working.
+  const all = await VendorProfile.find({ userId }).limit(2);
+  return all.length === 1 ? all[0] : null;
+}
+
+/** Commission fraction for a vendor's given business line (platform default if unknown). */
+export async function commissionFor(userId, vendorType, fallback = 0.15) {
+  const profile = await profileFor(userId, vendorType);
+  return profile?.commissionRate ?? fallback;
 }
 
 /** Public-safe serialization — bank number masked, never raw. */
@@ -53,8 +99,8 @@ export function serializeProfile(profile) {
 
 const EDITABLE = ['businessName', 'phone', 'city', 'address', 'logo', 'online'];
 
-export async function updateVendorProfile(userId, patch) {
-  const profile = await getVendorProfile(userId);
+export async function updateVendorProfile(userId, patch, vendorType = null) {
+  const profile = await getVendorProfile(userId, vendorType);
   for (const key of EDITABLE) if (key in patch) profile[key] = patch[key];
   if (patch.gst) profile.gst = { hasGst: Boolean(patch.gst.hasGst), number: patch.gst.number || '' };
   if (patch.bank) {
@@ -82,16 +128,16 @@ export async function updateVendorProfile(userId, patch) {
  * its own per-doctor documents on the `Doctor` record) shares this. Re-adding
  * a document resets it to `Pending` so admin reviews it again.
  */
-export async function addVendorDocument(userId, { kind, url }) {
-  const profile = await getVendorProfile(userId);
+export async function addVendorDocument(userId, { kind, url }, vendorType = null) {
+  const profile = await getVendorProfile(userId, vendorType);
   profile.documents = (profile.documents || []).filter((d) => d.kind !== kind);
   profile.documents.push({ kind, url, status: 'Pending' });
   await profile.save();
   return serializeProfile(profile);
 }
 
-export async function removeVendorDocument(userId, index) {
-  const profile = await getVendorProfile(userId);
+export async function removeVendorDocument(userId, index, vendorType = null) {
+  const profile = await getVendorProfile(userId, vendorType);
   const i = Number(index);
   if (!Number.isInteger(i) || i < 0 || i >= (profile.documents || []).length) {
     throw ApiError.badRequest('Invalid document index');
@@ -107,7 +153,7 @@ export async function removeVendorDocument(userId, index) {
  * Post a settleable entry for a vendor. Idempotent on (refType, refId) so
  * re-fulfilment (verify + webhook) never double-credits the vendor.
  */
-export async function postLedgerEntry({ vendorId, refType, refId, label, gross, commissionRate = 0.15 }) {
+export async function postLedgerEntry({ vendorId, refType, refId, label, gross, commissionRate = 0.15, vendorType = null }) {
   if (!vendorId || !gross) return null;
   const commission = Math.round(gross * commissionRate);
   const net = gross - commission;
@@ -120,6 +166,9 @@ export async function postLedgerEntry({ vendorId, refType, refId, label, gross, 
       gross,
       commission,
       net,
+      // Which business line earned it, so a vendor running several can break
+      // their combined earnings down per business.
+      vendorType,
       status: 'unsettled',
     });
   } catch (err) {

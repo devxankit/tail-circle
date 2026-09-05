@@ -2,7 +2,8 @@ import { PageLoader } from './PageLoader';
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { MobileWrapper } from './modules/user/layouts/MobileWrapper';
-import { isLoggedIn } from './services/api';
+import { isLoggedIn, setActiveVendorType } from './services/api';
+import { vendorHome } from './constants/vendorTypes';
 import { CallProvider } from './context/CallContext';
 import { IncomingCallOverlay } from './modules/user/components/IncomingCallOverlay';
 
@@ -233,6 +234,11 @@ const Step2Media = lazy(() => import('./modules/user/features/onboarding/Step2Me
 const Step3Health = lazy(() => import('./modules/user/features/onboarding/Step3Health').then(m => ({ default: m.Step3Health })));
 const WelcomeIntro = lazy(() => import('./modules/user/features/onboarding/WelcomeIntro').then(m => ({ default: m.WelcomeIntro })));
 const MainLayout = lazy(() => import('./modules/user/layouts/MainLayout').then(m => ({ default: m.MainLayout })));
+const MatchCelebrationListener = lazy(() =>
+  import('./modules/user/features/matches/MatchCelebrationListener').then((m) => ({
+    default: m.MatchCelebrationListener,
+  }))
+);
 const Home = lazy(() => import('./modules/user/features/home/Home').then(m => ({ default: m.Home })));
 const Matches = lazy(() => import('./modules/user/features/matches/Matches').then(m => ({ default: m.Matches })));
 const ChatRoom = lazy(() => import('./modules/user/features/chat/ChatRoom').then(m => ({ default: m.ChatRoom })));
@@ -329,6 +335,7 @@ const ShopFeedbackView = lazy(() => import('./modules/Admin/ShopVendor/views/Cus
 const ShopFinanceView = lazy(() => import('./modules/Admin/ShopVendor/views/FinanceCenterView').then(m => ({ default: m.FinanceCenterView || m.default })));
 const ShopSettingsView = lazy(() => import('./modules/Admin/ShopVendor/views/BusinessControlCenterView').then(m => ({ default: m.BusinessControlCenterView || m.default })));
 const DoctorManagement = lazy(() => import('./modules/Admin/ClinicVeterinaryDoctor/DoctorManagement').then(m => ({ default: m.DoctorManagement || m.default })));
+const VendorHub = lazy(() => import('./modules/Admin/vendor/VendorHub').then(m => ({ default: m.VendorHub || m.default })));
 const VendorPayouts = lazy(() => import('./modules/Admin/vendor/CommonVendorPages').then(m => ({ default: m.VendorPayouts || m.default })));
 const VendorSupport = lazy(() => import('./modules/Admin/vendor/CommonVendorPages').then(m => ({ default: m.VendorSupport || m.default })));
 const VendorSettings = lazy(() => import('./modules/Admin/vendor/CommonVendorPages').then(m => ({ default: m.VendorSettings || m.default })));
@@ -422,7 +429,15 @@ function RequireAuth() {
   if (!isLoggedIn()) {
     return <Navigate to="/auth/login" replace />;
   }
-  return <Outlet />;
+  return (
+    <>
+      {/* A match completes on whichever side swipes second, so the other owner
+          is rarely on the matches screen when it happens. Mounted here it
+          reaches them wherever they are. */}
+      <MatchCelebrationListener />
+      <Outlet />
+    </>
+  );
 }
 
 // ─── Admin Route Guard ─────────────────────────────────────────────────────
@@ -435,28 +450,21 @@ function ProtectedAdminRoute({ children }) {
   return children;
 }
 
-/** Backend vendorType → the portal each vendor belongs in. */
-const VENDOR_HOME = {
-  shop: '/vendor/shop-provider',
-  clinic: '/vendor/doctor/consultations',
-  meal_subscription: '/vendor/meal-provider/dashboard',
-  events: '/vendor/events-organizer',
-  memorial: '/vendor/memorial-provider',
-  grooming: '/vendor/grooming-provider',
-  daycare: '/vendor/daycare-provider',
-  adoption: '/vendor/adoption-partner',
-};
-
 /**
  * Vendor route guard.
  *
- * `allow` names the vendorType(s) a portal belongs to. A vendor who lands on
- * someone else's portal is sent to their own home rather than left on a screen
- * that can only ever error — the API refuses cross-type data, so without this
- * they'd see a permanently broken page.
+ * `allow` names the vendorType(s) a portal belongs to. A vendor who lands on a
+ * portal for a business they don't run is sent somewhere they can actually use
+ * rather than left on a screen that can only ever error — the API refuses
+ * cross-line data, so without this they'd see a permanently broken page.
  *
- * Omitting `allow` marks a route as shared by every vendor (profile, payouts,
- * settings, support).
+ * One account can run several businesses, so this checks membership of the
+ * vendor's whole line list, not one primary type. Reaching an allowed portal
+ * also *sets* the active line, which is what keeps the shared pages (payouts,
+ * settings, support) and the API's `X-Vendor-Type` header pointing at the
+ * business whose panel is actually on screen.
+ *
+ * Omitting `allow` marks a route as shared by every vendor.
  */
 function ProtectedVendorRoute({ children, allow }) {
   const token = localStorage.getItem('tc_access_token');
@@ -466,16 +474,25 @@ function ProtectedVendorRoute({ children, allow }) {
   }
 
   if (allow) {
-    let vendorType = null;
+    let types = [];
     try {
-      vendorType = JSON.parse(info)?.profile?.vendorType ?? null;
+      const stored = JSON.parse(info);
+      // Sessions stored before multi-line support hold a single `profile`.
+      const lines = stored?.profiles?.length ? stored.profiles : [stored?.profile].filter(Boolean);
+      types = lines.map((p) => p?.vendorType).filter(Boolean);
     } catch {
       return <Navigate to="/vendor/login" replace />;
     }
+
     const allowed = Array.isArray(allow) ? allow : [allow];
-    if (vendorType && !allowed.includes(vendorType)) {
-      return <Navigate to={VENDOR_HOME[vendorType] || '/vendor/login'} replace />;
+    const match = types.find((t) => allowed.includes(t));
+
+    if (types.length && !match) {
+      // Several businesses and none of them is this one — the hub is the only
+      // honest destination, since picking one of theirs would be a guess.
+      return <Navigate to={types.length > 1 ? '/vendor/hub' : vendorHome(types[0])} replace />;
     }
+    if (match) setActiveVendorType(match);
   }
   return children;
 }
@@ -598,6 +615,7 @@ function App() {
                   {/* Profile Sub-screens */}
                   <Route path="/app/profile/edit" element={<EditProfile />} />
                   <Route path="/app/profile/pets/add" element={<AddPet />} />
+                  <Route path="/app/profile/pets/edit/:petId" element={<AddPet />} />
                   <Route path="/app/profile/bookings" element={<BookingHistory />} />
                   <Route path="/app/profile/bookings/:id" element={<BookingDetail />} />
                   <Route path="/app/profile/orders" element={<MyOrders />} />
@@ -700,6 +718,11 @@ function App() {
                 <Route path="/vendor/login" element={<VendorAuth />} />
                 <Route path="/vendor/signup" element={<VendorAuth />} />
                 <Route path="/vendor/pending" element={<VendorAuth />} />
+
+                {/* Multi-business landing page. A vendor who runs several
+                    businesses lands here after login and picks which panel to
+                    open; a single-business vendor never sees it. */}
+                <Route path="/vendor/hub" element={<ProtectedVendorRoute><VendorHub /></ProtectedVendorRoute>} />
 
                 {/* Vendor Dashboard & Tools (Full Web Layout) */}
                 <Route path="/vendor" element={<ProtectedVendorRoute><VendorLayout /></ProtectedVendorRoute>}>

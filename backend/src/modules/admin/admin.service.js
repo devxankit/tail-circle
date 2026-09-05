@@ -489,6 +489,18 @@ export async function listPendingVendors() {
   return listVendors({ status: 'pending' });
 }
 
+/**
+ * Vendor lines whose customer-facing record is a `Provider`, and the
+ * `Provider.type` each maps to. Mirrors PROVIDER_BACKED in
+ * vendor.auth.service.js — approval has to reach the same records signup
+ * creates, or an approved salon would stay unlisted.
+ */
+const PROVIDER_BACKED_TYPE = {
+  grooming: 'grooming',
+  daycare: 'daycare',
+  memorial: 'memorial',
+};
+
 async function setVendorStatus(actor, vendorProfileId, status, ip, { force = false } = {}) {
   if (!mongoose.isValidObjectId(vendorProfileId)) throw ApiError.badRequest('Invalid vendor id');
   const profile = await VendorProfile.findById(vendorProfileId).select('+bank.accountNumberEnc');
@@ -504,14 +516,30 @@ async function setVendorStatus(actor, vendorProfileId, status, ip, { force = fal
 
   profile.approvalStatus = status;
   await profile.save();
-  await User.updateOne({ _id: profile.userId }, { $set: { isBlocked: status === 'suspended' } });
 
-  const synced = await Provider.updateMany(
-    { vendorUserId: profile.userId },
-    { $set: { approvalStatus: status } }
-  );
-  if (synced.modifiedCount) {
-    try { await invalidate('providers:resp:*'); } catch { /* best-effort */ }
+  // Blocking the login is an account-level act, so it only applies when the
+  // account has nothing left to trade through. A vendor who runs grooming and
+  // daycare and has their daycare suspended must still be able to sign in and
+  // run the salon.
+  const siblings = await VendorProfile.find({ userId: profile.userId }).select('approvalStatus');
+  const allSuspended = siblings.length > 0 && siblings.every((p) => p.approvalStatus === 'suspended');
+  await User.updateOne({ _id: profile.userId }, { $set: { isBlocked: allSuspended } });
+
+  // Sync only the Provider backing THIS business line.
+  //
+  // This used to match on `vendorUserId` alone, which was harmless while an
+  // account could own one line — but for a grooming + daycare vendor it meant
+  // approving the salon silently published the daycare centre that was still
+  // under review, and suspending one took down both.
+  const providerType = PROVIDER_BACKED_TYPE[profile.vendorType];
+  if (providerType) {
+    const synced = await Provider.updateMany(
+      { vendorUserId: profile.userId, type: providerType },
+      { $set: { approvalStatus: status } }
+    );
+    if (synced.modifiedCount) {
+      try { await invalidate('providers:resp:*'); } catch { /* best-effort */ }
+    }
   }
 
   await writeAudit(actor, { action: `vendor.${status}`, targetType: 'vendor', targetId: vendorProfileId, before, after: { approvalStatus: status, forced: force || undefined }, ip });
