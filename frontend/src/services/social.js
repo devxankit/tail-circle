@@ -89,9 +89,19 @@ export async function reportPost(postId, reason) {
 
 /* ── matches ──────────────────────────────────────────── */
 
+/**
+ * The swipe deck, plus the caller's like allowance.
+ *
+ * The allowance rides along in `meta` so the screen can paint its counter on
+ * the same frame as the first card — see the deck route for why they must not
+ * arrive separately.
+ */
 export async function fetchMatchDeck(filters = {}) {
-  const { data } = await api.get('/matches/deck', { params: filters });
-  return data.map((p) => ({ ...p, id: p._id || p.id }));
+  const { data, meta } = await api.get('/matches/deck', { params: filters });
+  return {
+    profiles: data.map((p) => ({ ...p, id: p._id || p.id })),
+    entitlement: meta?.entitlement || null,
+  };
 }
 
 export async function swipeProfile(profileId, action) {

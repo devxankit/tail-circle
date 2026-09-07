@@ -4,6 +4,7 @@ import { ApiError } from '../../utils/ApiError.js';
 import { User } from '../user/user.model.js';
 import { Post } from '../social/social.models.js';
 import { Review } from '../review/review.model.js';
+import { PetPrompt } from '../social/prompt.model.js';
 import { notify } from '../../services/notify.js';
 import { writeAudit } from './admin.service.js';
 
@@ -153,3 +154,82 @@ export async function reportsSummary() {
   ]);
   return { users, vendors, posts, reviews };
 }
+
+/* ── Pet Prompts / Fun Facts CRUD ─────────────────────────────────── */
+const serPrompt = (p) => ({
+  id: String(p._id),
+  question: p.question,
+  answerTemplate: p.answerTemplate,
+  temperament: p.temperament || 'Any',
+  mood: p.mood || 'Any',
+  species: p.species || 'all',
+  category: p.category || 'Fun Fact',
+  isActive: Boolean(p.isActive),
+  createdAt: p.createdAt,
+  updatedAt: p.updatedAt,
+});
+
+export async function listPetPrompts({ temperament, mood, search } = {}) {
+  const filter = {};
+  if (temperament && temperament !== 'All' && temperament !== 'Any') {
+    filter.temperament = temperament;
+  }
+  if (mood && mood !== 'All' && mood !== 'Any') {
+    filter.mood = mood;
+  }
+  if (search && search.trim()) {
+    const r = new RegExp(search.trim(), 'i');
+    filter.$or = [{ question: r }, { answerTemplate: r }, { category: r }];
+  }
+
+  const limit = Math.min(Number(params.limit) || 2000, 2000);
+  const rows = await PetPrompt.find(filter).sort({ createdAt: -1 }).limit(limit);
+  return rows.map(serPrompt);
+}
+
+export async function createPetPrompt(actor, body, ip) {
+  if (!body.question || !body.question.trim()) throw ApiError.badRequest('Prompt question is required');
+  if (!body.answerTemplate || !body.answerTemplate.trim()) throw ApiError.badRequest('Answer template is required');
+
+  const p = await PetPrompt.create({
+    question: body.question.trim(),
+    answerTemplate: body.answerTemplate.trim(),
+    temperament: body.temperament || 'Any',
+    mood: body.mood || 'Any',
+    species: body.species || 'all',
+    category: body.category || 'Fun Fact',
+    isActive: body.isActive !== undefined ? Boolean(body.isActive) : true,
+  });
+
+  await writeAudit(actor, { action: 'prompt.create', targetType: 'prompt', targetId: p._id, after: body, ip });
+  return serPrompt(p);
+}
+
+export async function updatePetPrompt(actor, id, patch, ip) {
+  if (!idOk(id)) throw ApiError.badRequest('Invalid prompt id');
+
+  const set = {};
+  if (patch.question !== undefined) set.question = patch.question.trim();
+  if (patch.answerTemplate !== undefined) set.answerTemplate = patch.answerTemplate.trim();
+  if (patch.temperament !== undefined) set.temperament = patch.temperament;
+  if (patch.mood !== undefined) set.mood = patch.mood;
+  if (patch.species !== undefined) set.species = patch.species;
+  if (patch.category !== undefined) set.category = patch.category;
+  if (patch.isActive !== undefined) set.isActive = Boolean(patch.isActive);
+
+  const p = await PetPrompt.findByIdAndUpdate(id, { $set: set }, { new: true });
+  if (!p) throw ApiError.notFound('Prompt not found');
+
+  await writeAudit(actor, { action: 'prompt.update', targetType: 'prompt', targetId: id, after: set, ip });
+  return serPrompt(p);
+}
+
+export async function deletePetPrompt(actor, id, ip) {
+  if (!idOk(id)) throw ApiError.badRequest('Invalid prompt id');
+  const p = await PetPrompt.findByIdAndDelete(id);
+  if (!p) throw ApiError.notFound('Prompt not found');
+
+  await writeAudit(actor, { action: 'prompt.delete', targetType: 'prompt', targetId: id, ip });
+  return { id };
+}
+

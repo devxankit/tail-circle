@@ -25,6 +25,7 @@ import {
 } from './chat.service.js';
 
 import { getMatchDeck, processSwipe, MATCH_ENGINE_CONFIG, updateEngineConfig, resetUserSwipes } from './matchEngine.service.js';
+import { getEntitlement } from '../subscription/subscription.service.js';
 
 /* ── matches ──────────────────────────────────────────── */
 
@@ -74,8 +75,19 @@ matchRouter.get(
   '/deck',
   asyncHandler(async (req, res) => {
     const filters = req.query || {};
-    const deck = await getMatchDeck({ userId: req.user.id, filters });
-    sendSuccess(res, { data: deck });
+    /*
+     * The deck ships the like allowance with it.
+     *
+     * The swipe screen has to render its "7 likes left" pill on first paint,
+     * and fetching that separately meant the deck could appear a beat before
+     * the counter — long enough for a fast first tap to be spent against a
+     * quota the user could not yet see.
+     */
+    const [deck, entitlement] = await Promise.all([
+      getMatchDeck({ userId: req.user.id, filters }),
+      getEntitlement(req.user.id),
+    ]);
+    sendSuccess(res, { data: deck, meta: { entitlement } });
   })
 );
 

@@ -298,6 +298,7 @@ const BookingConfirmed = lazy(() => import('./modules/user/features/grooming/boo
 const GroomingBookingDetail = lazy(() => import('./modules/user/features/grooming/booking/MyBookingDetail').then(m => ({ default: m.MyBookingDetail })));
 const Profile = lazy(() => import('./modules/user/features/profile/Profile').then(m => ({ default: m.Profile })));
 const Wallet = lazy(() => import('./modules/user/features/wallet/Wallet').then(m => ({ default: m.Wallet })));
+const MySubscription = lazy(() => import('./modules/user/features/subscription/MySubscription').then(m => ({ default: m.MySubscription })));
 const Notifications = lazy(() => import('./modules/user/features/notifications/Notifications').then(m => ({ default: m.Notifications })));
 const BookingHistory = lazy(() => import('./modules/user/features/profile/screens/BookingHistory').then(m => ({ default: m.BookingHistory })));
 const BookingDetail = lazy(() => import('./modules/user/features/profile/screens/BookingDetail').then(m => ({ default: m.BookingDetail })));
@@ -402,6 +403,7 @@ const Support = lazy(() => import('./modules/Admin/admin/views/operations/Suppor
 const Products = lazy(() => import('./modules/Admin/admin/views/services/Products').then(m => ({ default: m.Products || m.default })));
 const ProductCategories = lazy(() => import('./modules/Admin/admin/views/services/ProductCategories').then(m => ({ default: m.ProductCategories || m.default })));
 const MealPlans = lazy(() => import('./modules/Admin/admin/views/services/MealPlans').then(m => ({ default: m.MealPlans || m.default })));
+const MatchSubscriptions = lazy(() => import('./modules/Admin/admin/views/services/MatchSubscriptions').then(m => ({ default: m.MatchSubscriptions || m.default })));
 const DoctorServices = lazy(() => import('./modules/Admin/admin/views/services/DoctorServices').then(m => ({ default: m.DoctorServices || m.default })));
 const EventCategories = lazy(() => import('./modules/Admin/admin/views/services/EventCategories').then(m => ({ default: m.EventCategories || m.default })));
 const MemorialPackages = lazy(() => import('./modules/Admin/admin/views/services/MemorialPackages').then(m => ({ default: m.MemorialPackages || m.default })));
@@ -418,6 +420,7 @@ const AdminNotifications = lazy(() => import('./modules/Admin/admin/views/platfo
 const AdminCommunity = lazy(() => import('./modules/Admin/admin/views/platform/Community').then(m => ({ default: m.Community || m.default })));
 const Reviews = lazy(() => import('./modules/Admin/admin/views/platform/Reviews').then(m => ({ default: m.Reviews || m.default })));
 const BannersContent = lazy(() => import('./modules/Admin/admin/views/platform/BannersContent').then(m => ({ default: m.BannersContent || m.default })));
+const PetPromptsAdminView = lazy(() => import('./modules/Admin/admin/views/platform/PetPromptsAdminView').then(m => ({ default: m.PetPromptsAdminView || m.default })));
 const Reports = lazy(() => import('./modules/Admin/admin/views/platform/Reports').then(m => ({ default: m.Reports || m.default })));
 const Security = lazy(() => import('./modules/Admin/admin/views/platform/Security').then(m => ({ default: m.Security || m.default })));
 const Staff = lazy(() => import('./modules/Admin/admin/views/platform/Staff').then(m => ({ default: m.Staff || m.default })));
@@ -601,6 +604,7 @@ function App() {
                   <Route path="/app/services/grooming/booking/:id" element={<GroomingBookingDetail />} />
                   <Route path="/app/services/grooming/:id" element={<GroomingDetail />} />
                   <Route path="/app/wallet" element={<Wallet />} />
+                  <Route path="/app/subscription" element={<MySubscription />} />
                   <Route path="/app/notifications" element={<Notifications />} />
 
                   {/* Meal Plan Sub-screens */}
@@ -665,6 +669,7 @@ function App() {
                   <Route path="services/products" element={<Products />} />
                   <Route path="services/product-categories" element={<ProductCategories />} />
                   <Route path="services/meal-plans" element={<MealPlans />} />
+                  <Route path="services/match-subscriptions" element={<MatchSubscriptions />} />
                   <Route path="services/doctor-services" element={<DoctorServices />} />
                   <Route path="services/event-categories" element={<EventCategories />} />
                   <Route path="services/memorial-packages" element={<MemorialPackages />} />
@@ -685,6 +690,7 @@ function App() {
                   <Route path="platform/community" element={<AdminCommunity />} />
                   <Route path="platform/reviews" element={<Reviews />} />
                   <Route path="platform/content" element={<BannersContent />} />
+                  <Route path="platform/prompts" element={<PetPromptsAdminView />} />
                   <Route path="platform/reports" element={<Reports />} />
                   <Route path="platform/security" element={<Security />} />
                   <Route path="platform/staff" element={<Staff />} />

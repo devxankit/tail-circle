@@ -1,4 +1,5 @@
 import { MatchProfile, Swipe, Match } from './social.models.js';
+import { PetPrompt } from './prompt.model.js';
 import { ensureConversation, postSystemMessage, setCounterpartFor } from './chat.service.js';
 import { emitToUser } from '../../sockets/index.js';
 import { SOCKET_EVENTS } from '../../sockets/events.js';
@@ -7,6 +8,7 @@ import { Pet } from '../pet/pet.model.js';
 import { User } from '../user/user.model.js';
 import { getOrSet } from '../../services/cache.service.js';
 import { behaviourCompatibility } from './behaviour.service.js';
+import { consumeLike, refundLike, getEntitlement } from '../subscription/subscription.service.js';
 
 /**
  * Match engine weights, tunable at runtime via PATCH /matches/engine/config.
@@ -566,9 +568,24 @@ export async function getMatchDeck({ userId, filters = {}, limit = 50 }) {
     cand._computedCoords = candCoords;
 
     if (reqCity && reqCity !== 'Any' && reqCity !== 'Current Location') {
-      const matchByName = cand.city && cand.city.toLowerCase().includes(reqCity.toLowerCase());
-      const matchByDist = realDistance <= maxRadiusKm;
-      return matchByName || matchByDist;
+      const mainReqToken = reqCity.split(',')[0].trim().toLowerCase();
+      const candCity = (cand.city || '').trim().toLowerCase();
+
+      // If candidate has an explicit city assigned
+      if (candCity) {
+        const matchByName = candCity.includes(mainReqToken) || mainReqToken.includes(candCity);
+        const hasRealCoords = cand.location?.lat != null && cand.location?.lng != null;
+        const matchByDist = hasRealCoords && realDistance <= maxRadiusKm;
+        return matchByName || matchByDist;
+      }
+
+      // If candidate has explicit GPS coordinates
+      if (cand.location?.lat != null && cand.location?.lng != null) {
+        return realDistance <= maxRadiusKm;
+      }
+
+      // If specific city is searched and candidate has no matching city or real coordinates, exclude
+      return false;
     }
 
     if (filters.distance && filters.distance !== 'Anywhere') {
@@ -586,14 +603,6 @@ export async function getMatchDeck({ userId, filters = {}, limit = 50 }) {
     owners.forEach((o) => ownersMap.set(o._id.toString(), o));
   }
 
-  const MOCK_OWNERS = [
-    { name: 'Ananya', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80', bio: 'Dog lover & weekend hiker. Looking for friendly park playdates!' },
-    { name: 'Rohan', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80', bio: 'Pet parent based in the city. Big fan of outdoor games and social walks.' },
-    { name: 'Priya', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=300&q=80', bio: 'Cat & dog enthusiast! Passionate about pet wellness & fun meetups.' },
-    { name: 'Vikram', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80', bio: 'Active pet owner who loves training sessions & weekend park runs.' },
-    { name: 'Neha', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=300&q=80', bio: 'Passionate about animal care, healthy treats & happy tail wags!' },
-  ];
-
   /*
    * The viewer's own pet, reshaped to match a candidate card's field names so
    * the scorer compares like with like. A raw Pet stores age as `dob`,
@@ -603,17 +612,20 @@ export async function getMatchDeck({ userId, filters = {}, limit = 50 }) {
   const myPetContext = userPet ? toComparablePet(userPet) : null;
 
   // Compute compatibility score & format candidates with ownerInfo
-  const scoredDeck = filteredCandidates.map((cand, idx) => {
+  const scoredDeck = filteredCandidates.map((cand) => {
     const realDistance = cand._computedDistance;
     const candCoords = cand._computedCoords;
 
     const realOwner = cand.ownerId ? ownersMap.get(cand.ownerId.toString()) : null;
-    const mockOwner = MOCK_OWNERS[idx % MOCK_OWNERS.length];
+
+    const ownerName = (realOwner?.name || cand.ownerInfo?.name || cand.ownerName || '').trim() || 'Pet Parent';
+    const ownerAvatar = realOwner?.avatarUrl || cand.ownerInfo?.avatar || cand.ownerAvatar || null;
+    const ownerBio = (realOwner?.bio || cand.ownerInfo?.bio || cand.ownerBio || '').trim() || `Loving parent of ${cand.name || 'this pet'}. Always excited for pet playdates & happy furry meetups!`;
 
     const ownerInfo = {
-      name: realOwner?.name || cand.ownerInfo?.name || mockOwner.name,
-      avatar: realOwner?.avatarUrl || cand.ownerInfo?.avatar || mockOwner.avatar,
-      bio: realOwner?.bio || cand.ownerInfo?.bio || mockOwner.bio,
+      name: ownerName,
+      avatar: ownerAvatar,
+      bio: ownerBio,
     };
 
     const updatedCand = {
@@ -668,17 +680,49 @@ export async function processSwipe({ userId, profileId, action }) {
   const profile = await MatchProfile.findOne({ _id: profileId, active: true });
   if (!profile) return { matched: false };
 
+  /*
+   * Subscription quota.
+   *
+   * Likes and superlikes are metered; passing is always free. The charge has to
+   * happen before the Swipe row is written, because once that row exists the
+   * like has effectively been made — but it must also not charge twice for the
+   * same profile. `existing` settles that: re-swiping someone already liked, or
+   * upgrading a like to a superlike, spends nothing further. Only a first
+   * like — on a fresh profile or one previously passed — costs an allowance.
+   */
+  const isLike = action === 'like' || action === 'superlike';
+  const existing = await Swipe.findOne({ userId, profileId: profile.id }).select('action').lean();
+  const alreadyLiked = existing?.action === 'like' || existing?.action === 'superlike';
+  let charged = false;
+  let entitlement = null;
+
+  if (isLike && !alreadyLiked) {
+    // Throws LikeLimitError (402, code LIKE_LIMIT_REACHED) when the allowance
+    // is spent; the route lets it through so the client can open the paywall.
+    entitlement = await consumeLike(userId);
+    charged = true;
+  }
+
   // Idempotent swipe record
-  await Swipe.updateOne(
-    { userId, profileId: profile.id },
-    { $set: { action } },
-    { upsert: true }
-  );
+  try {
+    await Swipe.updateOne(
+      { userId, profileId: profile.id },
+      { $set: { action } },
+      { upsert: true }
+    );
+  } catch (err) {
+    // The allowance was spent on a like that was never recorded — give it back
+    // rather than let a write failure quietly cost the user one of their ten.
+    if (charged) await refundLike(userId);
+    throw err;
+  }
 
   // Pass action never matches
   if (action === 'pass') {
-    return { matched: false };
+    return { matched: false, entitlement: await getEntitlement(userId) };
   }
+
+  if (!entitlement) entitlement = await getEntitlement(userId);
 
   /*
    * Reciprocity.
@@ -706,7 +750,7 @@ export async function processSwipe({ userId, profileId, action }) {
   }
 
   if (!isMutual) {
-    return { matched: false };
+    return { matched: false, entitlement };
   }
 
   /*
@@ -887,17 +931,69 @@ export async function processSwipe({ userId, profileId, action }) {
      * and its advice so the pair meet on the right terms.
      */
     behaviourMatch: rating.behaviour,
+    /*
+     * The quota after this swipe, so the deck's "7 likes left" pill updates
+     * from the same response that spent the like rather than a follow-up call
+     * that could race the next tap.
+     */
+    entitlement,
   };
 }
 
 /**
  * Auto-generates engaging, mood-based prompt captions for a pet profile.
+ * Fetches dynamic prompts from MongoDB PetPrompt model, with fallback to default prompts.
  */
-export function generateMoodPrompts(pet) {
+export async function generateMoodPrompts(pet) {
   const name = pet.name || 'This pet';
+  const petType = (pet.type || 'dog').toLowerCase();
   const mood = (pet.mood || '').toLowerCase();
   const temperaments = (pet.temperament || []).map((t) => t.toLowerCase());
   const activity = (pet.activityLevel || '').toLowerCase();
+
+  try {
+    const activePrompts = await PetPrompt.find({ isActive: true }).lean();
+    if (activePrompts && activePrompts.length > 0) {
+      const matched = activePrompts.filter((p) => {
+        const promptSpecies = (p.species || 'all').toLowerCase();
+        if (promptSpecies !== 'all' && promptSpecies !== petType) {
+          return false;
+        }
+
+        const pTemp = (p.temperament || 'any').toLowerCase();
+        const pMood = (p.mood || 'any').toLowerCase();
+
+        if (pTemp === 'any' && pMood === 'any') return true;
+
+        const tempMatch = pTemp === 'any' || temperaments.includes(pTemp);
+        const moodMatch = pMood === 'any' || (mood && mood.includes(pMood));
+
+        return tempMatch || moodMatch;
+      });
+
+      const pool = matched.length > 0 ? matched : activePrompts;
+      const shuffled = [...pool].sort(() => 0.5 - Math.random());
+      const selected = shuffled.slice(0, 2);
+
+      const dbPrompts = selected.map((p) => ({
+        question: p.question,
+        answer: p.answerTemplate.replace(/\{name\}/gi, name),
+      }));
+
+      if (pet.bio && dbPrompts.length < 3) {
+        dbPrompts.push({
+          question: 'ABOUT MY PERSONALITY',
+          answer: pet.bio,
+        });
+      }
+
+      if (dbPrompts.length > 0) {
+        return dbPrompts;
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching dynamic pet prompts from DB, falling back to static:', err.message);
+  }
 
   const prompts = [];
 
@@ -1039,7 +1135,7 @@ export async function syncPetToMatchProfile(pet) {
     if (!isNaN(num)) age = num;
   }
 
-  const generatedPrompts = generateMoodPrompts(pet);
+  const generatedPrompts = await generateMoodPrompts(pet);
 
   const tags = [
     pet.mood ? `Mood: ${capitalize(pet.mood)}` : null,

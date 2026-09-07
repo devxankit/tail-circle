@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
-import { Camera, X, Play, Image as ImageIcon } from 'lucide-react';
+import { Camera, X, Play, Image as ImageIcon, Sparkles, Eye } from 'lucide-react';
 import { updatePet, uploadPetPhotos } from '../../../../services/pets';
+import { IdealProfileModal } from '../../../../components/common/IdealProfileModal';
 
 const MAX_PHOTOS = 6;
 
@@ -11,6 +12,7 @@ export function Step2Media() {
   const [media, setMedia] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showIdealModal, setShowIdealModal] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -68,17 +70,35 @@ export function Step2Media() {
 
   return (
     <div className="flex flex-col h-full animate-in slide-in-from-right duration-300 pb-10">
+      {/* Ideal Pet Profile Modal */}
+      <IdealProfileModal
+        isOpen={showIdealModal}
+        onClose={() => setShowIdealModal(false)}
+      />
+
       {/* Progress Bar */}
-      <div className="w-full bg-border-light h-2 rounded-full mb-8">
+      <div className="w-full bg-border-light h-2 rounded-full mb-6">
         <div className="bg-[#66B4B1] w-full h-2 rounded-full transition-all duration-500"></div>
       </div>
 
-      <div className="flex flex-col space-y-2 mb-8 text-center items-center px-4">
+      <div className="flex flex-col space-y-2 mb-6 text-center items-center px-4">
         <h1 className="text-2xl font-bold text-text-primary">Upload Photos</h1>
         <p className="text-text-secondary text-sm">
           Let community see your lovely pet. Ideally upload 3 or more photos.
         </p>
-        <span className="text-[#66B4B1] font-bold text-[12px] bg-[#66B4B1]/10 px-3 py-1 rounded-full mt-1">
+
+        {/* Trigger Button for Ideal Profile Preview */}
+        <button
+          type="button"
+          onClick={() => setShowIdealModal(true)}
+          className="mt-2 inline-flex items-center gap-2 bg-[#4C8684] hover:bg-[#3d6b6a] text-white px-4 py-2 rounded-full text-xs font-black shadow-md hover:shadow-lg transition-all active:scale-95 border border-teal-200/40"
+        >
+          <Sparkles size={14} className="text-amber-300 animate-pulse" />
+          <span>See Ideal Profile Example (Luna)</span>
+          <Eye size={14} />
+        </button>
+
+        <span className="text-[#66B4B1] font-bold text-[11px] bg-[#66B4B1]/10 px-3 py-1 rounded-full mt-2">
           Up to {MAX_PHOTOS} photos
         </span>
       </div>

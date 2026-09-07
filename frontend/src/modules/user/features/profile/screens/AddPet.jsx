@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, Camera, CheckCircle, Info, X, Trash2, ImageIcon } from 'lucide-react';
+import { ChevronLeft, Camera, CheckCircle, Info, X, Trash2, ImageIcon, Sparkles, Eye } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { fetchMyPets, createPet, updatePet, deletePet, uploadPetPhotos, fetchBreeds, fetchBehaviourOptions, toLegacyPet } from '../../../../../services/pets';
 import { cn } from '../../../utils/cn';
+import { IdealProfileModal } from '../../../../../components/common/IdealProfileModal';
 
 const PET_TYPES = ['Dog', 'Cat', 'Bird', 'Rabbit', 'Other'];
 const FALLBACK_BREEDS_BY_TYPE = {
@@ -57,6 +58,7 @@ export function AddPet() {
   const [error, setError] = useState('');
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showIdealModal, setShowIdealModal] = useState(false);
 
   useEffect(() => {
     fetchBreeds(type.toLowerCase())
@@ -269,10 +271,27 @@ export function AddPet() {
         )}
       </div>
 
+      {/* Ideal Pet Profile Modal */}
+      <IdealProfileModal
+        isOpen={showIdealModal}
+        onClose={() => setShowIdealModal(false)}
+      />
+
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6 pb-28 hide-scrollbar">
         {/* Profile Avatar + Photo Gallery Section */}
         <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-xs space-y-4">
-          <h2 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Pet Photos & Media</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Pet Photos & Media</h2>
+            <button
+              type="button"
+              onClick={() => setShowIdealModal(true)}
+              className="inline-flex items-center gap-1.5 bg-[#4C8684] hover:bg-[#3d6b6a] text-white px-3 py-1 rounded-full text-[11px] font-black shadow-xs transition active:scale-95"
+            >
+              <Sparkles size={12} className="text-amber-300 animate-pulse" />
+              <span>See Ideal Profile</span>
+              <Eye size={12} />
+            </button>
+          </div>
           
           {/* Main Avatar Upload */}
           <div className="flex flex-col items-center">

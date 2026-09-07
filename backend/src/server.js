@@ -4,6 +4,7 @@ import { env, assertProductionConfig } from './config/env.js';
 import { connectDatabase, disconnectDatabase } from './config/database.js';
 import { connectRedis, disconnectRedis } from './config/redis.js';
 import { initFirebase } from './config/firebase.js';
+import { ensureDefaultPlans } from './modules/subscription/subscription.service.js';
 import { initSocket, getIO } from './sockets/index.js';
 import { logger } from './utils/logger.js';
 
@@ -15,6 +16,16 @@ async function start() {
     await connectDatabase();
     await connectRedis(); // non-fatal — API degrades gracefully without Redis
     initFirebase(); // non-fatal — chat/push disabled until service account exists
+
+    /*
+     * The match deck refuses every like when there is no plan to draw an
+     * allowance from, so the starter catalog is created on first boot. It is a
+     * no-op the moment any plan exists — an admin's edits, and their deletions,
+     * are never undone by a restart.
+     */
+    await ensureDefaultPlans().catch((err) =>
+      logger.warn(`Could not seed match subscription plans: ${err.message}`)
+    );
 
     const server = http.createServer(app);
     initSocket(server);

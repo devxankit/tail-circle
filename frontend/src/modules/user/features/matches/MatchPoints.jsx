@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, Info } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
 /**
@@ -63,7 +63,6 @@ export function MatchPointsBreakdown({ points, maxPoints = 5, factors = [], conf
   if (points == null) return null;
 
   const known = factors.filter((f) => f.known);
-  const unknown = factors.filter((f) => !f.known);
   const ratio = Math.max(0, Math.min(1, points / maxPoints));
   const tier = tierFor(ratio);
 
@@ -130,18 +129,6 @@ export function MatchPointsBreakdown({ points, maxPoints = 5, factors = [], conf
               </li>
             ))}
           </ul>
-
-          {/* Naming what is missing turns a vague score into something the
-              owner can improve, rather than a verdict they cannot argue with. */}
-          {unknown.length > 0 && (
-            <p className="flex items-start gap-1.5 text-[11px] text-gray-400 leading-relaxed mt-3.5 pt-3 border-t border-gray-100">
-              <Info size={12} className="shrink-0 mt-0.5" />
-              <span>
-                Not compared: {unknown.map((f) => f.label.toLowerCase()).join(', ')}. Fill these in on both
-                profiles for a sharper match.
-              </span>
-            </p>
-          )}
         </div>
       )}
     </div>

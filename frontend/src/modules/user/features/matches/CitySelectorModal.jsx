@@ -1,23 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, MapPin, Navigation, Search, Check, Building2, Loader2, Sparkles } from 'lucide-react';
+import { X, MapPin, Navigation, Search, Check, Loader2, Sparkles, Map } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { searchPlaces, getCoordsForPlace, reverseGeocodeCoords } from '../../../../services/googleMaps';
-
-export const POPULAR_CITIES = [
-  { name: 'Delhi NCR', lat: 28.6139, lng: 77.2090, state: 'Delhi' },
-  { name: 'Mumbai', lat: 19.0760, lng: 72.8777, state: 'Maharashtra' },
-  { name: 'Indore', lat: 22.7196, lng: 75.8577, state: 'Madhya Pradesh' },
-  { name: 'Bangalore', lat: 12.9716, lng: 77.5946, state: 'Karnataka' },
-  { name: 'Pune', lat: 18.5204, lng: 73.8567, state: 'Maharashtra' },
-  { name: 'Hyderabad', lat: 17.3850, lng: 78.4867, state: 'Telangana' },
-  { name: 'Jaipur', lat: 26.9124, lng: 75.7873, state: 'Rajasthan' },
-  { name: 'Goa', lat: 15.2993, lng: 74.1240, state: 'Goa' },
-  { name: 'Chandigarh', lat: 30.7333, lng: 76.7794, state: 'Punjab' },
-  { name: 'Kolkata', lat: 22.5726, lng: 88.3639, state: 'West Bengal' },
-  { name: 'Ahmedabad', lat: 23.0225, lng: 72.5714, state: 'Gujarat' },
-  { name: 'Chennai', lat: 13.0827, lng: 80.2707, state: 'Tamil Nadu' },
-  { name: 'Lucknow', lat: 26.8467, lng: 80.9462, state: 'Uttar Pradesh' },
-];
 
 export function CitySelectorModal({
   isOpen,
@@ -53,13 +37,16 @@ export function CitySelectorModal({
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  if (!isOpen) return null;
+  // Reset search state when modal is closed
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchQuery('');
+      setGoogleSuggestions([]);
+      setIsSearching(false);
+    }
+  }, [isOpen]);
 
-  const filteredPopularCities = POPULAR_CITIES.filter(
-    (c) =>
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.state.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  if (!isOpen) return null;
 
   const handleUseCurrentLocation = () => {
     setIsLocating(true);
@@ -81,7 +68,7 @@ export function CitySelectorModal({
         },
         () => {
           setIsLocating(false);
-          alert('Could not retrieve current location. Please pick a city from the list.');
+          alert('Could not retrieve current location. Please search and select your city.');
         },
         { timeout: 6000 }
       );
@@ -102,11 +89,6 @@ export function CitySelectorModal({
     } finally {
       setIsSearching(false);
     }
-  };
-
-  const handleSelectCity = (city) => {
-    onSelectCity(city);
-    onClose();
   };
 
   return (
@@ -145,7 +127,7 @@ export function CitySelectorModal({
           </button>
         </div>
 
-        {/* Google Places Search input */}
+        {/* Search input */}
         <div className="pt-3 pb-3 shrink-0">
           <div className="relative">
             <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" strokeWidth={2.5} />
@@ -171,15 +153,15 @@ export function CitySelectorModal({
           </div>
         </div>
 
-        {/* Scrollable Container */}
+        {/* Scrollable Container for Search Results */}
         <div className="overflow-y-auto flex-1 pr-1 space-y-4 pt-1 hide-scrollbar">
           {/* Live Google Places Autocomplete Suggestions */}
-          {googleSuggestions.length > 0 && (
+          {googleSuggestions.length > 0 ? (
             <div className="space-y-2">
               <div className="flex items-center gap-1.5 px-1">
                 <Sparkles size={13} className="text-[#4C8684]" />
                 <span className="text-[10px] font-black uppercase text-[#4C8684] tracking-wider">
-                  Google Places Results
+                  Search Results
                 </span>
               </div>
               <div className="space-y-1.5">
@@ -208,49 +190,24 @@ export function CitySelectorModal({
                 ))}
               </div>
             </div>
-          )}
-
-          {/* Popular Preset Cities */}
-          <div>
-            <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider mb-2.5 px-1">
-              Popular Cities
+          ) : searchQuery.trim() && !isSearching ? (
+            <div className="py-8 text-center text-xs font-bold text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+              No location results found for "{searchQuery}"
             </div>
-            {filteredPopularCities.length > 0 ? (
-              <div className="grid grid-cols-2 gap-2">
-                {filteredPopularCities.map((city) => {
-                  const isSelected = selectedCity?.name === city.name;
-                  return (
-                    <button
-                      key={city.name}
-                      type="button"
-                      onClick={() => handleSelectCity(city)}
-                      className={cn(
-                        'text-left p-3 rounded-2xl text-xs font-bold transition flex items-center justify-between border',
-                        isSelected
-                          ? 'bg-[#eef8f7] border-[#4C8684] text-[#346260] shadow-xs'
-                          : 'bg-slate-50/80 border-slate-200/80 text-slate-700 hover:border-slate-300 hover:bg-slate-100'
-                      )}
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <Building2 size={16} className={cn('shrink-0', isSelected ? 'text-[#4C8684]' : 'text-slate-400')} />
-                        <div className="min-w-0">
-                          <span className="block font-black text-slate-900 truncate text-xs">{city.name}</span>
-                          <span className="block text-[10px] font-semibold text-slate-400 truncate">{city.state}</span>
-                        </div>
-                      </div>
-                      {isSelected && <Check size={16} strokeWidth={3} className="text-[#4C8684] shrink-0" />}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              !googleSuggestions.length && (
-                <div className="py-8 text-center text-xs font-bold text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                  No matching city found for "{searchQuery}"
+          ) : (
+            <div className="py-6 px-4 bg-slate-50/80 rounded-2xl border border-slate-100 text-center space-y-2">
+              <Map size={24} className="mx-auto text-[#4C8684]/60" />
+              {selectedCity?.name && (
+                <div className="inline-flex items-center gap-1.5 bg-[#e8f4f3] text-[#346260] px-3 py-1 rounded-full text-xs font-black">
+                  <MapPin size={12} className="text-[#4C8684]" />
+                  <span>Current: {selectedCity.name}</span>
                 </div>
-              )
-            )}
-          </div>
+              )}
+              <p className="text-xs font-semibold text-slate-500 leading-relaxed">
+                Type any city or location above to search, or tap <strong>Use My Current GPS Location</strong> to auto-detect.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

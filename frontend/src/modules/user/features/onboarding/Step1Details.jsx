@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
-import { PawPrint, Info } from 'lucide-react';
+import { PawPrint, Info, Sparkles, Eye } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { createPet, fetchBreeds, fetchBehaviourOptions } from '../../../../services/pets';
+import { IdealProfileModal } from '../../../../components/common/IdealProfileModal';
 
 const speciesList = ['Dog', 'Cat', 'Bird', 'Rabbit', 'Other'];
 const fallbackBreeds = [
-  'Golden Retriever', 'Labrador', 'Beagle',
-  'Pomeranian', 'German Shepherd', 'Indie',
-  'Husky', 'Poodle',
+  'Indie (Indian Pariah)', 'Golden Retriever', 'Labrador', 'Beagle',
+  'Pomeranian', 'German Shepherd', 'Husky', 'Poodle',
 ];
 /*
  * Fallback only — the live list comes from `GET /pets/behaviours`, which is the
@@ -29,7 +29,7 @@ const MAX_BEHAVIOURS = 10;
 export function Step1Details() {
   const navigate = useNavigate();
   const [species, setSpecies] = useState('Dog');
-  const [breed, setBreed] = useState('Golden Retriever');
+  const [breed, setBreed] = useState('Indie (Indian Pariah)');
   const [gender, setGender] = useState('Male');
   const [vaccinated, setVaccinated] = useState(true);
   const [age, setAge] = useState('');
@@ -42,6 +42,7 @@ export function Step1Details() {
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [breedList, setBreedList] = useState([...fallbackBreeds, 'Other']);
+  const [showIdealModal, setShowIdealModal] = useState(false);
 
   // Breed chips come from the server catalog per species (fallback if offline).
   useEffect(() => {
@@ -115,9 +116,14 @@ export function Step1Details() {
 
   return (
     <div className="flex flex-col h-full animate-in slide-in-from-right duration-300 pb-10 overflow-y-auto hide-scrollbar pt-2">
+      {/* Ideal Pet Profile Modal */}
+      <IdealProfileModal
+        isOpen={showIdealModal}
+        onClose={() => setShowIdealModal(false)}
+      />
       
-      {/* Header Icon, Title & Skip Option */}
-      <div className="flex items-center justify-between mb-6 mt-2">
+      {/* Header Icon, Title & Actions */}
+      <div className="flex items-center justify-between mb-4 mt-2">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 bg-[#FAF7F2] rounded-2xl flex items-center justify-center">
             <PawPrint size={26} className="text-[#66B4B1]" />
@@ -133,6 +139,21 @@ export function Step1Details() {
           className="text-xs font-bold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 px-3.5 py-1.5 rounded-full transition-all shadow-2xs"
         >
           Skip for now
+        </button>
+      </div>
+
+      {/* Ideal Profile Example Trigger Banner */}
+      <div className="mb-4">
+        <button
+          type="button"
+          onClick={() => setShowIdealModal(true)}
+          className="w-full bg-[#4C8684] hover:bg-[#3d6b6a] text-white py-2.5 px-4 rounded-2xl text-xs font-black shadow-md transition flex items-center justify-between active:scale-98 border border-teal-200/40"
+        >
+          <div className="flex items-center gap-2">
+            <Sparkles size={15} className="text-amber-300 animate-pulse shrink-0" />
+            <span>See Ideal Profile Example (Luna)</span>
+          </div>
+          <Eye size={15} />
         </button>
       </div>
 

@@ -235,8 +235,37 @@ export const removeAdminStaff = async (id) => api.delete(`/admin/staff/${id}`);
 /* ── Meal-ops super-admin portal ──────────────────────────── */
 export const fetchMealPortalData = async () => (await api.get('/admin/meal-portal')).data;
 
+/* ── Match subscriptions ──────────────────────────────────
+ *
+ * The plan catalog behind the swipe deck's like limits. The free plan's daily
+ * allowance is a field on one of these rows, which is why "how many free likes
+ * does a new user get" is answered here and not in a deploy.
+ */
+export const fetchMatchPlans = async () => (await api.get('/admin/match-plans')).data;
+export const createMatchPlan = async (body) => (await api.post('/admin/match-plans', body)).data;
+export const updateMatchPlan = async (id, body) => (await api.patch(`/admin/match-plans/${id}`, body)).data;
+export const deleteMatchPlan = async (id) => (await api.delete(`/admin/match-plans/${id}`)).data;
+export const setDefaultMatchPlan = async (id) => (await api.post(`/admin/match-plans/${id}/default`)).data;
+export const reorderMatchPlans = async (order) => (await api.patch('/admin/match-plans/reorder', { order })).data;
+
+export const fetchMatchSubscriptions = async (params = {}) =>
+  (await api.get('/admin/subscriptions', { params })).data;
+export const fetchMatchSubscriptionStats = async () => (await api.get('/admin/subscriptions/stats')).data;
+export const grantMatchSubscription = async (body) => (await api.post('/admin/subscriptions/grant', body)).data;
+export const extendMatchSubscription = async (id, days) =>
+  (await api.post(`/admin/subscriptions/${id}/extend`, { days })).data;
+export const revokeMatchSubscription = async (id, reason = '') =>
+  (await api.post(`/admin/subscriptions/${id}/revoke`, { reason })).data;
+
 /* ── Public banners (user-app Home) ───────────────────────── */
 export async function fetchPublicBanners() {
   const { data } = await api.get('/banners');
   return data;
 }
+
+/* ── Pet Prompts & Fun Facts ────────────────────────────────── */
+export const fetchAdminPrompts = async (params = {}) => (await api.get('/admin/prompts', { params })).data;
+export const createAdminPrompt = async (body) => (await api.post('/admin/prompts', body)).data;
+export const updateAdminPrompt = async (id, body) => (await api.put(`/admin/prompts/${id}`, body)).data;
+export const deleteAdminPrompt = async (id) => (await api.delete(`/admin/prompts/${id}`)).data;
+

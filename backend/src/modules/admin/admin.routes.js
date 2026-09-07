@@ -99,9 +99,27 @@ import {
   updateStaff,
   removeStaff,
   reportsSummary,
+  listPetPrompts,
+  createPetPrompt,
+  updatePetPrompt,
+  deletePetPrompt,
 } from './admin.platform.service.js';
 import { getMealPortalData } from './admin.meal.service.js';
 import { listConfig, createConfig, updateConfig, deleteConfig } from './admin.config.service.js';
+import {
+  adminListPlans,
+  adminCreatePlan,
+  adminUpdatePlan,
+  adminSetDefaultPlan,
+  adminDeletePlan,
+  adminReorderPlans,
+  adminListSubscriptions,
+  adminSubscriptionStats,
+  adminGrantSubscription,
+  adminExtendSubscription,
+  adminRevokeSubscription,
+  adminUserEntitlement,
+} from '../subscription/subscription.admin.service.js';
 
 const router = Router();
 
@@ -398,6 +416,97 @@ router.post(
 router.get('/reports', asyncHandler(async (_req, res) => sendSuccess(res, { data: await reportsSummary() })));
 router.get('/meal-portal', asyncHandler(async (_req, res) => sendSuccess(res, { data: await getMealPortalData() })));
 
+/* ── Match subscriptions ──────────────────────────────────
+ *
+ * The plan catalog behind the swipe deck's like limits. The free plan's
+ * allowance — the "10 likes a day" every new user starts with — is a field on
+ * one of these rows, so it is retuned here rather than in a deploy.
+ */
+const planBody = z.object({
+  name: z.string().trim().min(2).max(60).optional(),
+  key: z.string().trim().max(60).optional(),
+  tagline: z.string().trim().max(160).optional(),
+  tier: z.number().int().min(0).max(99).optional(),
+  priceInr: z.number().min(0).max(1_000_000).optional(),
+  durationDays: z.number().int().min(0).max(3650).optional(),
+  // `unlimited` and `likeLimit` are two views of one field: send unlimited to
+  // clear the cap, or a number to set one. 0 is a real value (a tier that
+  // cannot like at all), so it must not be coerced away.
+  unlimited: z.boolean().optional(),
+  likeLimit: z.number().int().min(0).max(100000).nullable().optional(),
+  limitPeriod: z.enum(['day', 'total']).optional(),
+  features: z.array(z.string().trim().max(120)).max(12).optional(),
+  badge: z.string().trim().max(40).optional(),
+  accentColor: z.string().trim().max(32).optional(),
+  active: z.boolean().optional(),
+  sort: z.number().int().min(0).max(999).optional(),
+});
+
+router.get('/match-plans', asyncHandler(async (_req, res) => sendSuccess(res, { data: await adminListPlans() })));
+router.post(
+  '/match-plans',
+  validate(planBody),
+  asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await adminCreatePlan(req.user, req.body, req.ip) }))
+);
+router.patch(
+  '/match-plans/reorder',
+  validate(z.object({ order: z.array(z.string().regex(/^[0-9a-fA-F]{24}$/)).min(1) })),
+  asyncHandler(async (req, res) => sendSuccess(res, { data: await adminReorderPlans(req.user, req.body.order, req.ip) }))
+);
+router.patch(
+  '/match-plans/:id',
+  validate(planBody),
+  asyncHandler(async (req, res) => sendSuccess(res, { data: await adminUpdatePlan(req.user, req.params.id, req.body, req.ip) }))
+);
+router.post(
+  '/match-plans/:id/default',
+  asyncHandler(async (req, res) => sendSuccess(res, { data: await adminSetDefaultPlan(req.user, req.params.id, req.ip) }))
+);
+router.delete(
+  '/match-plans/:id',
+  asyncHandler(async (req, res) => sendSuccess(res, { data: await adminDeletePlan(req.user, req.params.id, req.ip) }))
+);
+
+router.get('/subscriptions/stats', asyncHandler(async (_req, res) => sendSuccess(res, { data: await adminSubscriptionStats() })));
+router.get(
+  '/subscriptions',
+  asyncHandler(async (req, res) =>
+    sendSuccess(res, {
+      data: await adminListSubscriptions({
+        status: req.query.status,
+        planId: req.query.planId,
+        search: req.query.search,
+        limit: req.query.limit,
+      }),
+    })
+  )
+);
+router.get(
+  '/subscriptions/user/:userId',
+  asyncHandler(async (req, res) => sendSuccess(res, { data: await adminUserEntitlement(req.params.userId) }))
+);
+router.post(
+  '/subscriptions/grant',
+  validate(
+    z.object({
+      userId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+      planId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+      note: z.string().trim().max(300).optional(),
+    })
+  ),
+  asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await adminGrantSubscription(req.user, req.body, req.ip) }))
+);
+router.post(
+  '/subscriptions/:id/extend',
+  validate(z.object({ days: z.number().int().min(-3650).max(3650) })),
+  asyncHandler(async (req, res) => sendSuccess(res, { data: await adminExtendSubscription(req.user, req.params.id, req.body.days, req.ip) }))
+);
+router.post(
+  '/subscriptions/:id/revoke',
+  validate(z.object({ reason: z.string().trim().max(300).default('') })),
+  asyncHandler(async (req, res) => sendSuccess(res, { data: await adminRevokeSubscription(req.user, req.params.id, req.body.reason, req.ip) }))
+);
+
 router.get('/staff', superOnly, asyncHandler(async (_req, res) => sendSuccess(res, { data: await listStaff() })));
 router.post(
   '/staff',
@@ -407,6 +516,45 @@ router.post(
 );
 router.patch('/staff/:id', superOnly, asyncHandler(async (req, res) => sendSuccess(res, { data: await updateStaff(req.user, req.params.id, req.body, req.ip) })));
 router.delete('/staff/:id', superOnly, asyncHandler(async (req, res) => { await removeStaff(req.user, req.params.id, req.ip); sendSuccess(res, { message: 'Staff removed' }); }));
+
+/* ── Pet Prompts & Fun Facts CRUD ─────────────────────────── */
+router.get('/prompts', asyncHandler(async (req, res) => {
+  const data = await listPetPrompts({
+    temperament: req.query.temperament,
+    mood: req.query.mood,
+    search: req.query.search,
+  });
+  sendSuccess(res, { data });
+}));
+
+router.post(
+  '/prompts',
+  validate(
+    z.object({
+      question: z.string().trim().min(1),
+      answerTemplate: z.string().trim().min(1),
+      temperament: z.string().optional(),
+      mood: z.string().optional(),
+      species: z.string().optional(),
+      category: z.string().optional(),
+      isActive: z.boolean().optional(),
+    })
+  ),
+  asyncHandler(async (req, res) => {
+    const data = await createPetPrompt(req.user, req.body, req.ip);
+    sendSuccess(res, { statusCode: 201, data });
+  })
+);
+
+router.put('/prompts/:id', asyncHandler(async (req, res) => {
+  const data = await updatePetPrompt(req.user, req.params.id, req.body, req.ip);
+  sendSuccess(res, { data });
+}));
+
+router.delete('/prompts/:id', asyncHandler(async (req, res) => {
+  const data = await deletePetPrompt(req.user, req.params.id, req.ip);
+  sendSuccess(res, { message: 'Prompt deleted successfully', data });
+}));
 
 export default router;
 

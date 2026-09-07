@@ -17,6 +17,7 @@ import {
   X, 
   Star,
   Info,
+  Sparkles,
   Trash2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -24,6 +25,7 @@ import { api } from '../../../../services/api';
 import { getStoredUser, fetchMe, logout } from '../../../../services/auth';
 import { fetchMyPets, updatePet, deletePet, toLegacyPet } from '../../../../services/pets';
 import { fetchWallet } from '../../../../services/wallet';
+import { fetchEntitlement } from '../../../../services/subscriptions';
 
 const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80';
 
@@ -43,6 +45,10 @@ export function Profile() {
 
   // Wallet balance from the API
   const [walletBalance, setWalletBalance] = useState('0.00');
+
+  // Match-deck plan name, shown on the subscription row. Empty until loaded so
+  // the row never flashes a wrong plan.
+  const [planLabel, setPlanLabel] = useState('');
 
   // Load pets list from localStorage or initialize with Max
   const [pets, setPets] = useState([]);
@@ -79,6 +85,10 @@ export function Profile() {
     // Load wallet balance from the API
     fetchWallet()
       .then((w) => setWalletBalance(Number(w.balance).toFixed(2)))
+      .catch(() => {});
+
+    fetchEntitlement()
+      .then((e) => setPlanLabel(e?.planName || ''))
       .catch(() => {});
 
     // Load pets from the API
@@ -305,6 +315,16 @@ export function Profile() {
         {/* Account Settings */}
         <h3 className="text-xs font-bold text-text-secondary uppercase mb-2 pl-2">Account</h3>
         <div className="bg-white rounded-[24px] border border-border-light mb-6 overflow-hidden shadow-sm">
+          <button onClick={() => navigate('/app/subscription')} className="w-full flex items-center p-4 hover:bg-bg-secondary transition-colors border-b border-border-light/50">
+            <div className="bg-[#F87B68]/15 p-1.5 rounded-lg mr-3"><Sparkles size={18} className="text-[#F87B68]" /></div>
+            <span className="flex-1 text-left text-sm font-semibold text-text-primary">My Subscription</span>
+            {/* The plan name doubles as the "you have one" cue, so a paid user
+                can confirm it at a glance without opening the screen. */}
+            {planLabel && (
+              <span className="text-xs font-extrabold text-[#F87B68] mr-2">{planLabel}</span>
+            )}
+            <ChevronRight size={20} className="text-text-disabled" />
+          </button>
           <button onClick={() => navigate('/app/wallet')} className="w-full flex items-center p-4 hover:bg-bg-secondary transition-colors border-b border-border-light/50">
             <div className="bg-[#66B4B1]/15 p-1.5 rounded-lg mr-3"><CreditCard size={18} className="text-[#66B4B1]" /></div>
             <span className="flex-1 text-left text-sm font-semibold text-text-primary">Wallet & Payments</span>

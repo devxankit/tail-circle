@@ -15,7 +15,7 @@ const rupees = (paise) => Math.round((paise || 0) / 100);
 const fmtDate = (d) => (d ? new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '');
 
 /* ── Transactions (Payment ledger) ────────────────────────────────── */
-const PURPOSE_LABEL = { order: 'Order', booking: 'Booking', subscription: 'Subscription', adoption_fee: 'Adoption', wallet_topup: 'Wallet Top-up' };
+const PURPOSE_LABEL = { order: 'Order', booking: 'Booking', subscription: 'Meal Subscription', match_subscription: 'Match Plan', adoption_fee: 'Adoption', wallet_topup: 'Wallet Top-up' };
 const PAY_STATUS = { paid: 'Success', created: 'Pending', failed: 'Failed', refunded: 'Refund' };
 const dateTime = (d) => (d ? new Date(d).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
 export async function listTransactions({ status } = {}) {
