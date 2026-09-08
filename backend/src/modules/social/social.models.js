@@ -78,6 +78,16 @@ const matchProfileSchema = new mongoose.Schema(
       lat: { type: Number, default: null },
       lng: { type: Number, default: null },
     },
+    /*
+     * Mirrored from the pet, and previously not here at all.
+     *
+     * `syncPetToMatchProfile` has always tried to write these, and mongoose has
+     * always silently dropped them for being off-schema — so the deck's
+     * city-name filter read an empty string for every candidate and quietly
+     * fell through to a strict radius test on every search.
+     */
+    city: { type: String, trim: true, default: '' },
+    state: { type: String, trim: true, default: '' },
     breed: { type: String, default: '' },
     size: { type: String, default: '' },
     vaccinationStatus: { type: String, default: '' },

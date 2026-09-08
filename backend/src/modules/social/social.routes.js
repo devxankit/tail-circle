@@ -45,22 +45,12 @@ matchRouter.patch(
   authorize('admin', 'super_admin'),
   validate(
     z.object({
-      // Every weight below is a live input to the scorer. They are relative to
-      // one another, so they need not total 100.
-      weightTemperament: z.number().min(0).max(100).optional(),
-      weightProximity: z.number().min(0).max(100).optional(),
-      weightActivity: z.number().min(0).max(100).optional(),
-      weightMood: z.number().min(0).max(100).optional(),
-      weightAge: z.number().min(0).max(100).optional(),
-      weightBreed: z.number().min(0).max(100).optional(),
-      weightPurpose: z.number().min(0).max(100).optional(),
-      weightSize: z.number().min(0).max(100).optional(),
-      weightHealth: z.number().min(0).max(100).optional(),
+      // The factor weights are gone: compatibility is temperament and nothing
+      // else, so there is no longer a mix to retune. `.strict()` means a stale
+      // caller still sending `weightBreed` is told so rather than having it
+      // silently ignored.
       maxPoints: z.number().min(1).max(10).optional(),
-      defaultMaxDistanceKm: z.number().min(1).max(1000).optional(),
       crossSpeciesFactor: z.number().min(0).max(1).optional(),
-      priorStrength: z.number().min(0).max(1).optional(),
-      priorRatio: z.number().min(0).max(1).optional(),
       enableAutoReciprocity: z.boolean().optional(),
     }).strict()
   ),

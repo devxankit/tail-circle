@@ -4,6 +4,8 @@ import { Button } from '../../components/ui/Button';
 import { PawPrint, Info, Sparkles, Eye } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import { createPet, fetchBreeds, fetchBehaviourOptions } from '../../../../services/pets';
+import { LocationField } from '../../../../components/common/LocationField';
+import { getSavedLocation, saveMyLocation } from '../../../../services/location';
 import { IdealProfileModal } from '../../../../components/common/IdealProfileModal';
 
 const speciesList = ['Dog', 'Cat', 'Bird', 'Rabbit', 'Other'];
@@ -18,9 +20,10 @@ const fallbackBreeds = [
  * and quietly weakens every match it appears in.
  */
 const fallbackBehaviours = [
-  'Friendly', 'Social', 'Playful', 'Energetic', 'Curious', 'Calm', 'Gentle',
-  'Lazy', 'Shy', 'Anxious', 'Introvert', 'Independent', 'Protective', 'Alpha',
-  'Aggressive', 'Trained', 'Likes water', 'Avoids water',
+  'Friendly', 'Calm', 'Gentle', 'Playful', 'Energetic', 'Curious',
+  'Confident', 'Shy', 'Easy-going', 'Affectionate', 'Independent',
+  'Sensitive', 'Cautious', 'Adaptable', 'Excitable', 'Reserved',
+  'Aggressive',
 ];
 /** Matches the API's own cap (`pet.validation.js`). */
 const MAX_BEHAVIOURS = 10;
@@ -38,6 +41,8 @@ export function Step1Details() {
   const [customBreed, setCustomBreed] = useState('');
   const [bio, setBio] = useState('');
   const [behaviours, setBehaviours] = useState([]);
+  // Seeded from the account in case they already set one and came back.
+  const [location, setLocation] = useState(() => getSavedLocation());
   const [behavioursList, setBehavioursList] = useState(fallbackBehaviours);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -79,18 +84,20 @@ export function Step1Details() {
     const finalBreed = breed === 'Other' ? (customBreed.trim() || 'Mixed Breed') : breed;
 
     try {
-      let locationObj = null;
-      let userCity = '';
-      try {
-        const cachedCity = sessionStorage.getItem('tc_user_gps_city');
-        if (cachedCity) {
-          const parsed = JSON.parse(cachedCity);
-          if (parsed?.lat && parsed?.lng) {
-            locationObj = { lat: parsed.lat, lng: parsed.lng };
-            userCity = parsed.name || '';
-          }
-        }
-      } catch {}
+      /*
+       * This used to read `tc_user_gps_city` out of sessionStorage — a key
+       * written only by the match deck, a screen a new user reaches after
+       * onboarding. It was therefore always empty here, and every pet created
+       * during onboarding was saved with no location at all. The field above
+       * asks the question instead.
+       */
+      const locationObj = location ? { lat: location.lat, lng: location.lng } : null;
+      const userCity = location?.name || '';
+
+      // Saved to the account too, so the next pet inherits it and the deck can
+      // measure from it when the browser will not share live coordinates. A
+      // failure here must not cost them the pet they just filled in.
+      if (location) await saveMyLocation(location).catch(() => {});
 
       const pet = await createPet({
         name: petName.trim(),
@@ -104,6 +111,7 @@ export function Step1Details() {
         health: { vaccinated },
         ...(locationObj ? { location: locationObj } : {}),
         ...(userCity ? { city: userCity } : {}),
+        ...(location?.state ? { state: location.state } : {}),
       });
       localStorage.setItem('tc_onboarding_pet_id', pet._id);
       navigate('/onboarding/step2');
@@ -351,6 +359,17 @@ export function Step1Details() {
             })}
           </div>
         </div>
+
+        {/* Where they are. Distance on the match deck is measured from this,
+            so it is asked during onboarding rather than inferred later. */}
+        <LocationField
+          value={location}
+          onChange={setLocation}
+          label="Where do you live?"
+          hint="We use this to show you pets nearby — and to show yours to them."
+          autoDetect
+          className="mt-2"
+        />
 
         {/* Short Bio */}
         <div className="flex flex-col gap-1.5 mt-2">

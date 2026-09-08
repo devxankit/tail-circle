@@ -11,35 +11,17 @@ import { behaviourCompatibility } from './behaviour.service.js';
 import { consumeLike, refundLike, getEntitlement } from '../subscription/subscription.service.js';
 
 /**
- * Match engine weights, tunable at runtime via PATCH /matches/engine/config.
+ * Match engine configuration, tunable at runtime via PATCH /matches/engine/config.
  *
- * Every `weight*` below is a real input to `scoreMatch()` — they are summed to
- * form the denominator, so the numbers are relative to each other rather than
- * required to total 100. Raising `weightBreed` to 40 genuinely makes breed
- * matter more; there is no separate hardcoded table behind them.
+ * There are no factor weights any more. Compatibility is temperament, and only
+ * temperament — proximity, mood, energy, age, breed, size, vaccination and
+ * purpose no longer contribute to the number. They remain what they always
+ * usefully were: filters and sort order on the deck, not opinions about
+ * whether two pets suit each other.
  */
 export let MATCH_ENGINE_CONFIG = {
-  // How much two pets have in common.
-  weightTemperament: 20, // shared interests / traits
-  weightProximity: 16, // close enough to actually meet
-  weightActivity: 13, // energy levels that suit each other
-  weightMood: 11, // current vibe
-  weightAge: 11, // life stage
-  weightBreed: 10,
-  weightPurpose: 8, // both here for the same thing
-  weightSize: 6, // safe play pairing
-  weightHealth: 5, // vaccination alignment
-
-  // Presentation + behaviour.
   maxPoints: 5, // score is shown out of this many points
-  defaultMaxDistanceKm: 50, // distance at which proximity scores zero
   crossSpeciesFactor: 0.45, // a dog and a cat can meet, but rarely a top match
-  // Confidence shrinkage. Applied in proportion to how much of the profile is
-  // MISSING, so two fully-filled pets that align on everything still reach a
-  // clean 5/5, while a near-empty profile cannot score top marks off one lucky
-  // factor. Set `priorStrength` to 0 to score purely on what is known.
-  priorStrength: 0.6, // how hard unknown factors pull toward the prior
-  priorRatio: 0.6, // the neutral compatibility an unknown factor stands in for
   enableAutoReciprocity: false,
 };
 
@@ -65,16 +47,6 @@ export function updateEngineConfig(newConfig = {}) {
   return MATCH_ENGINE_CONFIG;
 }
 
-/* ── Per-factor scorers ───────────────────────────────────────────────────
- *
- * Each returns 0..1, or `null` meaning "not knowable for this pair".
- *
- * `null` matters: a factor neither pet has filled in is dropped from BOTH
- * sides of the average rather than scored zero. Otherwise every pet with a
- * sparse profile would look like a bad match for everyone, which punishes the
- * owner for not filling a form rather than describing the pets.
- */
-
 const norm = (v) => String(v || '').trim().toLowerCase();
 
 /**
@@ -91,229 +63,63 @@ function num(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-/** Ordinal closeness — same band = 1, one band apart = 0.5, two = 0. */
-function scoreOrdinal(mine, theirs, order) {
-  const x = order[norm(mine)];
-  const y = order[norm(theirs)];
-  if (x == null || y == null) return null;
-  const gap = Math.abs(x - y);
-  return gap === 0 ? 1 : gap === 1 ? 0.5 : 0;
-}
-
-const ACTIVITY_ORDER = { low: 0, medium: 1, high: 2 };
-const SIZE_ORDER = { small: 0, medium: 1, large: 2 };
-
 /**
- * Free-text moods grouped into families, so "playful" and "energetic" read as
- * the same vibe instead of a miss.
- */
-const MOOD_FAMILY = {
-  playful: 'energetic', energetic: 'energetic', hyper: 'energetic',
-  active: 'energetic', zoomies: 'energetic', excited: 'energetic',
-  calm: 'relaxed', chill: 'relaxed', lazy: 'relaxed',
-  sleepy: 'relaxed', relaxed: 'relaxed', mellow: 'relaxed',
-  friendly: 'social', social: 'social', affectionate: 'social',
-  cuddly: 'social', loving: 'social', happy: 'social',
-  curious: 'curious', adventurous: 'curious', explorer: 'curious', smart: 'curious',
-  protective: 'guardian', loyal: 'guardian', alert: 'guardian', watchful: 'guardian',
-  shy: 'reserved', anxious: 'reserved', timid: 'reserved', reserved: 'reserved',
-};
-
-function scoreMood(mine, theirs) {
-  const x = norm(mine);
-  const y = norm(theirs);
-  if (!x || !y) return null;
-  if (x === y) return 1;
-  const fx = MOOD_FAMILY[x];
-  const fy = MOOD_FAMILY[y];
-  if (fx && fy && fx === fy) return 0.7;
-  // Different vibes still get on; they just are not the same vibe.
-  return 0.15;
-}
-
-/** Life stage. Within a year is a full match, six years apart is none. */
-function scoreAge(mine, theirs) {
-  const a = num(mine);
-  const b = num(theirs);
-  if (a === null || b === null) return null;
-  const gap = Math.abs(a - b);
-  if (gap <= 1) return 1;
-  if (gap >= 6) return 0;
-  return 1 - (gap - 1) / 5;
-}
-
-const isMixed = (breed) => /mixed|mix|unknown|indie|desi/.test(norm(breed));
-
-function scoreBreed(mine, theirs, sameSpecies) {
-  const a = norm(mine);
-  const b = norm(theirs);
-  if (!a || !b) return null;
-  if (a === b) return 1;
-  // "Mixed Breed" is a wildcard rather than a mismatch — it says little either
-  // way, so it should not read as a strong negative.
-  if (isMixed(a) || isMixed(b)) return 0.5;
-  return sameSpecies ? 0.35 : 0;
-}
-
-/** Close enough to realistically meet up. */
-function scoreProximity(km, maxKm) {
-  const d = num(km);
-  if (d === null || d < 0) return null;
-  const ceiling = Math.max(3, num(maxKm) || 50);
-  if (d <= 2) return 1;
-  if (d >= ceiling) return 0;
-  return 1 - (d - 2) / (ceiling - 2);
-}
-
-function scoreExact(mine, theirs, partial = 0.2) {
-  const a = norm(mine);
-  const b = norm(theirs);
-  if (!a || !b) return null;
-  return a === b ? 1 : partial;
-}
-
-/** Vaccination alignment — the safety precondition for a real-world meetup. */
-function scoreHealth(mine, theirs) {
-  const vaxed = (v) => {
-    if (typeof v === 'boolean') return v;
-    const t = norm(v);
-    if (!t) return null;
-    return t === 'vaccinated' || t === 'yes' || t === 'true';
-  };
-  const a = vaxed(mine);
-  const b = vaxed(theirs);
-  if (a == null || b == null) return null;
-  if (a && b) return 1;
-  return a || b ? 0.4 : 0;
-}
-
-/**
- * Full compatibility breakdown between the viewer's pet and a candidate.
+ * Compatibility between the viewer's pet and a candidate.
  *
- * Returns the headline points (out of `maxPoints`) plus the per-factor detail
- * the card renders, so a user can see *why* two pets scored what they scored
- * instead of being handed an unexplained number.
+ * Temperament is the whole of it. This used to blend nine weighted factors —
+ * proximity, energy, mood, age, breed, purpose, size, vaccination and
+ * behaviour — into one number, which meant a pet could rate well on the deck
+ * for living nearby and being the same size while having nothing in common
+ * with the pet it was shown to. Distance and the rest still shape *which*
+ * pets appear, through the deck's filters and its nearest-first ordering;
+ * they no longer masquerade as compatibility.
+ *
+ * `factors` survives as a single entry rather than being dropped, because
+ * clients and stored match records read it. It carries the one thing that is
+ * actually scored.
  */
 export function scoreMatch(myPet, candidate) {
   const cfg = MATCH_ENGINE_CONFIG;
   const maxPoints = Number(cfg.maxPoints) || 5;
 
-  if (!candidate) {
-    return {
-      points: null, score: null, maxPoints, factors: [], knownFactors: 0,
-      confidence: 'unknown', behaviour: null,
-    };
-  }
+  const unknown = (behaviour = null) => ({
+    points: null, score: null, maxPoints,
+    factors: [{ key: 'temperament', label: 'Temperament', known: false, value: null }],
+    knownFactors: 0, confidence: 'unknown', behaviour,
+  });
+
+  if (!candidate) return unknown();
+
+  /*
+   * `null` means one of the pets has no temperament recorded — an unanswered
+   * question, not a bad match. With nothing else feeding the score there is no
+   * number to give, so the card shows none rather than inventing one.
+   */
+  const behaviour = behaviourCompatibility(myPet?.temperament, candidate.temperament);
+  if (!behaviour) return unknown();
 
   const sameSpecies = !myPet?.type || !candidate.type || norm(myPet.type) === norm(candidate.type);
 
-  const candidateAge = num(candidate.age);
-  const myAge = num(myPet?.age ?? myPet?.ageYears);
-  const ageGap = myAge !== null && candidateAge !== null ? Math.abs(myAge - candidateAge) : null;
-  const km = num(candidate.distance);
-
-  /*
-   * Behaviour is scored once and returned alongside the number, not just
-   * folded into it. The verdict ("Moderate", plus what to do about it) is the
-   * part an owner can act on before the two pets actually meet.
-   */
-  const behaviour = behaviourCompatibility(myPet?.temperament, candidate.temperament);
-
-  /*
-   * `display` overrides the percentage in the breakdown for factors where a
-   * real value says more than a ratio. "Nearby 100%" is ambiguous — it reads
-   * equally as "very close" or "maximally far" — whereas "1.2 km" cannot be
-   * misread. The percentage still drives the bar and the score.
-   */
-  const definitions = [
-    { key: 'temperament', label: 'Behaviour', weight: cfg.weightTemperament,
-      value: behaviour?.value ?? null },
-    { key: 'proximity', label: 'Nearby', weight: cfg.weightProximity,
-      value: scoreProximity(candidate.distance, cfg.defaultMaxDistanceKm),
-      display: km === null ? null : km < 1 ? `${Math.round(km * 1000)} m` : `${km} km` },
-    { key: 'activity', label: 'Energy level', weight: cfg.weightActivity,
-      value: scoreOrdinal(myPet?.activityLevel, candidate.activityLevel, ACTIVITY_ORDER) },
-    { key: 'mood', label: 'Mood', weight: cfg.weightMood,
-      value: scoreMood(myPet?.mood, candidate.mood) },
-    { key: 'age', label: 'Age', weight: cfg.weightAge,
-      value: scoreAge(myAge, candidateAge),
-      display: ageGap === null ? null
-        : ageGap < 0.5 ? 'Same age'
-        : `${Math.round(ageGap * 10) / 10} yr${ageGap >= 2 ? 's' : ''} apart` },
-    { key: 'breed', label: 'Breed', weight: cfg.weightBreed,
-      value: scoreBreed(myPet?.breed, candidate.breed, sameSpecies) },
-    { key: 'purpose', label: 'Looking for', weight: cfg.weightPurpose,
-      value: scoreExact(myPet?.purpose, candidate.purpose) },
-    { key: 'size', label: 'Size', weight: cfg.weightSize,
-      value: scoreOrdinal(myPet?.size, candidate.size, SIZE_ORDER) },
-    { key: 'health', label: 'Vaccination', weight: cfg.weightHealth,
-      value: scoreHealth(myPet?.vaccinated ?? myPet?.health?.vaccinated, candidate.vaccinationStatus) },
-  ];
-
-  let earned = 0;
-  let possible = 0;
-  const factors = [];
-
-  for (const d of definitions) {
-    const weight = Number(d.weight) || 0;
-    if (d.value == null || weight <= 0) {
-      // Reported so the UI can show "add your pet's mood to sharpen this".
-      factors.push({ key: d.key, label: d.label, known: false, value: null, weight });
-      continue;
-    }
-    earned += d.value * weight;
-    possible += weight;
-    factors.push({
-      key: d.key,
-      label: d.label,
-      known: true,
-      value: Math.round(d.value * 100) / 100,
-      display: d.display || null,
-      weight,
-      points: Math.round(d.value * weight * 10) / 10,
-    });
-  }
-
-  const knownFactors = factors.filter((f) => f.known).length;
-
-  if (!possible) {
-    // Nothing comparable on either side — say so rather than invent a number.
-    return { points: null, score: null, maxPoints, factors, knownFactors: 0, confidence: 'unknown', behaviour };
-  }
-
-  /*
-   * Shrink toward a neutral prior in proportion to what is MISSING.
-   *
-   * Without this, a profile listing only a breed and a location could score a
-   * flawless 5/5 off two factors and outrank a pet that genuinely matches on
-   * eight — an empty profile would be the best match on the deck.
-   *
-   * The pull is sized by the weight of the unknown factors, not a flat
-   * constant, so a pair that agrees on everything we can actually check still
-   * scores a clean 5/5. Only unanswered questions drag a score toward average.
-   */
-  const totalWeight = definitions.reduce((sum, d) => sum + (Number(d.weight) || 0), 0);
-  const missingWeight = Math.max(0, totalWeight - possible);
-  const prior = missingWeight * (num(cfg.priorStrength) ?? 0.6);
-  const priorRatio = num(cfg.priorRatio) ?? 0.6;
-  let ratio = (earned + prior * priorRatio) / (possible + prior);
-
   // A dog and a cat can absolutely be friends, but they should not top a deck
   // over a well-matched same-species pair.
+  let ratio = behaviour.value;
   if (!sameSpecies) ratio *= num(cfg.crossSpeciesFactor) ?? 0.45;
-
-  const score = Math.max(0, Math.min(100, Math.round(ratio * 100)));
-  // Half-point granularity: "4.5 / 5" reads as a rating, "4.37 / 5" does not.
-  const points = Math.round(ratio * maxPoints * 2) / 2;
+  ratio = Math.max(0, Math.min(1, ratio));
 
   return {
-    points: Math.max(0, Math.min(maxPoints, points)),
-    score,
+    // Half-point granularity: "4.5 / 5" reads as a rating, "4.37 / 5" does not.
+    points: Math.round(ratio * maxPoints * 2) / 2,
+    score: Math.round(ratio * 100),
     maxPoints,
-    factors,
-    knownFactors,
-    // Few known factors means the number is a guess; the card can soften it.
-    confidence: knownFactors >= 6 ? 'high' : knownFactors >= 3 ? 'medium' : 'low',
+    factors: [{
+      key: 'temperament',
+      label: 'Temperament',
+      known: true,
+      value: Math.round(behaviour.value * 100) / 100,
+      display: `${Math.round(behaviour.value * 100)}%`,
+    }],
+    knownFactors: 1,
+    confidence: 'high',
     behaviour,
   };
 }
@@ -328,16 +134,22 @@ export function calculateCompatibilityScore(myPet, candidate) {
 }
 
 /**
- * Calculates the exact geodesic distance in kilometers between two GPS coordinates
- * using the spherical Haversine formula.
+ * Geodesic distance in kilometres between two GPS coordinates, or `null` when
+ * either end is unknown.
+ *
+ * It used to answer 5.0 km for a missing coordinate. That is a plausible,
+ * completely invented number, and because a pet's location was never actually
+ * recorded anywhere, it was the number most users saw: "5 km away" from a pet
+ * that could have been in another state. An unknown distance is now null and
+ * every caller has to decide what to do about it.
  */
 export function calculateHaversineDistanceKm(lat1, lon1, lat2, lon2) {
-  if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return 5.0;
+  if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return null;
   const nLat1 = Number(lat1);
   const nLon1 = Number(lon1);
   const nLat2 = Number(lat2);
   const nLon2 = Number(lon2);
-  if (isNaN(nLat1) || isNaN(nLon1) || isNaN(nLat2) || isNaN(nLon2)) return 5.0;
+  if (isNaN(nLat1) || isNaN(nLon1) || isNaN(nLat2) || isNaN(nLon2)) return null;
 
   const R = 6371; // Earth's radius in kilometers
   const dLat = (nLat2 - nLat1) * (Math.PI / 180);
@@ -353,25 +165,20 @@ export function calculateHaversineDistanceKm(lat1, lon1, lat2, lon2) {
   return Math.max(0.2, Math.round(distance * 10) / 10);
 }
 
-function getCandidateCoords(cand, baseLat, baseLng) {
+/**
+ * Where a candidate actually is, or nulls.
+ *
+ * This used to scatter pets with no recorded location deterministically around
+ * whoever was looking at them — 0.2 to 12 km away, from a hash of their id.
+ * Every card then read "2.4 km away" and nobody could tell that the app had
+ * never captured a location at all. A pet whose owner has not given one is now
+ * simply somewhere unknown, and says so.
+ */
+function getCandidateCoords(cand) {
   if (cand.location?.lat != null && cand.location?.lng != null) {
     return { lat: Number(cand.location.lat), lng: Number(cand.location.lng) };
   }
-  // Pseudo-deterministic scatter around user anchor based on candidate ID string
-  const anchorLat = baseLat != null ? Number(baseLat) : 28.6139;
-  const anchorLng = baseLng != null ? Number(baseLng) : 77.2090;
-  const idStr = String(cand._id || cand.id || '');
-  let hash = 0;
-  for (let i = 0; i < idStr.length; i++) {
-    hash = (hash << 5) - hash + idStr.charCodeAt(i);
-    hash |= 0;
-  }
-  const offsetLat = (((Math.abs(hash) % 250) + 5) - 125) / 2500; // ~ 0.2km to 12km radius
-  const offsetLng = (((Math.abs(hash * 31) % 250) + 5) - 125) / 2500;
-  return {
-    lat: Math.round((anchorLat + offsetLat) * 10000) / 10000,
-    lng: Math.round((anchorLng + offsetLng) * 10000) / 10000,
-  };
+  return { lat: null, lng: null };
 }
 
 /**
@@ -501,14 +308,17 @@ export async function getMatchDeck({ userId, filters = {}, limit = 50 }) {
     query.availability = { $regex: new RegExp(`^${filters.availability.trim()}$`, 'i') };
   }
 
-  // Filter: Max Distance
-  if (filters.distance && filters.distance !== 'Anywhere') {
-    const distMatch = filters.distance.match(/\d+/);
-    if (distMatch) {
-      const maxKm = parseInt(distMatch[0], 10);
-      query.distance = { $lte: maxKm };
-    }
-  }
+  /*
+   * Distance is deliberately NOT filtered here.
+   *
+   * It used to be: `query.distance = { $lte: maxKm }`, matching the stored
+   * `distance` column — a static number baked into the demo seed rows (Luna
+   * lives "4 km" from everyone on earth) and null on every profile belonging to
+   * a real pet. So a radius filter kept the fake pets and dropped all the real
+   * ones, whatever their actual coordinates said. How far apart two pets are
+   * depends on who is looking, which the database cannot know, so the radius is
+   * applied below against a distance computed per viewer.
+   */
 
   // Filter: Temperaments array overlap
   const temperaments = Array.isArray(filters.temperament)
@@ -546,9 +356,18 @@ export async function getMatchDeck({ userId, filters = {}, limit = 50 }) {
   // Execute query
   const rawCandidates = await MatchProfile.find(query).lean();
 
-  // User GPS / City location
-  const userLat = filters.lat != null ? Number(filters.lat) : 28.6139;
-  const userLng = filters.lng != null ? Number(filters.lng) : 77.2090;
+  /*
+   * Where the viewer is measuring from.
+   *
+   * The request's own coordinates first (live GPS, or a city they picked), then
+   * the location saved on their account at onboarding. Defaulting to Delhi for
+   * everyone else is why a user in Indore with location denied saw distances
+   * measured from a city 800 km away; with no anchor at all, distance is simply
+   * unknown and the cards say so.
+   */
+  const viewer = await User.findById(userId).select('location city').lean();
+  const userLat = filters.lat != null ? Number(filters.lat) : viewer?.location?.lat ?? null;
+  const userLng = filters.lng != null ? Number(filters.lng) : viewer?.location?.lng ?? null;
   const reqCity = (filters.city || filters.cityName || '').trim();
 
   // Determine maximum distance radius threshold
@@ -562,7 +381,7 @@ export async function getMatchDeck({ userId, filters = {}, limit = 50 }) {
 
   // Filter candidates by city name match or proximity radius
   const filteredCandidates = rawCandidates.filter((cand) => {
-    const candCoords = getCandidateCoords(cand, userLat, userLng);
+    const candCoords = getCandidateCoords(cand);
     const realDistance = calculateHaversineDistanceKm(userLat, userLng, candCoords.lat, candCoords.lng);
     cand._computedDistance = realDistance;
     cand._computedCoords = candCoords;
@@ -574,22 +393,21 @@ export async function getMatchDeck({ userId, filters = {}, limit = 50 }) {
       // If candidate has an explicit city assigned
       if (candCity) {
         const matchByName = candCity.includes(mainReqToken) || mainReqToken.includes(candCity);
-        const hasRealCoords = cand.location?.lat != null && cand.location?.lng != null;
-        const matchByDist = hasRealCoords && realDistance <= maxRadiusKm;
+        const matchByDist = realDistance != null && realDistance <= maxRadiusKm;
         return matchByName || matchByDist;
       }
 
-      // If candidate has explicit GPS coordinates
-      if (cand.location?.lat != null && cand.location?.lng != null) {
-        return realDistance <= maxRadiusKm;
-      }
-
-      // If specific city is searched and candidate has no matching city or real coordinates, exclude
-      return false;
+      // No city recorded, so coordinates are the only way to answer.
+      return realDistance != null && realDistance <= maxRadiusKm;
     }
 
+    /*
+     * A radius filter asks a question about distance, so a pet whose distance
+     * is unknown cannot satisfy it. Excluding it is the honest answer — the
+     * alternative is showing a pet inside "Within 1 KM" that may be anywhere.
+     */
     if (filters.distance && filters.distance !== 'Anywhere') {
-      return realDistance <= maxRadiusKm;
+      return realDistance != null && realDistance <= maxRadiusKm;
     }
 
     return true;
@@ -645,28 +463,35 @@ export async function getMatchDeck({ userId, filters = {}, limit = 50 }) {
       matchPoints: breakdown.points,
       maxMatchPoints: breakdown.maxPoints,
       matchConfidence: breakdown.confidence,
-      // Per-factor detail so the card can explain the number.
+      // One factor now — temperament — kept as an array for clients and stored
+      // match rows that read this shape.
       matchFactors: breakdown.factors,
-      // Behavioural read on the pairing — level plus what to do about it.
+      // The temperament read itself: percentage, level, and the shared traits
+      // behind it. This is what the card renders.
       behaviourMatch: breakdown.behaviour,
-      compatibilityScore: breakdown.score == null ? 75 : breakdown.score,
+      // A pet with no temperament recorded is unknown, not average — 50 sorts
+      // it in the middle of the deck instead of above pets it demonstrably
+      // has less in common with.
+      compatibilityScore: breakdown.score == null ? 50 : breakdown.score,
     };
   });
 
   /*
-   * Best match first.
+   * Best temperament match first, nearest first within that.
    *
-   * This used to sort on raw distance, with the score only breaking ties —
-   * and since distance is a float, ties essentially never happened, so the
-   * compatibility number had no effect on what a user actually saw. Proximity
-   * is already one of the weighted factors inside the score, so ranking on the
-   * score keeps distance influential without letting it drown out everything
-   * two pets have in common. Distance still breaks genuine ties.
+   * Now that the score is temperament alone, ties are common — several pets
+   * genuinely can be an equally good fit — and distance decides between them.
+   * That is the pairing the header promises: matched on temperament, ordered
+   * by who the user can actually go and meet.
    */
   scoredDeck.sort((a, b) => {
     if (b.compatibilityScore !== a.compatibilityScore) {
       return b.compatibilityScore - a.compatibilityScore;
     }
+    // Pets we cannot place go last among equals rather than sorting as if they
+    // were at distance zero, which is what comparing against null used to do.
+    if (a.distance == null) return b.distance == null ? 0 : 1;
+    if (b.distance == null) return -1;
     return a.distance - b.distance;
   });
 

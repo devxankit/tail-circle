@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CheckCircle2, ChevronRight, Package, Grid2X2, PawPrint, Truck, ShieldCheck, X, Heart, Search, ArrowLeft, Star, Check, Plus, ShoppingBag, Eye, ShieldAlert, Sparkles, Filter, ChevronLeft, FileText, Award, ShieldPlus, ClipboardList, Mic, Loader2 } from 'lucide-react';
+import { CheckCircle2, ChevronRight, Package, Grid2X2, PawPrint, Truck, ShieldCheck, X, Heart, Search, ArrowLeft, Star, Plus, ShoppingBag, ShieldAlert, Sparkles, Award, ShieldPlus, ClipboardList, Mic, Loader2 } from 'lucide-react';
 import {
   fetchProducts,
   fetchCategories,
@@ -55,18 +55,14 @@ function resolveBannerLink(raw, fallback = null) {
   return isOperatorPath(link) ? fallback : toResult(link);
 }
 
-const getBreedSize = (breed) => {
-  if (!breed) return 'Medium';
-  if (breed.size) return breed.size;
-  const name = breed.name.toLowerCase();
-  if (name.includes('golden') || name.includes('labrador') || name.includes('german') || name.includes('husky') || name.includes('doberman') || name.includes('rottweiler') || name.includes('coon')) {
-    return 'Large';
-  }
-  if (name.includes('beagle') || name.includes('british') || (name.includes('indie') && breed.species === 'Dog')) {
-    return 'Medium';
-  }
-  return 'Small';
-};
+/*
+ * Every catalogued breed carries its own size. This used to guess from the
+ * breed name against a hardcoded list of the ten dogs and five cats the old
+ * catalog held; that list no longer describes the catalog, so guessing from it
+ * was worse than admitting we do not know. Only a breed added through admin
+ * Breed Management without a size reaches the fallback.
+ */
+const getBreedSize = (breed) => breed?.size || 'Medium';
 
 const banners = [
   { 
@@ -102,7 +98,7 @@ export function ShopList() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const initialSearch = searchParams.get('search') || '';
-  const [currentBanner, setCurrentBanner] = useState(0);
+  const [, setCurrentBanner] = useState(0);
 
   // Catalog from the API (legacy shapes preserved by the shop service)
   const [products, setProducts] = useState([]);
@@ -115,7 +111,7 @@ export function ShopList() {
       return {};
     }
   });
-  const [isBannersLoading, setIsBannersLoading] = useState(!Object.keys(shopBanners).length);
+  const [, setIsBannersLoading] = useState(!Object.keys(shopBanners).length);
 
   useEffect(() => {
     fetchProducts().then(setProducts).catch(() => setProducts([]));
@@ -138,22 +134,31 @@ export function ShopList() {
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || (initialSearch ? 'all' : 'home')); // 'home', 'breed' or 'all'
   const [breedStep, setBreedStep] = useState('breed-select'); // default to breed-select to open instantly
   const [selectedPetType, setSelectedPetType] = useState('Dog');
-  const [selectedBreed, setSelectedBreed] = useState(null);
+  // Only the id is state. The breed object is derived from `breeds` on every
+  // render, so it cannot go stale when the catalog loads or reloads — the
+  // effect that used to copy the fresh record back into state was a
+  // setState-in-effect cascade and is gone.
+  const [selectedBreedId, setSelectedBreedId] = useState(null);
   const [breedCategoryFilter, setBreedCategoryFilter] = useState('All');
   const [showBreedDetails, setShowBreedDetails] = useState(false);
   const [showNutritionPlan, setShowNutritionPlan] = useState(false);
+  const selectedBreed = breeds.find((b) => b.id === selectedBreedId) || null;
 
+  // Syncing React state from the URL, which is an external system the user can
+  // change independently (back button, a shared link). The tab is also set by
+  // taps in this screen, so it cannot simply be derived from the query string.
   useEffect(() => {
     const tab = searchParams.get('tab');
     if (tab && ['home', 'breed', 'all'].includes(tab)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveTab(tab);
     }
   }, [searchParams]);
-  
+
   // Filters
-  const [ageFilter, setAgeFilter] = useState('Adult'); // 'Puppy', 'Adult', 'Senior'
-  const [weightFilter, setWeightFilter] = useState('Medium'); // 'Small', 'Medium', 'Large'
-  const [healthFilters, setHealthFilters] = useState([]); // Array of health options
+  const [ageFilter] = useState('Adult'); // 'Puppy', 'Adult', 'Senior'
+  // Health filters have no UI to set them yet; reads below stay valid.
+  const [healthFilters] = useState([]); // Array of health options
   const [guidanceFilter, setGuidanceFilter] = useState('All'); // 'All', 'Must Have', 'Good To Have', 'Optional'
   const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [allProductsCategory, setAllProductsCategory] = useState('All');
@@ -161,9 +166,7 @@ export function ShopList() {
   const {
     isListening,
     transcript,
-    error: voiceError,
-    toggleListening,
-    setError: setVoiceError
+    toggleListening
   } = useVoiceSearch({
     onResult: (text) => {
       setSearchQuery(text);
@@ -175,14 +178,6 @@ export function ShopList() {
   useEffect(() => {
     fetchBreedsWithShopData().then(setBreeds).catch(() => setBreeds([]));
   }, []);
-
-  // Update selectedBreed object if breeds changes
-  useEffect(() => {
-    if (selectedBreed) {
-      const updated = breeds.find(b => b.id === selectedBreed.id);
-      if (updated) setSelectedBreed(updated);
-    }
-  }, [breeds, selectedBreed]);
 
   // Cart actions (server cart via the shop service)
   const [cartError, setCartError] = useState('');
@@ -238,12 +233,6 @@ export function ShopList() {
     } catch (e) {
       setCartError(e?.message || 'Could not add the bundle. Please try again.');
     }
-  };
-
-  const toggleHealthFilter = (filter) => {
-    setHealthFilters(prev => 
-      prev.includes(filter) ? prev.filter(f => f !== filter) : [...prev, filter]
-    );
   };
 
   // Auto-scroll banner
@@ -565,24 +554,30 @@ export function ShopList() {
                         <button
                           key={b.id}
                           onClick={() => {
-                            setSelectedBreed(b);
+                            setSelectedBreedId(b.id);
                             setBreedStep('breed-profile');
                             setSearchQuery('');
                           }}
                           className="bg-white rounded-2xl border border-transparent overflow-hidden shadow-sm flex flex-col h-full text-left active:scale-[0.98] transition-all cursor-pointer"
                         >
                           <div className="h-[120px] w-full bg-slate-50 relative border-b border-gray-100 flex items-center justify-center overflow-hidden">
-                            <img 
-                              src={b.image || 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&q=80&w=150'} 
-                              alt={b.name} 
-                              className="w-full h-full object-cover object-top"
-                              onError={(e) => {
-                                e.target.style.display = 'none';
-                                const fallback = e.target.parentNode.querySelector('.img-placeholder');
-                                if (fallback) fallback.classList.remove('hidden');
-                              }}
-                            />
-                            <div className="img-placeholder hidden absolute inset-0 flex flex-col items-center justify-center bg-[#FAF7F2] text-[#F87B68]">
+                            {/* No stock-photo fallback: the old one was a dog,
+                                so any cat without artwork rendered a dog on a
+                                cat card. An imageless breed goes straight to
+                                the paw-print placeholder below. */}
+                            {b.image && (
+                              <img
+                                src={b.image}
+                                alt={b.name}
+                                className="w-full h-full object-cover object-top"
+                                onError={(e) => {
+                                  e.target.style.display = 'none';
+                                  const fallback = e.target.parentNode.querySelector('.img-placeholder');
+                                  if (fallback) fallback.classList.remove('hidden');
+                                }}
+                              />
+                            )}
+                            <div className={`img-placeholder ${b.image ? 'hidden' : ''} absolute inset-0 flex flex-col items-center justify-center bg-[#FAF7F2] text-[#F87B68]`}>
                               <PawPrint size={18} />
                               <span className="text-[9px] font-black uppercase mt-1 tracking-wider">{sizeVal}</span>
                             </div>
@@ -618,17 +613,21 @@ export function ShopList() {
                 {/* Hero Section */}
                 <div className="relative w-full px-4 mb-4">
                   <div className="relative w-full h-[240px] rounded-[24px] overflow-hidden shadow-md bg-slate-800 flex items-center justify-center">
-                    <img 
-                      src={selectedBreed.image || 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&q=80&w=600'} 
-                      alt={selectedBreed.name} 
-                      className="w-full h-full object-cover object-top filter brightness-[0.75]"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                        const fallback = e.target.parentNode.querySelector('.hero-placeholder');
-                        if (fallback) fallback.classList.remove('hidden');
-                      }}
-                    />
-                    <div className="hero-placeholder hidden absolute inset-0 bg-gradient-to-br from-[#80C1BF] to-[#66B4B1] opacity-90"></div>
+                    {/* Same reason as the grid card: no stock dog photo behind
+                        an imageless breed. Falls back to the brand gradient. */}
+                    {selectedBreed.image && (
+                      <img
+                        src={selectedBreed.image}
+                        alt={selectedBreed.name}
+                        className="w-full h-full object-cover object-top filter brightness-[0.75]"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          const fallback = e.target.parentNode.querySelector('.hero-placeholder');
+                          if (fallback) fallback.classList.remove('hidden');
+                        }}
+                      />
+                    )}
+                    <div className={`hero-placeholder ${selectedBreed.image ? 'hidden' : ''} absolute inset-0 bg-gradient-to-br from-[#80C1BF] to-[#66B4B1] opacity-90`}></div>
                     
                     {/* Gradient Overlay & Breed Info */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent flex flex-col justify-end p-5 z-10">
@@ -958,37 +957,58 @@ export function ShopList() {
                         <p className="text-gray-500 text-[10.5px] font-medium leading-relaxed">{selectedBreed.description}</p>
                       </div>
 
-                      {/* Needs summary */}
+                      {/* Needs summary — every tile is optional. A breed added
+                          through admin Breed Management can arrive with a
+                          partial summary or none at all, so nothing here may
+                          assume a field exists. */}
+                      {Object.keys(selectedBreed.summary || {}).length > 0 && (
                       <div className="bg-white p-3 rounded-xl border border-transparent shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
                         <h4 className="font-extrabold text-[12px] text-gray-900 mb-2">Breed Summary & Needs</h4>
                         <div className="grid grid-cols-2 gap-2.5">
+                          {selectedBreed.summary.weightRange && (
                           <div className="bg-gray-50 p-2 rounded-lg">
                             <p className="text-[8px] text-gray-450 font-extrabold uppercase">Weight Range</p>
                             <p className="text-[10.5px] font-bold text-gray-750 mt-0.5">{selectedBreed.summary.weightRange}</p>
                           </div>
+                          )}
+                          {selectedBreed.summary.energyLevel && (
                           <div className="bg-gray-50 p-2 rounded-lg">
                             <p className="text-[8px] text-gray-455 font-extrabold uppercase">Energy Level</p>
                             <p className="text-[10.5px] font-bold text-gray-750 mt-0.5">{selectedBreed.summary.energyLevel}</p>
                           </div>
+                          )}
+                          {selectedBreed.summary.lifeSpan && (
                           <div className="bg-gray-50 p-2 rounded-lg">
                             <p className="text-[8px] text-gray-455 font-extrabold uppercase">Life Span</p>
                             <p className="text-[10.5px] font-bold text-gray-750 mt-0.5">{selectedBreed.summary.lifeSpan}</p>
                           </div>
+                          )}
+                          {Number(selectedBreed.summary.monthlyCost) > 0 && (
                           <div className="bg-gray-50 p-2 rounded-lg">
                             <p className="text-[8px] text-gray-460 font-extrabold uppercase">Est. Monthly Cost</p>
-                            <p className="text-[10.5px] font-black text-[#66B4B1] mt-0.5">₹{selectedBreed.summary.monthlyCost.toLocaleString('en-IN')}</p>
+                            <p className="text-[10.5px] font-black text-[#66B4B1] mt-0.5">₹{Number(selectedBreed.summary.monthlyCost).toLocaleString('en-IN')}</p>
                           </div>
+                          )}
+                          {selectedBreed.summary.foodRequirement && (
                           <div className="bg-gray-50 p-2 rounded-lg col-span-2">
                             <p className="text-[8px] text-gray-460 font-extrabold uppercase">Food Requirement</p>
                             <p className="text-[10px] font-medium text-gray-600 mt-0.5 leading-snug">{selectedBreed.summary.foodRequirement}</p>
                           </div>
+                          )}
+                          {(selectedBreed.summary.groomingRequirement || selectedBreed.summary.exerciseRequirement) && (
                           <div className="bg-gray-50 p-2 rounded-lg col-span-2">
                             <p className="text-[8px] text-gray-460 font-extrabold uppercase">Grooming & Exercise</p>
-                            <p className="text-[10px] font-medium text-gray-600 mt-0.5 leading-snug">💇 {selectedBreed.summary.groomingRequirement}</p>
-                            <p className="text-[10px] font-medium text-gray-600 mt-1 leading-snug">🏃 {selectedBreed.summary.exerciseRequirement}</p>
+                            {selectedBreed.summary.groomingRequirement && (
+                              <p className="text-[10px] font-medium text-gray-600 mt-0.5 leading-snug">💇 {selectedBreed.summary.groomingRequirement}</p>
+                            )}
+                            {selectedBreed.summary.exerciseRequirement && (
+                              <p className="text-[10px] font-medium text-gray-600 mt-1 leading-snug">🏃 {selectedBreed.summary.exerciseRequirement}</p>
+                            )}
                           </div>
+                          )}
                         </div>
                       </div>
+                      )}
 
                       {/* Bundle Section */}
                       {selectedBreed.monthlyBundle && selectedBreed.monthlyBundle.productIds && selectedBreed.monthlyBundle.productIds.length > 0 && (

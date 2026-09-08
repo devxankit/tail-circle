@@ -30,6 +30,19 @@ const petFields = {
     })
     .passthrough(),
   isMatchProfile: z.boolean(),
+  /*
+   * Usually the owner's, and inherited from them when absent — but a pet can
+   * live somewhere else (a boarding stay, a second home), so it is stored per
+   * pet rather than read through to the account on every query.
+   */
+  city: z.string().trim().max(80),
+  state: z.string().trim().max(80),
+  location: z
+    .object({
+      lat: z.coerce.number().min(-90).max(90),
+      lng: z.coerce.number().min(-180).max(180),
+    })
+    .strict(),
   activityLevel: z.string().trim().max(60).nullable().optional(),
   size: z.string().trim().max(60).nullable().optional(),
 };

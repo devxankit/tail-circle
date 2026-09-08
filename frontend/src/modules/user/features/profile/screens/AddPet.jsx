@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ChevronLeft, Camera, CheckCircle, Info, X, Trash2, ImageIcon, Sparkles, Eye } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { fetchMyPets, createPet, updatePet, deletePet, uploadPetPhotos, fetchBreeds, fetchBehaviourOptions, toLegacyPet } from '../../../../../services/pets';
+import { LocationField } from '../../../../../components/common/LocationField';
+import { getSavedLocation, saveMyLocation, toPlace } from '../../../../../services/location';
 import { cn } from '../../../utils/cn';
 import { IdealProfileModal } from '../../../../../components/common/IdealProfileModal';
 
@@ -17,7 +19,14 @@ const SIZES = ['Small', 'Medium', 'Large'];
 const ACTIVITY_LEVELS = ['Low', 'Medium', 'High'];
 const MOODS = ['Happy 😊', 'Playful 🥎', 'Sleepy 💤', 'Energetic ⚡', 'Calm 🧘', 'Cuddly 🧸', 'Curious 🔍'];
 const PURPOSES = ['Playdate', 'Friendship', 'Walking Partner', 'Training Partner', 'Breeding', 'Adoption'];
-const DEFAULT_BEHAVIOURS = ['Friendly', 'Playful', 'Calm', 'Active', 'Protective', 'Social', 'Shy'];
+/* Fallback only — the live list is `GET /pets/behaviours`, the same taxonomy
+   the match engine scores against. */
+const DEFAULT_BEHAVIOURS = [
+  'Friendly', 'Calm', 'Gentle', 'Playful', 'Energetic', 'Curious',
+  'Confident', 'Shy', 'Easy-going', 'Affectionate', 'Independent',
+  'Sensitive', 'Cautious', 'Adaptable', 'Excitable', 'Reserved',
+  'Aggressive',
+];
 const MAX_PHOTOS = 6;
 
 export function AddPet() {
@@ -44,6 +53,12 @@ export function AddPet() {
   const [bio, setBio] = useState('');
   const [mood, setMood] = useState('Happy 😊');
   const [purpose, setPurpose] = useState('Playdate');
+  /*
+   * Defaults to where the owner lives, which is right for almost every pet.
+   * Stored per pet rather than read through to the account, so someone with a
+   * pet boarded in another city can say so.
+   */
+  const [location, setLocation] = useState(() => getSavedLocation());
   const [temperament, setTemperament] = useState([]);
   const [behaviourOptions, setBehaviourOptions] = useState(DEFAULT_BEHAVIOURS);
 
@@ -115,6 +130,8 @@ export function AddPet() {
             setTemperament(legacy.behaviours || []);
             setAvatarPreview(legacy.image || null);
             setExistingPhotos(legacy.mediaGallery || []);
+            const saved = toPlace({ ...found.location, name: found.city, state: found.state });
+            if (saved) setLocation(saved);
           }
         })
         .catch(() => {});
@@ -190,6 +207,8 @@ export function AddPet() {
         purpose,
         temperament,
         isMatchProfile: true,
+        ...(location ? { location: { lat: location.lat, lng: location.lng }, city: location.name } : {}),
+        ...(location?.state ? { state: location.state } : {}),
       };
 
       let savedPetId = petId;
@@ -198,6 +217,7 @@ export function AddPet() {
       } else {
         const created = await createPet(petData);
         savedPetId = created._id;
+        if (location && !getSavedLocation()) await saveMyLocation(location).catch(() => {});
       }
 
       // Handle photo uploads
@@ -670,6 +690,15 @@ export function AddPet() {
               })}
             </div>
           </div>
+
+          {/* Where this pet is. The deck measures every distance from it, so a
+              pet without one cannot be shown as near anybody. */}
+          <LocationField
+            value={location}
+            onChange={setLocation}
+            label="Pet's location"
+            hint="Defaults to your own. Change it if this pet lives somewhere else."
+          />
 
           {/* Purpose / Looking For */}
           <div>

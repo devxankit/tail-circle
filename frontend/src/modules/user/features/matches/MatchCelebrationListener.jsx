@@ -33,8 +33,6 @@ export function MatchCelebrationListener() {
         profileName: payload.profileName,
         profileImage: payload.profileImage,
         conversationId: convId,
-        matchPoints: payload.matchPoints,
-        maxMatchPoints: payload.maxMatchPoints,
         behaviourMatch: payload.behaviourMatch,
         myPetImage: payload.myPet?.image || null,
       });

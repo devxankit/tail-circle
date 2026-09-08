@@ -9,6 +9,18 @@ export const updateMeSchema = z
     gender: z.enum(['male', 'female', 'other']),
     dob: z.coerce.date().max(new Date(), 'Date of birth must be in the past'),
     city: z.string().trim().min(2).max(80),
+    state: z.string().trim().max(80),
+    /*
+     * Where this user is. Pets inherit it, and the match deck measures from it
+     * when the browser will not give live coordinates — so it is captured at
+     * onboarding rather than left for a settings screen nobody visits.
+     */
+    location: z
+      .object({
+        lat: z.coerce.number().min(-90).max(90),
+        lng: z.coerce.number().min(-180).max(180),
+      })
+      .strict(),
     notificationPrefs: z
       .object({
         push: z.boolean().optional(),

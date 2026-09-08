@@ -2,7 +2,6 @@ import React from 'react';
 import { X, Sparkles, Heart, MessageCircle, CalendarDays, Scissors, ChevronRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '../../utils/cn';
-import { MatchPointsMeter } from './MatchPoints';
 import { BehaviourCompatibility } from './BehaviourCompatibility';
 import { goToEvents, goToGrooming } from './meetupSuggestions';
 
@@ -86,17 +85,9 @@ export function MatchCelebrationModal({ match, myPetImage, onClose, onMessage })
             </div>
           </div>
 
-          {/* The rating the two of them actually matched on. */}
-          {match.matchPoints != null && (
-            <div className="w-full max-w-[200px] mb-4">
-              <MatchPointsMeter points={match.matchPoints} maxPoints={match.maxMatchPoints || 5} />
-              <p className="text-[11px] font-bold text-slate-400 text-center mt-1.5">compatibility</p>
-            </div>
-          )}
-
-          {/* How the two temperaments actually sit together. A match between a
-              shy pet and a reactive one should not read the same as a match
-              between two friendly ones, and this is where that is said. */}
+          {/* How the two temperaments sit together — which is the whole of
+              compatibility now, so the points meter that used to sit above this
+              was the same number said twice, half an inch apart. */}
           <BehaviourCompatibility behaviour={match.behaviourMatch} className="mb-5" />
 
           {/* ── the reason this modal exists ─────────────── */}

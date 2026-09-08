@@ -7,6 +7,7 @@
  */
 import mongoose from 'mongoose';
 import { env } from '../src/config/env.js';
+import { connectRedis, disconnectRedis, waitForRedisReady } from '../src/config/redis.js';
 import { logger } from '../src/utils/logger.js';
 
 /** name → async ({ logger }) => summary string */
@@ -54,6 +55,16 @@ async function main() {
   await mongoose.connect(env.mongoUri);
   logger.info(`Connected to ${mongoose.connection.name}`);
 
+  // The Redis client is lazyConnect, so without this a seeder's cache
+  // invalidation is a silent no-op and the API keeps serving the pre-seed
+  // response until its TTL expires. Optional: seeding still works without it.
+  await connectRedis();
+  try {
+    await waitForRedisReady(3000);
+  } catch {
+    logger.warn('Redis not ready — cached API responses will expire on their own TTL');
+  }
+
   for (const name of toRun) {
     const fn = seeders.get(name);
     if (!fn) {
@@ -65,6 +76,7 @@ async function main() {
   }
 
   await mongoose.disconnect();
+  await disconnectRedis();
 }
 
 main().catch((err) => {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { X, Heart, MapPin, MoreHorizontal, Sparkles, User, Info, Camera } from 'lucide-react';
-import { MatchPointsBreakdown } from '../../modules/user/features/matches/MatchPoints';
+import { BehaviourCompatibility } from '../../modules/user/features/matches/BehaviourCompatibility';
 import { cn } from '../../modules/user/utils/cn';
 
 // Static, permanent ideal pet profile constant for Luna.
@@ -17,20 +17,15 @@ export const IDEAL_PET_LUNA = {
   activityLevel: 'High Energy',
   vaccinationStatus: 'Up to date',
   neutered: 'Spayed',
-  matchPoints: 4.8,
-  maxMatchPoints: 5,
+  temperament: ['Friendly', 'Playful', 'Curious'],
   tags: ['Vaccinated', 'High Energy', 'Talkative'],
-  matchFactors: [
-    { key: 'energy', label: 'Energy level', value: 1.0, known: true, display: '100%' },
-    { key: 'age', label: 'Age', value: 0.9, known: true, display: '1 yr apart' },
-    { key: 'purpose', label: 'Looking for', value: 1.0, known: true, display: '100%' },
-    { key: 'size', label: 'Size', value: 1.0, known: true, display: '100%' },
-    { key: 'vaccine', label: 'Vaccination', value: 1.0, known: true, display: '100%' },
-    { key: 'nearby', label: 'Nearby', value: 0.92, known: true, display: '15.9 km' },
-    { key: 'breed', label: 'Breed', value: 0.85, known: true, display: '85%' },
-    { key: 'behaviour', label: 'Behaviour', value: 0.95, known: true, display: '95%' }
-  ],
-  matchConfidence: 'high',
+  // This modal is the reference for what a finished profile card looks like, so
+  // it carries the same shape the deck gets from `behaviourCompatibility()`.
+  behaviourMatch: {
+    value: 0.95,
+    level: 'High',
+    shared: ['Friendly', 'Playful', 'Curious'],
+  },
   prompts: [
     {
       question: 'A SHOWER THOUGHT I RECENTLY HAD',
@@ -135,14 +130,9 @@ export function IdealProfileModal({ isOpen, onClose }) {
             </div>
           </div>
 
-          {/* Match Compatibility Breakdown Component */}
+          {/* Temperament compatibility — the card's one compatibility control */}
           <div>
-            <MatchPointsBreakdown
-              points={profile.matchPoints}
-              maxPoints={profile.maxMatchPoints}
-              factors={profile.matchFactors}
-              confidence={profile.matchConfidence}
-            />
+            <BehaviourCompatibility behaviour={profile.behaviourMatch} />
           </div>
 
           {/* Prompt 1 */}

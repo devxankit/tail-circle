@@ -23,7 +23,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../../services/api';
 import { getStoredUser, fetchMe, logout } from '../../../../services/auth';
-import { fetchMyPets, updatePet, deletePet, toLegacyPet } from '../../../../services/pets';
+import { fetchMyPets, updatePet, deletePet, toLegacyPet, fetchBehaviourOptions } from '../../../../services/pets';
 import { fetchWallet } from '../../../../services/wallet';
 import { fetchEntitlement } from '../../../../services/subscriptions';
 
@@ -58,6 +58,15 @@ export function Profile() {
   const [editPetForm, setEditPetForm] = useState({});
   const [petToDelete, setPetToDelete] = useState(null);
   const [isDeletingPet, setIsDeletingPet] = useState(false);
+  /* Fallback only — replaced by `GET /pets/behaviours` below. This screen used
+     to hold its own seven-chip list, which meant a pet edited here could be
+     given a trait the match engine had never heard of. */
+  const [behaviourOptions, setBehaviourOptions] = useState([
+    'Friendly', 'Calm', 'Gentle', 'Playful', 'Energetic', 'Curious',
+    'Confident', 'Shy', 'Easy-going', 'Affectionate', 'Independent',
+    'Sensitive', 'Cautious', 'Adaptable', 'Excitable', 'Reserved',
+    'Aggressive',
+  ]);
 
   useEffect(() => {
     // Load profile from the API (cached copy first for instant paint)
@@ -72,6 +81,12 @@ export function Profile() {
     };
     applyUser(getStoredUser());
     fetchMe().then(applyUser).catch(() => {});
+
+    fetchBehaviourOptions()
+      .then((opts) => {
+        if (Array.isArray(opts) && opts.length) setBehaviourOptions(opts);
+      })
+      .catch(() => {});
 
     // Load stats & notifications from API
     api.get('/users/me/stats')
@@ -608,7 +623,7 @@ export function Profile() {
                     </span>
                   </p>
                   <div className="flex flex-wrap gap-1.5">
-                    {['Friendly', 'Playful', 'Calm', 'Active', 'Protective', 'Social', 'Shy'].map(tag => {
+                    {behaviourOptions.map(tag => {
                       const isSel = (editPetForm.temperament || []).includes(tag);
                       return (
                         <button

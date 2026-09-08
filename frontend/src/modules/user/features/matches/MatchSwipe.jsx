@@ -6,13 +6,12 @@ import { fetchMatchDeck, swipeProfile, fetchMatches, reportProfile, resetMatches
 import { MatchesFilterModal } from './MatchesFilterModal';
 import { ReportModal } from '../../../../components/common/ReportModal';
 import { CitySelectorModal } from './CitySelectorModal';
-import { MatchPointsBreakdown } from './MatchPoints';
 import { MatchCelebrationModal } from './MatchCelebrationModal';
-import { BehaviourCompatibilityChip } from './BehaviourCompatibility';
+import { BehaviourCompatibility } from './BehaviourCompatibility';
 import { markCelebrated } from './matchCelebrations';
 import { LikeLimitSheet } from '../subscription/LikeLimitSheet';
-import { LikeQuotaPill } from '../subscription/LikeQuotaPill';
 import { isLikeLimitError, entitlementFromError, fetchEntitlement } from '../../../../services/subscriptions';
+import { getSavedLocation } from '../../../../services/location';
 
 const DEFAULT_FILTERS = {
   type: 'Any',
@@ -35,8 +34,17 @@ export function MatchSwipe({ setView }) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Discover');
 
-  // Location / City selector state
-  const [selectedCity, setSelectedCity] = useState({ name: 'Delhi NCR', lat: 28.6139, lng: 77.2090 });
+  /*
+   * Location / City selector state.
+   *
+   * Seeded from the location saved on the account at onboarding rather than a
+   * hardcoded Delhi, which was wrong for every user who does not live there and
+   * became the city the first deck request was filtered by.
+   */
+  const [selectedCity, setSelectedCity] = useState(() => {
+    const saved = getSavedLocation();
+    return saved ? { name: saved.name, lat: saved.lat, lng: saved.lng } : null;
+  });
   const [isCityModalOpen, setIsCityModalOpen] = useState(false);
 
   // Filters state & modal toggle
@@ -95,6 +103,24 @@ export function MatchSwipe({ setView }) {
   const [userCoords, setUserCoords] = useState(null);
   const scrollRef = useRef(null);
 
+  /*
+   * The location bar hides as you read down a profile and comes back the moment
+   * you scroll up — the city is worth a glance when you arrive at a card, not a
+   * permanent strip across a screen that is mostly photograph.
+   */
+  const [isLocationBarVisible, setIsLocationBarVisible] = useState(true);
+  const lastScrollTop = useRef(0);
+
+  const handleDeckScroll = (e) => {
+    const top = e.currentTarget.scrollTop;
+    const delta = top - lastScrollTop.current;
+    // A dead zone, so a thumb resting on the screen does not flicker it.
+    if (Math.abs(delta) < 6) return;
+    // Always visible at the top, whatever direction the last twitch was.
+    setIsLocationBarVisible(top <= 8 || delta < 0);
+    lastScrollTop.current = top;
+  };
+
   const loadDeck = (activeFilters = filters, showLoading = false, targetCity = null) => {
     if (showLoading) {
       setIsLoadingDeck(true);
@@ -145,6 +171,17 @@ export function MatchSwipe({ setView }) {
     }
   };
 
+  /*
+   * Every one of these paths must hand `loadDeck` the city explicitly.
+   *
+   * `setSelectedCity(x)` does not change `selectedCity` for the rest of this
+   * tick, so a `loadDeck()` called straight after it read the *previous* value
+   * — on mount, the hardcoded default. The deck was then requested as
+   * "city: Delhi NCR" carrying the real city's coordinates, and the server
+   * answered with whatever matched either, which is why a refresh after
+   * switching city led with pets from somewhere else. Switching city always
+   * worked because that handler already passed the city through.
+   */
   useEffect(() => {
     try {
       const cachedCity = sessionStorage.getItem('tc_user_gps_city');
@@ -153,7 +190,7 @@ export function MatchSwipe({ setView }) {
         if (parsed?.name && parsed?.lat && parsed?.lng) {
           setSelectedCity(parsed);
           setUserCoords({ lat: parsed.lat, lng: parsed.lng });
-          loadDeck({ ...filters, lat: parsed.lat, lng: parsed.lng });
+          loadDeck({ ...filters, lat: parsed.lat, lng: parsed.lng }, false, parsed);
           fetchMatches().then(setRealMatches).catch(() => setRealMatches([]));
           return;
         }
@@ -173,12 +210,12 @@ export function MatchSwipe({ setView }) {
             try {
               sessionStorage.setItem('tc_user_gps_city', JSON.stringify(cityObj));
             } catch {}
-            loadDeck({ ...filters, lat, lng });
+            loadDeck({ ...filters, lat, lng }, false, cityObj);
           } catch {
             const fallbackCity = { name: 'Current Location', lat, lng, isGps: true };
             setSelectedCity(fallbackCity);
             setUserCoords({ lat, lng });
-            loadDeck({ ...filters, lat, lng });
+            loadDeck({ ...filters, lat, lng }, false, fallbackCity);
           }
         },
         () => {
@@ -228,10 +265,6 @@ export function MatchSwipe({ setView }) {
           profileName: res.profileName || targetProfile.name,
           profileImage: res.profileImage || targetProfile.img || targetProfile.photos?.[0],
           conversationId: res.conversationId,
-          // The swipe response already carries the pair's rating; the modal's
-          // compatibility meter was rendering off a field nobody ever set.
-          matchPoints: res.matchPoints,
-          maxMatchPoints: res.maxMatchPoints,
           behaviourMatch: res.behaviourMatch,
           // Which of my pets this match is actually for. The client used to
           // fetch my pets and take the first, which for a two-pet owner is a
@@ -263,6 +296,9 @@ export function MatchSwipe({ setView }) {
       if (scrollRef.current) {
         scrollRef.current.scrollTop = 0;
       }
+      // A new card starts at the top, so the bar comes back with it.
+      lastScrollTop.current = 0;
+      setIsLocationBarVisible(true);
     }, 400);
   };
 
@@ -386,7 +422,8 @@ export function MatchSwipe({ setView }) {
         />
       )}
 
-      {/* Out-of-likes paywall. Also opened by tapping the counter. */}
+      {/* Out-of-likes paywall. Opens the moment a like is refused for want
+          of allowance — the deck no longer counts down to it in the header. */}
       <LikeLimitSheet
         open={isPaywallOpen}
         entitlement={entitlement}
@@ -443,8 +480,13 @@ export function MatchSwipe({ setView }) {
 
       {/* City Location Switcher Bar */}
       {activeTab === 'Discover' && (
-        <div className="flex items-center justify-between px-5 py-2 bg-[#e8e4db]/70 border-y border-[#dcd7cc] text-xs font-bold text-slate-700 shadow-2xs">
-          <div className="flex items-center gap-2">
+        <div
+          className={cn(
+            'overflow-hidden shrink-0 transition-all duration-300 ease-out',
+            isLocationBarVisible ? 'max-h-12 opacity-100' : 'max-h-0 opacity-0'
+          )}
+        >
+          <div className="flex items-center gap-2 px-5 py-2 bg-[#e8e4db]/70 border-y border-[#dcd7cc] text-xs font-bold text-slate-700 shadow-2xs">
             <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Location:</span>
             <button
               onClick={() => setIsCityModalOpen(true)}
@@ -454,14 +496,6 @@ export function MatchSwipe({ setView }) {
               <span className="font-black text-slate-900">{selectedCity?.name || 'Select City'}</span>
               <ChevronDown size={13} className="text-slate-400" />
             </button>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="hidden xs:inline text-[10px] font-bold text-slate-500 bg-white/60 px-2 py-0.5 rounded-full border border-slate-200/50">
-              Nearest first
-            </span>
-            {/* Tapping the counter opens the same sheet the limit does, so a
-                user can upgrade before they run out rather than only after. */}
-            <LikeQuotaPill entitlement={entitlement} onClick={() => setIsPaywallOpen(true)} />
           </div>
         </div>
       )}
@@ -574,6 +608,7 @@ export function MatchSwipe({ setView }) {
         ) : (
           <div 
             ref={scrollRef}
+            onScroll={handleDeckScroll}
             onTouchStart={onTouchStart}
             onTouchMove={onTouchMove}
             onTouchEnd={onTouchEndEvent}
@@ -610,7 +645,14 @@ export function MatchSwipe({ setView }) {
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-5 pt-12">
                     <div className="flex items-center text-white/90 text-sm font-bold gap-1 mb-1">
                       <MapPin size={14} />
-                      <span>{currentProfile.distance} km away</span>
+                      {/* Null when either pet has no location recorded. The
+                          server used to invent a number here rather than admit
+                          that, so every card claimed a precise distance. */}
+                      <span>
+                        {currentProfile.distance != null
+                          ? `${currentProfile.distance} km away`
+                          : currentProfile.city || 'Location not shared'}
+                      </span>
                     </div>
                     <div className="flex flex-wrap gap-2 mt-2">
                       {currentProfile.tags && currentProfile.tags.map(tag => (
@@ -633,24 +675,11 @@ export function MatchSwipe({ setView }) {
               </div>
 
               {/* Sits directly under the first photo: the pet is seen first,
-                  then how well they suit you — and the strip's own card echoes
+                  then how well they suit you — and the panel's own card echoes
                   the photo's rounded block, so the two read as one unit. */}
-              {currentProfile.matchPoints != null && (
+              {currentProfile.behaviourMatch && (
                 <div className="px-4 mb-4 -mt-1">
-                  <MatchPointsBreakdown
-                    points={currentProfile.matchPoints}
-                    maxPoints={currentProfile.maxMatchPoints || 5}
-                    factors={currentProfile.matchFactors || []}
-                    confidence={currentProfile.matchConfidence}
-                  />
-                  {/* Only the levels that ask something of the owner. A chip on
-                      every card saying "High" would be wallpaper; a warning
-                      before the swipe is worth more than one after it. */}
-                  {['Moderate', 'Caution'].includes(currentProfile.behaviourMatch?.level) && (
-                    <div className="mt-2">
-                      <BehaviourCompatibilityChip behaviour={currentProfile.behaviourMatch} />
-                    </div>
-                  )}
+                  <BehaviourCompatibility behaviour={currentProfile.behaviourMatch} />
                 </div>
               )}
 

@@ -85,13 +85,16 @@ export function toLegacyBreed(b) {
   };
 }
 
-/** Full breed catalog including shop recommendation data (per-breed detail). */
+/**
+ * Full breed catalog including shop recommendation data.
+ *
+ * One request. This used to fetch the list and then follow up with a detail
+ * call per breed, which was 15 round trips against the old catalog and over a
+ * hundred against the current one — enough to stall the screen on open.
+ */
 export async function fetchBreedsWithShopData() {
-  const { data } = await api.get('/breeds');
-  const details = await Promise.all(
-    data.map((b) => api.get(`/breeds/${b.slug}`).then((r) => r.data).catch(() => b))
-  );
-  return details.map(toLegacyBreed);
+  const { data } = await api.get('/breeds', { params: { withShopData: 1 } });
+  return data.map(toLegacyBreed);
 }
 
 /* ── cart (server-authoritative, localStorage mirror) ──── */
