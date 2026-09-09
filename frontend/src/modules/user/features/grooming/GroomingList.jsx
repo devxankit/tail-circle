@@ -2,7 +2,19 @@ import React, { useState, useEffect } from 'react';
 import { Search, MapPin, CheckCircle2, Star, ArrowLeft, Mic, X, Loader2 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getGroomingShops } from '../../../../services/groomingApi';
+import { fetchPublicBanners } from '../../../../services/admin';
 import { useVoiceSearch } from '../../../../hooks/useVoiceSearch';
+
+/* USP strip shown under the hero banner. Mirrors the Daycare listing's
+   TOP_BADGES so both services read as one Tail Circle ecosystem. */
+const GROOMING_BADGES = [
+  { title: 'Professional Groomers', desc: 'Trained & Experienced', emoji: '✂️', tone: 'bg-emerald-50' },
+  { title: 'Breed-Specific Care', desc: 'Grooming for Every Breed', emoji: '🐾', tone: 'bg-violet-50' },
+  { title: 'Safe & Hygienic', desc: 'Clean & Sanitised', emoji: '🧼', tone: 'bg-sky-50' },
+  { title: 'Pet-Safe Products', desc: 'Premium & Gentle', emoji: '🧴', tone: 'bg-amber-50' },
+  { title: 'Gentle Handling', desc: 'Stress-Free Grooming', emoji: '❤️', tone: 'bg-rose-50' },
+  { title: 'Dog & Cat Specialists', desc: 'Experts for Both', emoji: '🐶', tone: 'bg-teal-50' },
+];
 
 export function GroomingList() {
   const navigate = useNavigate();
@@ -10,6 +22,14 @@ export function GroomingList() {
   const [shops, setShops] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState(searchParams.get('search') || '');
+  const [customBanner, setCustomBanner] = useState('');
+
+  // Load the admin-managed grooming banner from the API.
+  useEffect(() => {
+    fetchPublicBanners()
+      .then((rows) => setCustomBanner((rows || []).find((b) => b.key === 'grooming')?.image || ''))
+      .catch(() => setCustomBanner(''));
+  }, []);
 
   const {
     isListening,
@@ -109,7 +129,38 @@ export function GroomingList() {
         </div>
       </div>
 
-      <div className="px-4 pb-4">
+      {/* Dynamic Grooming Banner. shrink-0 because the page root is a column
+          flex container — without it the banner and the badges below are
+          squashed once the shop list overflows. */}
+      <div className="px-4 mb-4 shrink-0">
+        <div className="w-full rounded-[20px] overflow-hidden shadow-sm border border-gray-100/50">
+          <img
+            src={customBanner || '/assets/banners/banner_grooming_wide.svg'}
+            alt="Grooming Promo Banner"
+            className="w-full h-auto block"
+          />
+        </div>
+      </div>
+
+      {/* Top Badges (Horizontal scroll) */}
+      <div className="flex gap-2.5 overflow-x-auto hide-scrollbar px-4 mb-4 pb-1 shrink-0">
+        {GROOMING_BADGES.map((badge, idx) => (
+          <div
+            key={idx}
+            className="flex items-center gap-2.5 p-2.5 bg-white border border-gray-100 rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.02)] shrink-0 min-w-[160px]"
+          >
+            <div className={`w-8 h-8 rounded-full ${badge.tone} flex items-center justify-center shrink-0`}>
+              <span className="text-[14px] leading-none">{badge.emoji}</span>
+            </div>
+            <div className="min-w-0">
+              <h4 className="font-bold text-[12px] text-gray-800 leading-tight truncate">{badge.title}</h4>
+              <p className="text-[9.5px] font-medium text-gray-400 mt-0.5 whitespace-nowrap">{badge.desc}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="px-4 pb-4 shrink-0">
         {!loading && (
           <h2 className="text-[15px] font-bold text-gray-800 mb-4">
             {filteredShops.length} grooming studios available

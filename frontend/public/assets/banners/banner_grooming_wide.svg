@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 300" width="960" height="300" role="img" aria-label="Tail Circle grooming studios">
+  <defs>
+    <linearGradient id="cream" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFDF8"/>
+      <stop offset="1" stop-color="#F3EDE2"/>
+    </linearGradient>
+    <linearGradient id="teal" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#80C1BF"/>
+      <stop offset="1" stop-color="#4F918E"/>
+    </linearGradient>
+    <clipPath id="frame"><rect width="960" height="300" rx="26"/></clipPath>
+    <clipPath id="panel"><path d="M596 0 H960 V300 H520 C592 232 556 92 596 0 Z"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#frame)">
+    <rect width="960" height="300" fill="url(#cream)"/>
+
+    <!-- soft decorative paw prints on the cream field -->
+    <g fill="#66B4B1" opacity="0.10">
+      <g transform="translate(392 44) scale(0.75)">
+        <ellipse cx="0" cy="10" rx="13" ry="10"/><circle cx="-14" cy="-6" r="5"/><circle cx="-5" cy="-13" r="5"/><circle cx="5" cy="-13" r="5"/><circle cx="14" cy="-6" r="5"/>
+      </g>
+      <g transform="translate(60 250) scale(0.6)">
+        <ellipse cx="0" cy="10" rx="13" ry="10"/><circle cx="-14" cy="-6" r="5"/><circle cx="-5" cy="-13" r="5"/><circle cx="5" cy="-13" r="5"/><circle cx="14" cy="-6" r="5"/>
+      </g>
+    </g>
+
+    <!-- right illustration panel -->
+    <g clip-path="url(#panel)">
+      <rect x="500" width="460" height="300" fill="url(#teal)"/>
+      <circle cx="905" cy="34" r="120" fill="#FFFFFF" opacity="0.10"/>
+      <circle cx="612" cy="272" r="86" fill="#FFFFFF" opacity="0.08"/>
+
+      <!-- floating soap bubbles -->
+      <g fill="#FFFFFF">
+        <circle cx="646" cy="70" r="13" opacity="0.42"/>
+        <circle cx="900" cy="118" r="10" opacity="0.34"/>
+        <circle cx="676" cy="150" r="7" opacity="0.30"/>
+        <circle cx="868" cy="52" r="7" opacity="0.28"/>
+        <circle cx="922" cy="212" r="14" opacity="0.24"/>
+      </g>
+
+      <!-- dog in a bubble bath -->
+      <g transform="translate(782 168)">
+        <ellipse cx="0" cy="96" rx="132" ry="34" fill="#2C5753" opacity="0.18"/>
+        <!-- ears -->
+        <ellipse cx="-72" cy="6" rx="24" ry="44" fill="#F2E6D2" transform="rotate(-14 -72 6)"/>
+        <ellipse cx="72" cy="6" rx="24" ry="44" fill="#F2E6D2" transform="rotate(14 72 6)"/>
+        <!-- head -->
+        <circle cx="0" cy="0" r="62" fill="#FFF8EC"/>
+        <!-- foam cap -->
+        <g fill="#FFFFFF">
+          <circle cx="-30" cy="-52" r="21"/><circle cx="0" cy="-64" r="25"/><circle cx="30" cy="-52" r="21"/><circle cx="-52" cy="-34" r="15"/><circle cx="52" cy="-34" r="15"/>
+        </g>
+        <!-- face -->
+        <circle cx="-21" cy="-4" r="6.5" fill="#3A3330"/>
+        <circle cx="21" cy="-4" r="6.5" fill="#3A3330"/>
+        <ellipse cx="0" cy="17" rx="10" ry="7.5" fill="#3A3330"/>
+        <path d="M0 25 v7 M0 32 q-11 9 -20 1 M0 32 q11 9 20 1" stroke="#3A3330" stroke-width="3.4" fill="none" stroke-linecap="round"/>
+        <!-- tub rim -->
+        <path d="M-124 62 h248 a16 16 0 0 1 -16 16 h-216 a16 16 0 0 1 -16 -16 Z" fill="#FFFFFF"/>
+        <!-- paws over the rim -->
+        <ellipse cx="-58" cy="60" rx="17" ry="12" fill="#FFF8EC"/>
+        <ellipse cx="58" cy="60" rx="17" ry="12" fill="#FFF8EC"/>
+      </g>
+    </g>
+
+    <!-- brand mark -->
+    <g transform="translate(48 40)">
+      <circle cx="11" cy="11" r="11" fill="#66B4B1"/>
+      <g fill="#FFFFFF" transform="translate(11 12) scale(0.42)">
+        <ellipse cx="0" cy="9" rx="12" ry="9"/><circle cx="-13" cy="-6" r="4.6"/><circle cx="-4.5" cy="-12" r="4.6"/><circle cx="4.5" cy="-12" r="4.6"/><circle cx="13" cy="-6" r="4.6"/>
+      </g>
+      <text x="30" y="16" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="17" font-weight="700" fill="#2C5753" letter-spacing="2.4">TAIL CIRCLE</text>
+    </g>
+
+    <!-- headline -->
+    <text x="48" y="126" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="46" font-weight="800" fill="#2C5753" letter-spacing="-0.8">Grooming</text>
+    <text x="48" y="176" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="46" font-weight="800" fill="#F87B68" letter-spacing="-0.8">They&#8217;ll Love!</text>
+
+    <text x="48" y="208" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="19" font-weight="500" fill="#6B6B6B">Expert care for a happy, healthy coat.</text>
+
+    <!-- feature pills -->
+    <g font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="16" font-weight="700" fill="#2C5753">
+      <g transform="translate(48 232)">
+        <rect width="150" height="38" rx="19" fill="#FFFFFF" opacity="0.92"/>
+        <circle cx="23" cy="19" r="12" fill="#E6F2F1"/>
+        <text x="23" y="24" font-size="13" text-anchor="middle">&#9986;</text>
+        <text x="43" y="24">Pro Groomers</text>
+      </g>
+      <g transform="translate(208 232)">
+        <rect width="128" height="38" rx="19" fill="#FFFFFF" opacity="0.92"/>
+        <circle cx="23" cy="19" r="12" fill="#E6F2F1"/>
+        <text x="23" y="24" font-size="13" text-anchor="middle">&#129532;</text>
+        <text x="43" y="24">Hygienic</text>
+      </g>
+      <g transform="translate(346 232)">
+        <rect width="136" height="38" rx="19" fill="#FFFFFF" opacity="0.92"/>
+        <circle cx="23" cy="19" r="12" fill="#E6F2F1"/>
+        <text x="23" y="24" font-size="13" text-anchor="middle">&#10084;</text>
+        <text x="43" y="24">Pet-Safe</text>
+      </g>
+    </g>
+  </g>
+</svg>

@@ -9,6 +9,7 @@ export function BannersContent() {
   const [freshFoodImage, setFreshFoodImage] = useState('');
   const [adoptionImage, setAdoptionImage] = useState('');
   const [daycareImage, setDaycareImage] = useState('');
+  const [groomingImage, setGroomingImage] = useState('');
   // Map of banner key → Banner document id (for updates).
   const [bannerIds, setBannerIds] = useState({});
 
@@ -22,10 +23,11 @@ export function BannersContent() {
     fetchAdminBanners()
       .then((rows) => {
         const byKey = Object.fromEntries((rows || []).map((b) => [b.key, b]));
-        setBannerIds({ fresh_food: byKey.fresh_food?.id, adoption: byKey.adoption?.id, daycare: byKey.daycare?.id });
+        setBannerIds({ fresh_food: byKey.fresh_food?.id, adoption: byKey.adoption?.id, daycare: byKey.daycare?.id, grooming: byKey.grooming?.id });
         setFreshFoodImage(byKey.fresh_food?.image || '');
         setAdoptionImage(byKey.adoption?.image || '');
         setDaycareImage(byKey.daycare?.image || '');
+        setGroomingImage(byKey.grooming?.image || '');
       })
       .catch((err) => console.error('Failed to load banners', err));
   }, []);
@@ -104,6 +106,32 @@ export function BannersContent() {
     showToast('Daycare banner cleared successfully!');
   };
 
+  // Grooming Operations
+  const handleSaveGroomingBanner = async () => {
+    try {
+      await persistBanner('grooming', groomingImage);
+      showToast('Grooming banner updated successfully!');
+    } catch { showToast('Failed to update banner'); }
+  };
+
+  const handleClearGroomingBanner = async () => {
+    setGroomingImage('');
+    try { await persistBanner('grooming', ''); } catch { /* ignore */ }
+    showToast('Grooming banner cleared successfully!');
+  };
+
+  const handleGroomingUpload = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setGroomingImage(event.target.result);
+        showToast('Grooming image uploaded! Click Save to apply.');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleDaycareUpload = (e) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -150,7 +178,7 @@ export function BannersContent() {
             <div>
               <span className="text-[12px] font-bold text-blue-900 block">Recommended Banner Size</span>
               <p className="text-[11px] text-blue-700 mt-0.5 font-semibold">
-                For perfect fitting, use an image with an aspect ratio of <strong>3:1</strong> (e.g. <strong>900 x 300 pixels</strong>).
+                Any aspect ratio is shown in full — nothing is ever cropped. For a banner height consistent with the rest of the app, use <strong>3:1</strong> (e.g. <strong>900 x 300 pixels</strong>).
               </p>
             </div>
           </div>
@@ -198,7 +226,7 @@ export function BannersContent() {
               <h3 className="text-[13px] font-bold text-gray-700 mb-3">Live Banner Preview (User Meals Dashboard):</h3>
               <div className="relative max-w-[650px] mx-auto sm:mx-0">
                 {freshFoodImage ? (
-                  <img src={freshFoodImage} alt="Meals Banner Preview" className="w-full h-auto block rounded-2xl shadow-sm max-h-[220px] object-cover" />
+                  <img src={freshFoodImage} alt="Meals Banner Preview" className="w-full h-auto block rounded-2xl shadow-sm" />
                 ) : (
                   <div className="border border-dashed border-gray-300 rounded-[28px] h-40 flex flex-col items-center justify-center text-gray-400 gap-2 bg-gray-50">
                     <ImageIcon size={32} className="stroke-[1.5]" />
@@ -224,7 +252,7 @@ export function BannersContent() {
             <div>
               <span className="text-[12px] font-bold text-blue-900 block">Recommended Banner Size</span>
               <p className="text-[11px] text-blue-700 mt-0.5 font-semibold">
-                For perfect fitting, use an image with an aspect ratio of <strong>3.2:1</strong> (e.g. <strong>960 x 300 pixels</strong>).
+                Any aspect ratio is shown in full — nothing is ever cropped. For a banner height consistent with the rest of the app, use <strong>3.2:1</strong> (e.g. <strong>960 x 300 pixels</strong>).
               </p>
             </div>
           </div>
@@ -272,7 +300,9 @@ export function BannersContent() {
               <h3 className="text-[13px] font-bold text-gray-700 mb-3">Live Banner Preview (User Adoption Dashboard):</h3>
               <div className="relative max-w-[650px] mx-auto sm:mx-0">
                 {adoptionImage ? (
-                  <img src={adoptionImage} alt="Adoption Banner Preview" className="w-full h-auto block rounded-2xl shadow-sm max-h-[220px] object-cover" />
+                  <div className="w-full rounded-2xl overflow-hidden shadow-sm border border-gray-200">
+                    <img src={adoptionImage} alt="Adoption Banner Preview" className="w-full h-auto block" />
+                  </div>
                 ) : (
                   <div className="border border-dashed border-gray-300 rounded-[28px] h-40 flex flex-col items-center justify-center text-gray-400 gap-2 bg-gray-50">
                     <ImageIcon size={32} className="stroke-[1.5]" />
@@ -298,7 +328,7 @@ export function BannersContent() {
             <div>
               <span className="text-[12px] font-bold text-blue-900 block">Recommended Banner Size</span>
               <p className="text-[11px] text-blue-700 mt-0.5 font-semibold">
-                For perfect fitting, use an image with an aspect ratio of <strong>3.2:1</strong> (e.g. <strong>960 x 300 pixels</strong>).
+                Any aspect ratio is shown in full — nothing is ever cropped. For a banner height consistent with the rest of the app, use <strong>3.2:1</strong> (e.g. <strong>960 x 300 pixels</strong>).
               </p>
             </div>
           </div>
@@ -317,7 +347,7 @@ export function BannersContent() {
                     type="text" 
                     value={(daycareImage || '').startsWith('data:image/') ? '[Uploaded Local Image]' : daycareImage}
                     onChange={(e) => setDaycareImage(e.target.value)}
-                    placeholder="Paste image URL / public path (e.g., /assets/banners/banner_grooming.png)"
+                    placeholder="Paste image URL / public path (e.g., /assets/banners/banner_daycare.png)"
                     className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg text-[13px] focus:outline-none focus:border-[#66B4B1] bg-white shadow-sm min-w-0 font-semibold"
                   />
                 </div>
@@ -346,13 +376,88 @@ export function BannersContent() {
               <h3 className="text-[13px] font-bold text-gray-700 mb-3">Live Banner Preview (User Daycare Dashboard):</h3>
               <div className="relative max-w-[650px] mx-auto sm:mx-0">
                 {daycareImage ? (
-                  <img src={daycareImage} alt="Daycare Banner Preview" className="w-full h-auto block rounded-2xl shadow-sm max-h-[220px] object-cover" />
+                  <div className="w-full rounded-2xl overflow-hidden shadow-sm border border-gray-200">
+                    <img src={daycareImage} alt="Daycare Banner Preview" className="w-full h-auto block" />
+                  </div>
                 ) : (
                   <div className="border border-dashed border-gray-300 rounded-[28px] h-40 flex flex-col items-center justify-center text-gray-400 gap-2 bg-gray-50">
                     <ImageIcon size={32} className="stroke-[1.5]" />
                     <span className="text-xs font-semibold">No banner image uploaded or selected</span>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 4: Grooming Banner Manager */}
+        <div className="bg-white rounded-xl border border-[#FAF7F2] p-6 shadow-sm">
+          <h2 className="text-base font-bold text-gray-900 mb-2 flex items-center gap-2">
+            <span>✂️ User Grooming Dashboard Banner</span>
+          </h2>
+          <p className="text-[12px] text-gray-500 mb-4">
+            Upload a custom promotional banner graphic for the User Grooming studios listing.
+          </p>
+
+          <div className="mb-6 bg-blue-50 border border-blue-150 rounded-xl p-4 flex items-start gap-3">
+            <Info size={18} className="text-blue-600 mt-0.5 shrink-0" />
+            <div>
+              <span className="text-[12px] font-bold text-blue-900 block">Recommended Banner Size</span>
+              <p className="text-[11px] text-blue-700 mt-0.5 font-semibold">
+                Any aspect ratio is shown in full — nothing is ever cropped. For a banner height consistent with the rest of the app, use <strong>3.2:1</strong> (e.g. <strong>960 x 300 pixels</strong>).
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-4">
+              <div className="flex-1">
+                <label className="block text-[12px] font-semibold text-gray-700 mb-1.5">Banner Image Source</label>
+                <div className="flex gap-2">
+                  <label className="px-4 py-2.5 border border-gray-300 rounded-lg text-[13px] font-bold text-gray-700 cursor-pointer hover:bg-gray-50 transition bg-white shadow-sm shrink-0 flex items-center justify-center gap-1.5">
+                    <ImageIcon size={15} />
+                    <input type="file" accept="image/*" onChange={handleGroomingUpload} className="hidden" />
+                    Upload File
+                  </label>
+                  <input
+                    type="text"
+                    value={(groomingImage || '').startsWith('data:image/') ? '[Uploaded Local Image]' : groomingImage}
+                    onChange={(e) => setGroomingImage(e.target.value)}
+                    placeholder="Paste image URL / public path (e.g., /assets/banners/banner_grooming_wide.svg)"
+                    className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg text-[13px] focus:outline-none focus:border-[#66B4B1] bg-white shadow-sm min-w-0 font-semibold"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto justify-end mt-2 sm:mt-0 shrink-0">
+                {groomingImage && (
+                  <button
+                    onClick={handleClearGroomingBanner}
+                    className="flex-1 sm:flex-none px-4 py-2.5 border border-rose-200 hover:border-rose-300 text-rose-600 hover:bg-rose-50 text-[13px] font-bold rounded-lg transition shadow-sm flex items-center justify-center gap-1.5 h-[42px] active:scale-95 bg-white cursor-pointer"
+                  >
+                    <Trash2 size={15} /> Clear
+                  </button>
+                )}
+
+                <button
+                  onClick={handleSaveGroomingBanner}
+                  className="flex-1 sm:flex-none px-6 py-2.5 bg-[#66B4B1] hover:bg-[#66B4B1] text-white text-[13px] font-bold rounded-lg transition shadow-md flex items-center justify-center gap-2 h-[42px] active:scale-95 cursor-pointer"
+                >
+                  <Save size={15} /> Save Grooming Banner
+                </button>
+              </div>
+            </div>
+
+            <div className="border-t border-gray-200 pt-6">
+              <h3 className="text-[13px] font-bold text-gray-700 mb-3">Live Banner Preview (User Grooming Dashboard):</h3>
+              <div className="relative max-w-[650px] mx-auto sm:mx-0">
+                <div className="w-full rounded-2xl overflow-hidden shadow-sm border border-gray-200">
+                  <img
+                    src={groomingImage || '/assets/banners/banner_grooming_wide.svg'}
+                    alt="Grooming Banner Preview"
+                    className="w-full h-auto block"
+                  />
+                </div>
               </div>
             </div>
           </div>

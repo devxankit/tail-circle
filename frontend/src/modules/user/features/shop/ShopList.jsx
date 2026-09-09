@@ -140,7 +140,7 @@ export function ShopList() {
   // setState-in-effect cascade and is gone.
   const [selectedBreedId, setSelectedBreedId] = useState(null);
   const [breedCategoryFilter, setBreedCategoryFilter] = useState('All');
-  const [showBreedDetails, setShowBreedDetails] = useState(false);
+  const [showBreedDetails, setShowBreedDetails] = useState(true);
   const [showNutritionPlan, setShowNutritionPlan] = useState(false);
   const selectedBreed = breeds.find((b) => b.id === selectedBreedId) || null;
 
@@ -673,6 +673,141 @@ export function ShopList() {
                   ))}
                 </div>
 
+                {/* Collapsible Info Drawer Accordion */}
+                <div className="px-4 mb-6 border-t border-gray-100/60 pt-4 mt-3">
+                  <button 
+                    onClick={() => setShowBreedDetails(!showBreedDetails)}
+                    className="w-full bg-white border border-transparent rounded-xl p-3 flex items-center justify-between shadow-[0_4px_12px_rgba(0,0,0,0.03)] active:scale-[0.98] transition-transform cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Sparkles size={18} className="text-[#66B4B1]" />
+                      <div className="text-left">
+                        <h4 className="font-extrabold text-gray-900 text-[12.5px]">Breed Details & Smart Box</h4>
+                        <p className="text-gray-400 text-[9.5px] font-semibold">About, lifespan & custom bundle</p>
+                      </div>
+                    </div>
+                    <ChevronRight 
+                      size={16} 
+                      className={`text-gray-400 transition-transform duration-300 ${showBreedDetails ? 'rotate-90' : ''}`} 
+                    />
+                  </button>
+
+                  {showBreedDetails && (
+                    <div className="mt-3 space-y-3.5 animate-in fade-in slide-in-from-top-4 duration-300">
+                      {/* About info */}
+                      <div className="bg-white p-3 rounded-xl border border-transparent shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
+                        <h4 className="font-extrabold text-[12px] text-gray-900 mb-1">About this breed</h4>
+                        <p className="text-gray-500 text-[10.5px] font-medium leading-relaxed">{selectedBreed.description}</p>
+                      </div>
+
+                      {/* Needs summary — every tile is optional. A breed added
+                          through admin Breed Management can arrive with a
+                          partial summary or none at all, so nothing here may
+                          assume a field exists. */}
+                      {Object.keys(selectedBreed.summary || {}).length > 0 && (
+                      <div className="bg-white p-3 rounded-xl border border-transparent shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
+                        <h4 className="font-extrabold text-[12px] text-gray-900 mb-2">Breed Summary & Needs</h4>
+                        <div className="grid grid-cols-2 gap-2.5">
+                          {selectedBreed.summary.weightRange && (
+                          <div className="bg-gray-50 p-2 rounded-lg">
+                            <p className="text-[8px] text-gray-450 font-extrabold uppercase">Weight Range</p>
+                            <p className="text-[10.5px] font-bold text-gray-750 mt-0.5">{selectedBreed.summary.weightRange}</p>
+                          </div>
+                          )}
+                          {selectedBreed.summary.energyLevel && (
+                          <div className="bg-gray-50 p-2 rounded-lg">
+                            <p className="text-[8px] text-gray-455 font-extrabold uppercase">Energy Level</p>
+                            <p className="text-[10.5px] font-bold text-gray-750 mt-0.5">{selectedBreed.summary.energyLevel}</p>
+                          </div>
+                          )}
+                          {selectedBreed.summary.lifeSpan && (
+                          <div className="bg-gray-50 p-2 rounded-lg">
+                            <p className="text-[8px] text-gray-455 font-extrabold uppercase">Life Span</p>
+                            <p className="text-[10.5px] font-bold text-gray-750 mt-0.5">{selectedBreed.summary.lifeSpan}</p>
+                          </div>
+                          )}
+                          {Number(selectedBreed.summary.monthlyCost) > 0 && (
+                          <div className="bg-gray-50 p-2 rounded-lg">
+                            <p className="text-[8px] text-gray-460 font-extrabold uppercase">Est. Monthly Cost</p>
+                            <p className="text-[10.5px] font-black text-[#66B4B1] mt-0.5">₹{Number(selectedBreed.summary.monthlyCost).toLocaleString('en-IN')}</p>
+                          </div>
+                          )}
+                          {selectedBreed.summary.foodRequirement && (
+                          <div className="bg-gray-50 p-2 rounded-lg col-span-2">
+                            <p className="text-[8px] text-gray-460 font-extrabold uppercase">Food Requirement</p>
+                            <p className="text-[10px] font-medium text-gray-600 mt-0.5 leading-snug">{selectedBreed.summary.foodRequirement}</p>
+                          </div>
+                          )}
+                          {(selectedBreed.summary.groomingRequirement || selectedBreed.summary.exerciseRequirement) && (
+                          <div className="bg-gray-50 p-2 rounded-lg col-span-2">
+                            <p className="text-[8px] text-gray-460 font-extrabold uppercase">Grooming & Exercise</p>
+                            {selectedBreed.summary.groomingRequirement && (
+                              <p className="text-[10px] font-medium text-gray-600 mt-0.5 leading-snug">💇 {selectedBreed.summary.groomingRequirement}</p>
+                            )}
+                            {selectedBreed.summary.exerciseRequirement && (
+                              <p className="text-[10px] font-medium text-gray-600 mt-1 leading-snug">🏃 {selectedBreed.summary.exerciseRequirement}</p>
+                            )}
+                          </div>
+                          )}
+                        </div>
+                      </div>
+                      )}
+
+                      {/* Bundle Section */}
+                      {selectedBreed.monthlyBundle && selectedBreed.monthlyBundle.productIds && selectedBreed.monthlyBundle.productIds.length > 0 && (
+                        <div className="bg-gradient-to-br from-[#80C1BF]/5 to-[#80C1BF]/20 border border-[#66B4B1]/25 rounded-[16px] p-3.5 shadow-sm">
+                          <span className="bg-[#66B4B1] text-white px-2 py-0.5 rounded-[4px] text-[8px] font-black uppercase tracking-wider">
+                            SMART MONTHLY BUNDLE
+                          </span>
+                          <h3 className="font-black text-gray-900 text-[14px] mt-2 leading-tight">
+                            {selectedBreed.monthlyBundle.name || `${selectedBreed.name} Monthly Box`}
+                          </h3>
+                          <p className="text-gray-500 text-[10px] font-semibold mt-0.5">
+                            Essential monthly supplies tailored for {selectedBreed.name}s.
+                          </p>
+
+                          <div className="mt-3 space-y-1.5 pb-3 border-b border-dashed border-[#66B4B1]/35">
+                            {products
+                              .filter(p => selectedBreed.monthlyBundle.productIds.includes(p.id))
+                              .map(p => (
+                                <div key={p.id} className="flex items-center justify-between text-[11px] text-gray-700">
+                                  <div className="flex items-center gap-1.5">
+                                    <CheckCircle2 size={12} className="text-[#66B4B1] shrink-0" strokeWidth={2.5} />
+                                    <span className="font-semibold line-clamp-1">{p.name}</span>
+                                  </div>
+                                  <span className="font-bold text-gray-505">₹{p.price}</span>
+                                </div>
+                              ))}
+                          </div>
+
+                          <div className="flex justify-between items-center mt-3">
+                            <div className="flex flex-col">
+                              <span className="text-[9.5px] text-gray-400 font-semibold line-through">
+                                Buy Separately: ₹{selectedBreed.monthlyBundle.originalPrice || selectedBreed.monthlyBundle.productIds.reduce((sum, pid) => sum + (products.find(pr => pr.id === pid)?.price || 0), 0)}
+                              </span>
+                              <span className="text-[15.5px] font-black text-gray-900 tracking-tight mt-0.5">
+                                ₹{selectedBreed.monthlyBundle.bundlePrice}
+                              </span>
+                            </div>
+                            <button 
+                              onClick={() =>
+                            handleAddBundleToCart(
+                              selectedBreed.monthlyBundle.name || `${selectedBreed.name} Box`,
+                              selectedBreed.monthlyBundle.productIds,
+                              selectedBreed.id
+                            )
+                          }
+                              className="bg-[#66B4B1] hover:bg-[#66B4B1] text-white font-black text-[10.5px] px-3 py-1.5 rounded-lg shadow-md active:scale-95 transition-all cursor-pointer"
+                            >
+                              Add Bundle
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {/* Smart Filters Header row */}
                 <div className="px-4 mb-3 flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
@@ -867,203 +1002,6 @@ export function ShopList() {
                   })}
                 </div>
 
-                {/* Monthly Bundle Section */}
-                {(breedCategoryFilter === 'All') && selectedBreed.monthlyBundle && selectedBreed.monthlyBundle.productIds && selectedBreed.monthlyBundle.productIds.length > 0 && (
-                  <div className="px-4 mt-3 mb-5">
-                    <div className="flex items-center gap-1.5 mb-2.5">
-                      <span className="text-lg">💰</span>
-                      <div>
-                        <h3 className="font-black text-gray-900 text-[13px] leading-tight">Monthly Essentials Bundle</h3>
-                        <p className="text-gray-450 text-[9.5px] font-semibold">Everything they need for the month, bundled at a discount</p>
-                      </div>
-                    </div>
-                    
-                    {/* Bundle Card */}
-                    <div className="bg-gradient-to-br from-[#80C1BF]/5 to-[#80C1BF]/20 border border-[#66B4B1]/25 rounded-[16px] p-3.5 shadow-sm">
-                      <span className="bg-[#66B4B1] text-white px-2 py-0.5 rounded-[4px] text-[8px] font-black uppercase tracking-wider">
-                        SMART MONTHLY BUNDLE
-                      </span>
-                      <h3 className="font-black text-gray-900 text-[14px] mt-2 leading-tight">
-                        {selectedBreed.monthlyBundle.name || `${selectedBreed.name} Monthly Box`}
-                      </h3>
-                      <p className="text-gray-500 text-[10px] font-semibold mt-0.5">
-                        Essential monthly supplies tailored for {selectedBreed.name}s.
-                      </p>
-
-                      <div className="mt-3 space-y-1.5 pb-3 border-b border-dashed border-[#66B4B1]/35">
-                        {products
-                          .filter(p => selectedBreed.monthlyBundle.productIds.includes(p.id))
-                          .map(p => (
-                            <div key={p.id} className="flex items-center justify-between text-[11px] text-gray-700">
-                              <div className="flex items-center gap-1.5">
-                                <CheckCircle2 size={12} className="text-[#66B4B1] shrink-0" strokeWidth={2.5} />
-                                <span className="font-semibold line-clamp-1">{p.name}</span>
-                              </div>
-                              <span className="font-bold text-gray-505">₹{p.price}</span>
-                            </div>
-                          ))}
-                      </div>
-
-                      <div className="flex justify-between items-center mt-3">
-                        <div className="flex flex-col">
-                          <span className="text-[9.5px] text-gray-400 font-semibold line-through">
-                            Buy Separately: ₹{selectedBreed.monthlyBundle.originalPrice || selectedBreed.monthlyBundle.productIds.reduce((sum, pid) => sum + (products.find(pr => pr.id === pid)?.price || 0), 0)}
-                          </span>
-                          <span className="text-[15.5px] font-black text-gray-900 tracking-tight mt-0.5">
-                            ₹{selectedBreed.monthlyBundle.bundlePrice}
-                          </span>
-                        </div>
-                        <button 
-                          onClick={() =>
-                            handleAddBundleToCart(
-                              selectedBreed.monthlyBundle.name || `${selectedBreed.name} Box`,
-                              selectedBreed.monthlyBundle.productIds,
-                              selectedBreed.id
-                            )
-                          }
-                          className="bg-[#66B4B1] hover:bg-[#66B4B1] text-white font-black text-[10.5px] px-3 py-1.5 rounded-lg shadow-md active:scale-95 transition-all cursor-pointer"
-                        >
-                          Add Bundle
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Collapsible Info Drawer Accordion */}
-                <div className="px-4 mb-6 border-t border-gray-100/60 pt-4 mt-3">
-                  <button 
-                    onClick={() => setShowBreedDetails(!showBreedDetails)}
-                    className="w-full bg-white border border-transparent rounded-xl p-3 flex items-center justify-between shadow-[0_4px_12px_rgba(0,0,0,0.03)] active:scale-[0.98] transition-transform cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <Sparkles size={18} className="text-[#66B4B1]" />
-                      <div className="text-left">
-                        <h4 className="font-extrabold text-gray-900 text-[12.5px]">Breed Details & Smart Box</h4>
-                        <p className="text-gray-400 text-[9.5px] font-semibold">About, lifespan & custom bundle</p>
-                      </div>
-                    </div>
-                    <ChevronRight 
-                      size={16} 
-                      className={`text-gray-400 transition-transform duration-300 ${showBreedDetails ? 'rotate-90' : ''}`} 
-                    />
-                  </button>
-
-                  {showBreedDetails && (
-                    <div className="mt-3 space-y-3.5 animate-in fade-in slide-in-from-top-4 duration-300">
-                      {/* About info */}
-                      <div className="bg-white p-3 rounded-xl border border-transparent shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
-                        <h4 className="font-extrabold text-[12px] text-gray-900 mb-1">About this breed</h4>
-                        <p className="text-gray-500 text-[10.5px] font-medium leading-relaxed">{selectedBreed.description}</p>
-                      </div>
-
-                      {/* Needs summary — every tile is optional. A breed added
-                          through admin Breed Management can arrive with a
-                          partial summary or none at all, so nothing here may
-                          assume a field exists. */}
-                      {Object.keys(selectedBreed.summary || {}).length > 0 && (
-                      <div className="bg-white p-3 rounded-xl border border-transparent shadow-[0_4px_12px_rgba(0,0,0,0.02)]">
-                        <h4 className="font-extrabold text-[12px] text-gray-900 mb-2">Breed Summary & Needs</h4>
-                        <div className="grid grid-cols-2 gap-2.5">
-                          {selectedBreed.summary.weightRange && (
-                          <div className="bg-gray-50 p-2 rounded-lg">
-                            <p className="text-[8px] text-gray-450 font-extrabold uppercase">Weight Range</p>
-                            <p className="text-[10.5px] font-bold text-gray-750 mt-0.5">{selectedBreed.summary.weightRange}</p>
-                          </div>
-                          )}
-                          {selectedBreed.summary.energyLevel && (
-                          <div className="bg-gray-50 p-2 rounded-lg">
-                            <p className="text-[8px] text-gray-455 font-extrabold uppercase">Energy Level</p>
-                            <p className="text-[10.5px] font-bold text-gray-750 mt-0.5">{selectedBreed.summary.energyLevel}</p>
-                          </div>
-                          )}
-                          {selectedBreed.summary.lifeSpan && (
-                          <div className="bg-gray-50 p-2 rounded-lg">
-                            <p className="text-[8px] text-gray-455 font-extrabold uppercase">Life Span</p>
-                            <p className="text-[10.5px] font-bold text-gray-750 mt-0.5">{selectedBreed.summary.lifeSpan}</p>
-                          </div>
-                          )}
-                          {Number(selectedBreed.summary.monthlyCost) > 0 && (
-                          <div className="bg-gray-50 p-2 rounded-lg">
-                            <p className="text-[8px] text-gray-460 font-extrabold uppercase">Est. Monthly Cost</p>
-                            <p className="text-[10.5px] font-black text-[#66B4B1] mt-0.5">₹{Number(selectedBreed.summary.monthlyCost).toLocaleString('en-IN')}</p>
-                          </div>
-                          )}
-                          {selectedBreed.summary.foodRequirement && (
-                          <div className="bg-gray-50 p-2 rounded-lg col-span-2">
-                            <p className="text-[8px] text-gray-460 font-extrabold uppercase">Food Requirement</p>
-                            <p className="text-[10px] font-medium text-gray-600 mt-0.5 leading-snug">{selectedBreed.summary.foodRequirement}</p>
-                          </div>
-                          )}
-                          {(selectedBreed.summary.groomingRequirement || selectedBreed.summary.exerciseRequirement) && (
-                          <div className="bg-gray-50 p-2 rounded-lg col-span-2">
-                            <p className="text-[8px] text-gray-460 font-extrabold uppercase">Grooming & Exercise</p>
-                            {selectedBreed.summary.groomingRequirement && (
-                              <p className="text-[10px] font-medium text-gray-600 mt-0.5 leading-snug">💇 {selectedBreed.summary.groomingRequirement}</p>
-                            )}
-                            {selectedBreed.summary.exerciseRequirement && (
-                              <p className="text-[10px] font-medium text-gray-600 mt-1 leading-snug">🏃 {selectedBreed.summary.exerciseRequirement}</p>
-                            )}
-                          </div>
-                          )}
-                        </div>
-                      </div>
-                      )}
-
-                      {/* Bundle Section */}
-                      {selectedBreed.monthlyBundle && selectedBreed.monthlyBundle.productIds && selectedBreed.monthlyBundle.productIds.length > 0 && (
-                        <div className="bg-gradient-to-br from-[#80C1BF]/5 to-[#80C1BF]/20 border border-[#66B4B1]/25 rounded-[16px] p-3.5 shadow-sm">
-                          <span className="bg-[#66B4B1] text-white px-2 py-0.5 rounded-[4px] text-[8px] font-black uppercase tracking-wider">
-                            SMART MONTHLY BUNDLE
-                          </span>
-                          <h3 className="font-black text-gray-900 text-[14px] mt-2 leading-tight">
-                            {selectedBreed.monthlyBundle.name || `${selectedBreed.name} Monthly Box`}
-                          </h3>
-                          <p className="text-gray-500 text-[10px] font-semibold mt-0.5">
-                            Essential monthly supplies tailored for {selectedBreed.name}s.
-                          </p>
-
-                          <div className="mt-3 space-y-1.5 pb-3 border-b border-dashed border-[#66B4B1]/35">
-                            {products
-                              .filter(p => selectedBreed.monthlyBundle.productIds.includes(p.id))
-                              .map(p => (
-                                <div key={p.id} className="flex items-center justify-between text-[11px] text-gray-700">
-                                  <div className="flex items-center gap-1.5">
-                                    <CheckCircle2 size={12} className="text-[#66B4B1] shrink-0" strokeWidth={2.5} />
-                                    <span className="font-semibold line-clamp-1">{p.name}</span>
-                                  </div>
-                                  <span className="font-bold text-gray-505">₹{p.price}</span>
-                                </div>
-                              ))}
-                          </div>
-
-                          <div className="flex justify-between items-center mt-3">
-                            <div className="flex flex-col">
-                              <span className="text-[9.5px] text-gray-400 font-semibold line-through">
-                                Buy Separately: ₹{selectedBreed.monthlyBundle.originalPrice || selectedBreed.monthlyBundle.productIds.reduce((sum, pid) => sum + (products.find(pr => pr.id === pid)?.price || 0), 0)}
-                              </span>
-                              <span className="text-[15.5px] font-black text-gray-900 tracking-tight mt-0.5">
-                                ₹{selectedBreed.monthlyBundle.bundlePrice}
-                              </span>
-                            </div>
-                            <button 
-                              onClick={() =>
-                            handleAddBundleToCart(
-                              selectedBreed.monthlyBundle.name || `${selectedBreed.name} Box`,
-                              selectedBreed.monthlyBundle.productIds,
-                              selectedBreed.id
-                            )
-                          }
-                              className="bg-[#66B4B1] hover:bg-[#66B4B1] text-white font-black text-[10.5px] px-3 py-1.5 rounded-lg shadow-md active:scale-95 transition-all cursor-pointer"
-                            >
-                              Add Bundle
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
 
               </div>
             )}

@@ -328,27 +328,20 @@ export function DaycareListing() {
       </div>
 
       <div className="pt-2">
-        {/* Dynamic Daycare Banner */}
-        <div className="px-4 mb-4">
-          {customBanner ? (
-            <div className="w-full rounded-[20px] overflow-hidden shadow-sm border border-gray-100/50 h-[170px]">
-              <img 
-                src={customBanner} 
-                alt="Daycare Promo Banner" 
-                className="w-full h-full object-cover block" 
+        {/* Dynamic Daycare Banner — admin-managed only. The bundled
+            banner_daycare.png used to render as a fallback, which flashed a
+            second, outdated banner before the API banner arrived. */}
+        {customBanner && (
+          <div className="px-4 mb-4">
+            <div className="w-full rounded-[20px] overflow-hidden shadow-sm border border-gray-100/50">
+              <img
+                src={customBanner}
+                alt="Daycare Promo Banner"
+                className="w-full h-auto block"
               />
             </div>
-          ) : (
-            // Default fall-back daycare banner
-            <div className="w-full rounded-[20px] overflow-hidden shadow-sm border border-gray-100/50 h-[170px]">
-              <img 
-                src="/assets/banners/banner_daycare.png" 
-                alt="Daycare Promo Banner" 
-                className="w-full h-full object-cover block" 
-              />
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Search Bar Input with Voice Search */}
         <div className="px-4 mb-4">
