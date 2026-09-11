@@ -1,5 +1,12 @@
 import mongoose from 'mongoose';
 import { ApiError } from '../../utils/ApiError.js';
+import {
+  commissionRateFor,
+  sanitizeRate,
+  splitAmount,
+  splitPayout,
+  taxRate,
+} from './commission.service.js';
 import { maskAccount, encryptField } from '../../utils/fieldCrypto.js';
 import { Order } from '../order/order.model.js';
 import { Product } from '../shop/product.model.js';
@@ -54,10 +61,18 @@ export async function profileFor(userId, vendorType) {
   return all.length === 1 ? all[0] : null;
 }
 
-/** Commission fraction for a vendor's given business line (platform default if unknown). */
-export async function commissionFor(userId, vendorType, fallback = 0.15) {
+/**
+ * Commission fraction for a vendor's given business line.
+ *
+ * Thin wrapper over the resolver so every settlement path -- orders, bookings,
+ * consults, meals, adoption -- goes through the same vendor/category/global
+ * chain. It used to read `profile.commissionRate` directly against a hardcoded
+ * fallback, which ignored the category and global settings entirely.
+ */
+export async function commissionFor(userId, vendorType) {
   const profile = await profileFor(userId, vendorType);
-  return profile?.commissionRate ?? fallback;
+  const { rate } = await commissionRateFor(userId, vendorType, { profile });
+  return rate;
 }
 
 /** Public-safe serialization — bank number masked, never raw. */
@@ -153,19 +168,30 @@ export async function removeVendorDocument(userId, index, vendorType = null) {
  * Post a settleable entry for a vendor. Idempotent on (refType, refId) so
  * re-fulfilment (verify + webhook) never double-credits the vendor.
  */
-export async function postLedgerEntry({ vendorId, refType, refId, label, gross, commissionRate = 0.15, vendorType = null }) {
+export async function postLedgerEntry({ vendorId, refType, refId, label, gross, commissionRate, vendorType = null }) {
   if (!vendorId || !gross) return null;
-  const commission = Math.round(gross * commissionRate);
-  const net = gross - commission;
+  /*
+   * Resolve here too, rather than trusting the caller's argument.
+   *
+   * Every caller already passes a resolved rate, but this is the last point
+   * before money is written down: an omitted or malformed rate must fall back
+   * to the configured chain, never to 0% commission. `splitAmount` is the only
+   * place the arithmetic lives, so gross always equals commission + net.
+   */
+  const rate =
+    sanitizeRate(commissionRate) ??
+    (await commissionRateFor(vendorId, vendorType)).rate;
+  const amounts = splitAmount(gross, rate);
   try {
     return await VendorLedgerEntry.create({
       vendorId,
       refType,
       refId,
       label: label || '',
-      gross,
-      commission,
-      net,
+      gross: amounts.gross,
+      commission: amounts.commission,
+      net: amounts.net,
+      commissionRate: amounts.rate,
       // Which business line earned it, so a vendor running several can break
       // their combined earnings down per business.
       vendorType,
@@ -187,7 +213,12 @@ export async function listPayouts(vendorId) {
 
 /**
  * Request settlement of all unsettled ledger entries: bundles them into one
- * pending Payout and marks them settled. 5% platform tax on the net.
+ * pending Payout and marks them settled.
+ *
+ * Totals are summed from the entries, never recomputed from a rate: each entry
+ * already holds the commission it was billed at, and re-deriving it here would
+ * quietly reprice historical earnings whenever an admin changed a rate. Tax is
+ * the configured `tax.gst` rather than the 0.05 this used to hardcode.
  */
 export async function requestPayout(vendorId) {
   const entries = await VendorLedgerEntry.find({ vendorId, status: 'unsettled' });
@@ -196,7 +227,7 @@ export async function requestPayout(vendorId) {
   const gross = entries.reduce((s, e) => s + e.gross, 0);
   const commission = entries.reduce((s, e) => s + e.commission, 0);
   const net = entries.reduce((s, e) => s + e.net, 0);
-  const tax = Math.round(net * 0.05);
+  const { tax, payable, rate } = splitPayout(net, await taxRate());
 
   const payout = await Payout.create({
     vendorId,
@@ -204,7 +235,8 @@ export async function requestPayout(vendorId) {
     grossAmount: gross,
     commission,
     tax,
-    netAmount: net - tax,
+    taxRate: rate,
+    netAmount: payable,
     status: 'pending',
     lineItemIds: entries.map((e) => e._id),
   });

@@ -6,6 +6,7 @@ import { connectRedis, disconnectRedis } from './config/redis.js';
 import { initFirebase } from './config/firebase.js';
 import { ensureDefaultPlans } from './modules/subscription/subscription.service.js';
 import { initSocket, getIO } from './sockets/index.js';
+import { applyDueCommissionSchedules } from './modules/admin/admin.finance.service.js';
 import { logger } from './utils/logger.js';
 
 async function start() {
@@ -34,6 +35,26 @@ async function start() {
       logger.info(`🚀 TailCircle API running on http://localhost:${env.port}${env.apiPrefix}`);
       logger.info(`   Environment: ${env.nodeEnv}`);
     });
+
+    /*
+     * Commission changes an operator dated into the future.
+     *
+     * Polled rather than timer-per-row so a restart cannot lose a pending
+     * change, and applied through the ordinary admin setter so each one is
+     * bounds-checked and audited like a manual edit. A minute of latency is
+     * immaterial for a commission rate, and each row is claimed atomically so
+     * several servers running this loop apply it exactly once.
+     */
+    const runDueCommissionSchedules = () =>
+      applyDueCommissionSchedules()
+        .then((ids) => {
+          if (ids.length) logger.info(`Applied ${ids.length} scheduled commission change(s)`);
+        })
+        .catch((err) => logger.warn(`Commission schedule sweep failed: ${err.message}`));
+
+    runDueCommissionSchedules();
+    const scheduleTimer = setInterval(runDueCommissionSchedules, 60_000);
+    scheduleTimer.unref();
 
     let shuttingDown = false;
     const shutdown = async (signal) => {

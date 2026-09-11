@@ -12,8 +12,10 @@ import {
   listActionItems,
   resolveActionItem,
   listUsers,
+  userStats,
   setUserBlocked,
   listPets,
+  listUserPets,
   listVendors,
   listPendingVendors,
   approveVendor,
@@ -80,7 +82,15 @@ import {
   listTransactions,
   paymentsOverview,
   getCommissionSettings,
+  getCommissionMatrix,
   setCommission,
+  setCommissionPercent,
+  setVendorCommission,
+  setCommissionBounds,
+  setTaxPercent,
+  listCommissionSchedules,
+  scheduleCommissionChange,
+  cancelCommissionSchedule,
   listPayouts,
   markPayoutPaid,
   walletOverview,
@@ -171,6 +181,10 @@ router.post(
 router.get('/users', asyncHandler(async (req, res) => {
   sendSuccess(res, { data: await listUsers({ search: req.query.search }) });
 }));
+/* Platform-wide counters for the header cards — not derivable from the capped list. */
+router.get('/users/stats', asyncHandler(async (_req, res) => {
+  sendSuccess(res, { data: await userStats() });
+}));
 router.patch(
   '/users/:id/block',
   validate(z.object({ blocked: z.boolean() })),
@@ -180,6 +194,10 @@ router.patch(
 );
 router.get('/pets', asyncHandler(async (req, res) => {
   sendSuccess(res, { data: await listPets({ search: req.query.search }) });
+}));
+/* Pets for one owner — the expandable panel on User Management. */
+router.get('/users/:id/pets', asyncHandler(async (req, res) => {
+  sendSuccess(res, { data: await listUserPets(req.params.id) });
 }));
 
 /* Vendors & approvals */
@@ -226,8 +244,8 @@ router.post('/vendors/:id/suspend', asyncHandler(async (req, res) => {
 export const adminBannersRouter = Router();
 adminBannersRouter.use(authenticate, authorize('admin', 'vendor', 'user'));
 
-adminBannersRouter.get('/', asyncHandler(async (_req, res) => {
-  sendSuccess(res, { data: await listBanners() });
+adminBannersRouter.get('/', asyncHandler(async (req, res) => {
+  sendSuccess(res, { data: await listBanners({ slot: req.query.slot }) });
 }));
 adminBannersRouter.post(
   '/',
@@ -375,6 +393,81 @@ router.delete('/config/item/:id', asyncHandler(async (req, res) => { await delet
 router.get('/transactions', asyncHandler(async (req, res) => sendSuccess(res, { data: await listTransactions({ status: req.query.status }) })));
 router.get('/payments-overview', asyncHandler(async (_req, res) => sendSuccess(res, { data: await paymentsOverview() })));
 router.get('/commission', asyncHandler(async (_req, res) => sendSuccess(res, { data: await getCommissionSettings() })));
+/* Global default + per-category + per-vendor, for the Commission screen. */
+router.get('/commission/matrix', asyncHandler(async (_req, res) => sendSuccess(res, { data: await getCommissionMatrix() })));
+/* Set the global or a category rate, as a percentage. */
+router.put(
+  '/commission/category/:key',
+  superOnly,
+  validate(z.object({ percent: z.number().min(0).max(100), allowZero: z.boolean().optional() })),
+  asyncHandler(async (req, res) =>
+    sendSuccess(res, {
+      data: await setCommissionPercent(req.user, `commission.${req.params.key}`, req.body.percent, req.ip, {
+        allowZero: Boolean(req.body.allowZero),
+      }),
+    })
+  )
+);
+/* One vendor's override; `percent: null` clears it back to inheriting. */
+router.put(
+  '/commission/vendor/:profileId',
+  superOnly,
+  validate(z.object({ percent: z.number().min(0).max(100).nullable(), allowZero: z.boolean().optional() })),
+  asyncHandler(async (req, res) =>
+    sendSuccess(res, {
+      data: await setVendorCommission(req.user, req.params.profileId, req.body.percent, req.ip, {
+        allowZero: Boolean(req.body.allowZero),
+      }),
+    })
+  )
+);
+
+/* The limits every commission write is checked against. */
+router.put(
+  '/commission/bounds',
+  superOnly,
+  validate(z.object({ minPercent: z.number().min(0).max(100), maxPercent: z.number().min(0).max(100) })),
+  asyncHandler(async (req, res) => sendSuccess(res, { data: await setCommissionBounds(req.user, req.body, req.ip) }))
+);
+/* Payout tax, as a percentage. */
+router.put(
+  '/commission/tax',
+  superOnly,
+  validate(z.object({ percent: z.number().min(0).max(100) })),
+  asyncHandler(async (req, res) => sendSuccess(res, { data: await setTaxPercent(req.user, req.body.percent, req.ip) }))
+);
+
+/* ── Scheduled rate changes ── */
+router.get(
+  '/commission/schedules',
+  asyncHandler(async (req, res) =>
+    sendSuccess(res, { data: await listCommissionSchedules({ status: req.query.status }) })
+  )
+);
+router.post(
+  '/commission/schedules',
+  superOnly,
+  validate(
+    z.object({
+      scope: z.enum(['global', 'category', 'vendor']),
+      targetKey: z.string().min(1).max(120),
+      percent: z.number().min(0).max(100).optional(),
+      clearsOverride: z.boolean().optional(),
+      effectiveFrom: z.string().min(1),
+      note: z.string().max(200).optional(),
+    })
+  ),
+  asyncHandler(async (req, res) =>
+    sendSuccess(res, { statusCode: 201, data: await scheduleCommissionChange(req.user, req.body, req.ip) })
+  )
+);
+router.delete(
+  '/commission/schedules/:id',
+  superOnly,
+  asyncHandler(async (req, res) =>
+    sendSuccess(res, { data: await cancelCommissionSchedule(req.user, req.params.id, req.ip) })
+  )
+);
 router.put(
   '/commission/:key',
   superOnly,
@@ -560,6 +653,6 @@ export default router;
 
 /* ── Public banners (user-app Home rails) ─────────────────── */
 export const bannersRouter = Router();
-bannersRouter.get('/', asyncHandler(async (_req, res) => {
-  sendSuccess(res, { data: await listPublicBanners() });
+bannersRouter.get('/', asyncHandler(async (req, res) => {
+  sendSuccess(res, { data: await listPublicBanners({ slot: req.query.slot }) });
 }));

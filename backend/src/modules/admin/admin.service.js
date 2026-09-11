@@ -9,9 +9,11 @@ import { Product } from '../shop/product.model.js';
 import { Provider } from '../provider/provider.model.js';
 import { Doctor } from '../provider/doctor.model.js';
 import { VendorProfile, VendorLedgerEntry } from '../vendor/vendor.models.js';
+import { UserSubscription } from '../subscription/subscription.models.js';
 import { serializeProfile } from '../vendor/vendor.service.js';
 import { VENDOR_TYPE_LABEL } from '../vendor/vendorTypeLabels.js';
 import { invalidate } from '../../services/cache.service.js';
+import { isUserOnline, onlineUserCount } from '../../sockets/index.js';
 import { AuditLog, Banner, PlatformSetting, AdminActionItem } from './admin.models.js';
 
 const oid = (id) => new mongoose.Types.ObjectId(String(id));
@@ -309,28 +311,131 @@ export async function getDashboard() {
 }
 
 /* ── Users & pets ─────────────────────────────────────────────────── */
+/**
+ * A paid subscription counts only while it is both `active` and unexpired.
+ * `getActiveSubscription()` settles a lapsed row on read, but that is a write
+ * per user — far too heavy for a 500-row list, so the same expiry rule is
+ * applied in memory here and the row is left for that path to clean up.
+ */
+const liveSub = (s, now) => s.status === 'active' && (!s.expiresAt || s.expiresAt > now);
+
+/** Search text is a literal, not a pattern — a stray `(` must not 500. */
+const rx = (text) => new RegExp(String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+
 export async function listUsers({ search } = {}) {
   const filter = { role: 'user' };
-  if (search) filter.$or = [{ name: new RegExp(search, 'i') }, { email: new RegExp(search, 'i') }];
+  if (search) {
+    const re = rx(search);
+    filter.$or = [{ name: re }, { email: re }, { phone: re }];
+  }
   const users = await User.find(filter).sort({ createdAt: -1 }).limit(500);
-  const counts = await Pet.aggregate([
-    { $match: { deletedAt: null } },
-    { $group: { _id: '$ownerId', n: { $sum: 1 } } },
+  const ids = users.map((u) => u._id);
+
+  const [counts, subs] = await Promise.all([
+    // Pet names ride along with the count so the profile drawer can list the
+    // actual pets instead of only saying how many there are.
+    Pet.aggregate([
+      { $match: { deletedAt: null, ownerId: { $in: ids } } },
+      { $group: { _id: '$ownerId', n: { $sum: 1 }, names: { $push: '$name' } } },
+    ]),
+    UserSubscription.find({ userId: { $in: ids }, status: 'active' })
+      .select('userId plan planKey expiresAt')
+      .sort({ expiresAt: -1 })
+      .lean(),
   ]);
-  const petMap = new Map(counts.map((c) => [String(c._id), c.n]));
-  return users.map((u) => ({
-    id: String(u._id),
-    name: u.name || 'Unnamed',
-    email: u.email || u.phone || '',
-    phone: u.phone || '—',
-    city: u.city || '—',
-    avatar: u.avatarUrl || `https://i.pravatar.cc/150?u=${u._id}`,
-    joined: u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : '—',
-    plan: 'Free',
-    pets: petMap.get(String(u._id)) || 0,
-    status: u.isBlocked ? 'Suspended' : 'Active',
-    kyc: u.isPhoneVerified ? 'Verified' : 'Pending',
-  }));
+
+  const now = new Date();
+  const petMap = new Map(counts.map((c) => [String(c._id), c]));
+  // Sorted by expiry above, so the first live row per user is the longest-running.
+  const subMap = new Map();
+  for (const s of subs) {
+    if (liveSub(s, now) && !subMap.has(String(s.userId))) subMap.set(String(s.userId), s);
+  }
+
+  return users.map((u) => {
+    const pets = petMap.get(String(u._id));
+    const sub = subMap.get(String(u._id));
+    return {
+      id: String(u._id),
+      name: u.name || 'Unnamed',
+      // The phone belongs in its own column; borrowing it here made every
+      // OTP-only account look like it had an email address.
+      email: u.email || '',
+      phone: u.phone || '—',
+      city: u.city || '—',
+      // Null when the user never set a picture — the panel draws initials.
+      // This used to hand back a random stock portrait from pravatar.cc.
+      avatar: u.avatarUrl || null,
+      joined: u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : '—',
+      joinedAt: u.createdAt || null,
+      // `plan` is the bucket the filter tabs work on; `planName` is what the
+      // user actually bought ("Gold", "Standard", …).
+      plan: sub ? 'Premium' : 'Free',
+      planName: sub?.plan?.name || sub?.planKey || 'Free',
+      planExpiresAt: sub?.expiresAt || null,
+      pets: pets?.n || 0,
+      petNames: pets?.names || [],
+      status: u.isBlocked ? 'Suspended' : 'Active',
+      kyc: u.isPhoneVerified ? 'Verified' : 'Pending',
+      lastActiveAt: u.lastSeenAt || u.lastLoginAt || null,
+      // Live socket presence, not a timestamp comparison: `isUserOnline` counts
+      // the sockets actually open for this account right now.
+      online: isUserOnline(u._id),
+      lastLoginAt: u.lastLoginAt || null,
+      lastSeenAt: u.lastSeenAt || null,
+    };
+  });
+}
+
+/**
+ * Counters for the User Management header cards.
+ *
+ * Deliberately separate from the list: the list is capped at 500 rows and
+ * narrowed by the search box, so counting it would understate the platform.
+ */
+export async function userStats() {
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const unexpired = { $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }] };
+  // Subscribers, not subscriptions — one person renewing twice is one of these.
+  // Grouped rather than `distinct()`, which would cap out at a 16MB result.
+  const subscribers = (match) =>
+    UserSubscription.aggregate([{ $match: match }, { $group: { _id: '$userId' } }, { $count: 'n' }])
+      .then((rows) => rows[0]?.n || 0);
+
+  const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  // "Seen" covers either signal, because a user who signed in today but has
+  // not reconnected a socket since is still someone who used the platform.
+  const seenSince = (since) => ({
+    role: 'user',
+    $or: [{ lastSeenAt: { $gte: since } }, { lastLoginAt: { $gte: since } }],
+  });
+
+  const [total, newThisWeek, suspended, premium, premiumNewThisWeek, activeToday, activeThisWeek] =
+    await Promise.all([
+      User.countDocuments({ role: 'user' }),
+      User.countDocuments({ role: 'user', createdAt: { $gte: weekAgo } }),
+      User.countDocuments({ role: 'user', isBlocked: true }),
+      subscribers({ status: 'active', ...unexpired }),
+      subscribers({ status: 'active', startsAt: { $gte: weekAgo }, ...unexpired }),
+      User.countDocuments(seenSince(dayAgo)),
+      User.countDocuments(seenSince(weekAgo)),
+    ]);
+
+  return {
+    total,
+    newThisWeek,
+    // `active` is "not suspended" -- an account state. The engagement numbers
+    // below are the ones that answer "who is actually using the platform".
+    active: total - suspended,
+    suspended,
+    premium,
+    premiumNewThisWeek,
+    free: total - premium,
+    onlineNow: onlineUserCount(),
+    activeToday,
+    activeThisWeek,
+  };
 }
 
 export async function setUserBlocked(actor, userId, blocked, ip) {
@@ -344,23 +449,62 @@ export async function setUserBlocked(actor, userId, blocked, ip) {
   return { id: String(user._id), status: blocked ? 'Suspended' : 'Active' };
 }
 
-export async function listPets({ search } = {}) {
-  const filter = { deletedAt: null };
-  if (search) filter.name = new RegExp(search, 'i');
-  const pets = await Pet.find(filter).populate('ownerId', 'name phone').sort({ createdAt: -1 }).limit(500);
-  return pets.map((p) => ({
+/**
+ * Coarse health summary from the record the owner filled in. "Unknown" is a
+ * real answer here — an untouched health section must not read as "Good".
+ */
+function petHealthStatus(health) {
+  if (!health) return 'Unknown';
+  if (health.conditions?.length) return 'Needs Attention';
+  if (health.allergies?.length) return 'Monitored';
+  if (health.vaccinated) return 'Good';
+  return 'Unknown';
+}
+
+/** One pet row, shaped the way every admin pet list renders it. */
+function serializePet(p) {
+  return {
     id: String(p._id),
     name: p.name,
     species: p.type ? p.type.charAt(0).toUpperCase() + p.type.slice(1) : 'Dog',
     breed: p.breed,
     owner: p.ownerId?.name || '—',
+    ownerPhone: p.ownerId?.phone || '—',
     gender: p.gender,
     age: p.ageText || '—',
     weight: p.weightKg ? `${p.weightKg} kg` : '—',
-    avatar: p.avatarUrl || (p.photos && p.photos[0]) || `https://i.pravatar.cc/150?u=${p._id}`,
-    vaccinated: true,
-    healthStatus: 'Good',
-  }));
+    // Null rather than a stock photo when the owner uploaded nothing; the
+    // panel falls back to the pet's initial.
+    avatar: p.avatarUrl || (p.photos && p.photos[0]) || null,
+    // Both of these were hardcoded, so every pet on the platform read as
+    // vaccinated and healthy no matter what its record said.
+    vaccinated: Boolean(p.health?.vaccinated),
+    healthStatus: petHealthStatus(p.health),
+    createdAt: p.createdAt || null,
+  };
+}
+
+export async function listPets({ search } = {}) {
+  const filter = { deletedAt: null };
+  if (search) filter.name = rx(search);
+  const pets = await Pet.find(filter).populate('ownerId', 'name phone').sort({ createdAt: -1 }).limit(500);
+  return pets.map(serializePet);
+}
+
+/**
+ * Every pet registered to one owner.
+ *
+ * Backs the expandable pets panel on User Management, which replaced the
+ * separate Pets screen. Loaded per row on demand rather than embedded in the
+ * user list: most rows are never expanded, and full pet records for 500 users
+ * would dwarf the list they are attached to.
+ */
+export async function listUserPets(userId) {
+  if (!mongoose.isValidObjectId(userId)) throw ApiError.badRequest('Invalid user id');
+  const pets = await Pet.find({ ownerId: userId, deletedAt: null })
+    .populate('ownerId', 'name phone')
+    .sort({ createdAt: -1 });
+  return pets.map(serializePet);
 }
 
 /* ── Vendors & approvals ──────────────────────────────────────────── */
@@ -690,13 +834,32 @@ const serializeBanner = (b) => ({
   sort: b.sort,
 });
 
-export async function listBanners() {
-  const rows = await Banner.find().sort({ sort: 1, createdAt: 1 });
+/**
+ * Turn a `?slot=` query value into a Mongo filter.
+ *
+ * Callers that want one rail should not have to download every other one.
+ * Banner images can be inlined data URLs -- the Banners & Content screen
+ * writes them that way -- so a handful of Section rows makes an unfiltered
+ * list several megabytes, which is slow enough to look like a hung screen.
+ * Accepts one slot or a comma-separated list.
+ */
+function slotFilter(slot) {
+  if (!slot) return {};
+  const slots = String(slot)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!slots.length) return {};
+  return { slot: { $in: slots } };
+}
+
+export async function listBanners({ slot } = {}) {
+  const rows = await Banner.find(slotFilter(slot)).sort({ sort: 1, createdAt: 1 });
   return rows.map(serializeBanner);
 }
 
-export async function listPublicBanners() {
-  const rows = await Banner.find({ active: true }).sort({ sort: 1, createdAt: 1 });
+export async function listPublicBanners({ slot } = {}) {
+  const rows = await Banner.find({ active: true, ...slotFilter(slot) }).sort({ sort: 1, createdAt: 1 });
   return rows.map(serializeBanner);
 }
 

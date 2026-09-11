@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
 import { 
-  Menu, X, Bell, LogOut, LayoutDashboard, Users, PawPrint, Store, 
+  Menu, X, Bell, LogOut, LayoutDashboard, Users, Store, 
   Settings, Shield, ChevronDown, ChevronRight, Activity, Calendar, 
   ShoppingBag, ClipboardList, Briefcase, FileText, PieChart, 
   ShieldAlert, Cpu, Database, Search, Package, DollarSign,
@@ -15,8 +15,10 @@ const navigationGroups = [
     title: 'Main',
     items: [
       { label: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
-      { label: 'Users', path: '/admin/users', icon: Users },
-      { label: 'Pets', path: '/admin/pets', icon: PawPrint },
+      // Pets are managed inside User Management now -- each user row expands to
+      // the pets registered to it, so a separate screen would only split the
+      // same records across two places.
+      { label: 'Users & Pets', path: '/admin/users', icon: Users },
     ]
   },
   {
@@ -82,6 +84,7 @@ const navigationGroups = [
       { label: 'Community', path: '/admin/platform/community' },
       { label: 'Reviews', path: '/admin/platform/reviews' },
       { label: 'Banners & Content', path: '/admin/platform/content' },
+      { label: 'Home Service Images', path: '/admin/platform/service-images' },
       { label: 'Pet Prompts & Fun Facts', path: '/admin/platform/prompts' },
       { label: 'Reports', path: '/admin/platform/reports' },
       { label: 'Security', path: '/admin/platform/security' },

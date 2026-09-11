@@ -4,6 +4,7 @@ import {
   XCircle, HeartPulse, Stethoscope, User, Calendar, Activity, ChevronRight
 } from 'lucide-react';
 import { fetchAdminPets } from '../../../../../services/admin';
+import { Avatar } from '../../components/Avatar';
 
 export function Pets() {
   const [mockPets, setMockPets] = useState([]);
@@ -139,7 +140,7 @@ export function Pets() {
               {/* Top Row: Avatar, Name, Action */}
               <div className="flex justify-between items-start">
                 <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-                  <img src={pet.avatar} alt={pet.name} className="w-10 h-10 rounded-full object-cover border border-slate-100 shadow-sm shrink-0" />
+                  <Avatar src={pet.avatar} name={pet.name} seed={pet.id} className="w-10 h-10 rounded-full border border-slate-100 shadow-sm shrink-0" />
                   <div>
                     <p className="text-sm font-bold text-slate-900 flex items-center gap-1.5 leading-tight">
                       {pet.name}
@@ -196,7 +197,7 @@ export function Pets() {
                     {pet.vaccinated ? 'Vaccinated' : 'Unvaccinated'}
                   </span>
                   <span className="text-[10px] font-semibold text-slate-500 flex items-center gap-1">
-                    <HeartPulse size={12} className={pet.healthStatus === 'Excellent' ? 'text-emerald-500' : 'text-amber-500'} /> 
+                    <HeartPulse size={12} className={pet.healthStatus === 'Good' ? 'text-emerald-500' : 'text-amber-500'} /> 
                     {pet.healthStatus}
                   </span>
                 </div>
@@ -228,7 +229,7 @@ export function Pets() {
                 <tr key={pet.id} className="hover:bg-slate-50/50 transition group">
                   <td className="px-6 py-4">
                     <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-                      <img src={pet.avatar} alt={pet.name} className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm shrink-0" />
+                      <Avatar src={pet.avatar} name={pet.name} seed={pet.id} className="w-10 h-10 rounded-full border-2 border-white shadow-sm shrink-0" />
                       <div className="min-w-max">
                         <p className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                           {pet.name}
@@ -261,7 +262,7 @@ export function Pets() {
                         {pet.vaccinated ? 'Vaccinated' : 'Unvaccinated'}
                       </span>
                       <span className="text-[11px] font-semibold text-slate-500 flex items-center gap-1">
-                        <HeartPulse size={12} className={pet.healthStatus === 'Excellent' ? 'text-emerald-500' : 'text-amber-500'} /> 
+                        <HeartPulse size={12} className={pet.healthStatus === 'Good' ? 'text-emerald-500' : 'text-amber-500'} /> 
                         {pet.healthStatus}
                       </span>
                     </div>
@@ -319,7 +320,7 @@ export function Pets() {
              {/* Header */}
              <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                 <div className="flex items-center gap-4">
-                   <img src={selectedPet.avatar} alt={selectedPet.name} className="w-16 h-16 rounded-full object-cover border-4 border-white shadow-sm" />
+                   <Avatar src={selectedPet.avatar} name={selectedPet.name} seed={selectedPet.id} textClassName="text-lg" className="w-16 h-16 rounded-full border-4 border-white shadow-sm" />
                    <div>
                       <h2 className="text-xl font-black text-slate-900">{selectedPet.name}</h2>
                       <p className="text-[13px] font-semibold text-slate-500">ID: {selectedPet.id} • {selectedPet.breed}</p>

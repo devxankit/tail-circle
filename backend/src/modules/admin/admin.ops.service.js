@@ -8,6 +8,35 @@ import { SupportTicket } from '../support/supportTicket.model.js';
 import '../provider/provider.model.js';
 import '../provider/doctor.model.js';
 import { writeAudit } from './admin.service.js';
+import { VendorLedgerEntry } from '../vendor/vendor.models.js';
+
+/**
+ * Real platform commission per reference, in paise, from the vendor ledger.
+ *
+ * These screens used to display `amount * 0.12`, a rate nothing in the system
+ * ever charged: settlement bills the configured vendor/category rate, so the
+ * ops reports contradicted the payouts they were meant to explain. Summed per
+ * reference because a basket split across two sellers posts one entry each.
+ * A reference with no entry yet -- unpaid, or not fulfilled -- has no
+ * commission to report, which reads as a dash rather than an invented number.
+ */
+async function commissionByRef(refIds) {
+  const ids = refIds.filter(Boolean);
+  if (!ids.length) return new Map();
+  const rows = await VendorLedgerEntry.find({ refId: { $in: ids } }).select('refId commission').lean();
+  const map = new Map();
+  for (const r of rows) {
+    const key = String(r.refId);
+    map.set(key, (map.get(key) || 0) + (r.commission || 0));
+  }
+  return map;
+}
+
+/** Commission cell for one reference: real rupees, or a dash if none is posted. */
+const commissionCell = (map, id) => {
+  const paise = map.get(String(id));
+  return paise === undefined ? '—' : rupees(paise).toLocaleString('en-IN');
+};
 
 const rupees = (paise) => Math.round((paise || 0) / 100);
 const fmtDate = (d) => (d ? new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
@@ -24,6 +53,7 @@ const timeAgoStr = (d) => {
 /* ── Orders (cross-vendor) ────────────────────────────────────────── */
 export async function listOrders() {
   const orders = await Order.find().populate('userId', 'name').populate('vendorId', 'name').sort({ createdAt: -1 }).limit(300);
+  const commissions = await commissionByRef(orders.map((o) => o._id));
   return orders.map((o) => {
     const total = rupees(o.amounts?.total);
     return {
@@ -37,7 +67,7 @@ export async function listOrders() {
       itemsCount: o.items?.length || 0,
       previewItem: o.items?.[0]?.name || '—',
       amount: total.toLocaleString('en-IN'),
-      commission: Math.round(total * 0.12).toLocaleString('en-IN'),
+      commission: commissionCell(commissions, o._id),
       paymentMethod: o.paymentMethod === 'cod' ? 'COD' : 'UPI',
       paymentId: o.paymentId ? String(o.paymentId) : '—',
       paymentStatus: o.paymentMethod === 'cod' ? 'Pending' : 'Paid',
@@ -60,6 +90,7 @@ export async function listBookings() {
     .populate('providerId', 'name')
     .sort({ createdAt: -1 })
     .limit(300);
+  const commissions = await commissionByRef(bookings.map((b) => b._id));
   return bookings.map((b) => {
     const total = rupees(b.amounts?.total);
     return {
@@ -76,7 +107,7 @@ export async function listBookings() {
       duration: b.schedule?.durationDays ? `${b.schedule.durationDays} days` : '—',
       addons: (b.items || []).filter((it) => it.kind === 'addon').map((it) => it.name),
       amount: total.toLocaleString('en-IN'),
-      commission: Math.round(total * 0.12).toLocaleString('en-IN'),
+      commission: commissionCell(commissions, b._id),
       paymentMethod: PAY_LABEL[b.paymentMethod] || b.paymentMethod,
       paymentStatus: b.paymentId ? 'Paid' : 'Pending',
       status: titleCase(b.status),
@@ -91,6 +122,7 @@ export async function listAppointments() {
     .populate('doctorId', 'name spec clinic')
     .sort({ createdAt: -1 })
     .limit(300);
+  const commissions = await commissionByRef(appts.map((b) => b._id));
   return appts.map((b) => {
     const fee = rupees(b.amounts?.total);
     return {
@@ -110,7 +142,7 @@ export async function listAppointments() {
       issue: b.meta?.issue || b.meta?.symptoms || '—',
       prescription: '—',
       fee: fee.toLocaleString('en-IN'),
-      commission: Math.round(fee * 0.12).toLocaleString('en-IN'),
+      commission: commissionCell(commissions, b._id),
       emergencySurcharge: 0,
       status: b.meta?.clinicStatus || titleCase(b.status),
     };
