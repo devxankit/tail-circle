@@ -78,7 +78,17 @@ const vendorProfileSchema = new mongoose.Schema(
 
     approvalStatus: { type: String, enum: APPROVAL_STATUSES, default: 'pending', index: true },
     rejectionReason: { type: String, default: null },
-    commissionRate: { type: Number, default: 0.15 }, // platform commission fraction
+    /*
+     * Per-vendor commission override, as a fraction (0.1 === 10%).
+     *
+     * `null` means "inherit", which is the normal state: the rate then comes
+     * from the category default and finally the global default, resolved in
+     * commission.service.js. It defaulted to 0.15 before, which made every
+     * profile look deliberately customised and left no way to express
+     * inheritance -- changing the grooming category rate could not reach any
+     * of its vendors.
+     */
+    commissionRate: { type: Number, default: null, min: 0, max: 1 },
     rating: { type: Number, default: 0 },
 
     policies: {
@@ -132,6 +142,15 @@ const vendorLedgerEntrySchema = new mongoose.Schema(
     gross: { type: Number, required: true }, // paise
     commission: { type: Number, required: true }, // paise
     net: { type: Number, required: true }, // paise
+    /*
+     * The rate this row was actually billed at, snapshotted at posting time.
+     *
+     * Without it a settled entry cannot be explained: category and vendor
+     * rates change, so recomputing `commission / gross` months later is the
+     * only way to answer "why was this vendor charged 18%?" and that breaks
+     * down on rounded amounts. Null on rows written before this field.
+     */
+    commissionRate: { type: Number, default: null },
     status: { type: String, enum: ['unsettled', 'settled'], default: 'unsettled', index: true },
     settledPayoutId: { type: mongoose.Schema.Types.ObjectId, ref: 'Payout', default: null },
   },
@@ -157,6 +176,8 @@ const payoutSchema = new mongoose.Schema(
     grossAmount: { type: Number, default: 0 }, // paise
     commission: { type: Number, default: 0 },
     tax: { type: Number, default: 0 },
+    /* The tax fraction withheld, snapshotted so a settled payout stays explainable. */
+    taxRate: { type: Number, default: null },
     netAmount: { type: Number, default: 0 },
     status: { type: String, enum: ['pending', 'processing', 'paid'], default: 'pending', index: true },
     utr: { type: String, default: null },

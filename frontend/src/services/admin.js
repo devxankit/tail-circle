@@ -54,8 +54,17 @@ export async function fetchAdminUsers(search) {
   const { data } = await api.get('/admin/users', { params: search ? { search } : {} });
   return data;
 }
+export async function fetchAdminUserStats() {
+  const { data } = await api.get('/admin/users/stats');
+  return data;
+}
 export async function setAdminUserBlocked(id, blocked) {
   const { data } = await api.patch(`/admin/users/${id}/block`, { blocked });
+  return data;
+}
+/** Pets belonging to one user — loaded on demand by the expandable row. */
+export async function fetchAdminUserPets(id) {
+  const { data } = await api.get(`/admin/users/${id}/pets`);
   return data;
 }
 export async function fetchAdminPets(search) {
@@ -139,8 +148,16 @@ export async function suspendVendorApi(id) {
 }
 
 /* ── Banners & settings ───────────────────────────────────── */
-export async function fetchAdminBanners() {
-  const { data } = await api.get('/admin/banners');
+/**
+ * Banner rows for the admin screens.
+ *
+ * `slots` narrows the response to the rails a screen actually edits. Worth
+ * passing: images can be stored as inlined data URLs, so the unfiltered list
+ * runs to several megabytes and takes long enough to look like a hung screen.
+ */
+export async function fetchAdminBanners(slots) {
+  const slot = Array.isArray(slots) ? slots.join(',') : slots;
+  const { data } = await api.get('/admin/banners', { params: slot ? { slot } : {} });
   return data;
 }
 export async function createBannerApi(body) {
@@ -154,6 +171,24 @@ export async function updateBannerApi(id, patch) {
 export async function deleteBannerApi(id) {
   await api.delete(`/admin/banners/${id}`);
 }
+
+/**
+ * Upload artwork for an admin-managed banner or Home service tile.
+ *
+ * Goes through the shared Cloudinary endpoint rather than inlining the file as
+ * a base64 data URL: tile artwork is read on every Home render, and a handful
+ * of inlined images bloats both the Banner documents and the public
+ * `GET /banners` payload. Falls back to a data URL only when the server has no
+ * Cloudinary credentials configured, which is what the endpoint returns.
+ */
+export async function uploadAdminImage(file, folder = 'admin-banners') {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('folder', folder);
+  const { data } = await api.post('/uploads/image', form);
+  return data?.url || data?.secure_url || '';
+}
+
 export async function fetchAdminSettings() {
   const { data } = await api.get('/admin/settings');
   return data;
@@ -213,6 +248,35 @@ export const fetchAdminTransactions = async (params = {}) => (await api.get('/ad
 export const fetchAdminPaymentsOverview = async () => (await api.get('/admin/payments-overview')).data;
 export const fetchAdminCommission = async () => (await api.get('/admin/commission')).data;
 export const setAdminCommission = async (key, value) => (await api.put(`/admin/commission/${key}`, { value })).data;
+
+/*
+ * Commission structure: global default, per-category defaults, and per-vendor
+ * overrides. These take a PERCENTAGE (20 for 20%); the server converts it to
+ * the stored fraction. Never post a fraction here -- the two setters are not
+ * interchangeable with `setAdminCommission` above, which takes a fraction.
+ */
+export const fetchCommissionMatrix = async () => (await api.get('/admin/commission/matrix')).data;
+export const setCategoryCommission = async (vendorType, percent, allowZero = false) =>
+  (await api.put(`/admin/commission/category/${vendorType}`, { percent, allowZero })).data;
+/**
+ * `percent: null` clears the override so the vendor inherits its category.
+ * `allowZero` is the explicit opt-in for a genuinely free rate, which the
+ * server otherwise refuses along with anything outside the configured limits.
+ */
+export const setVendorCommission = async (profileId, percent, allowZero = false) =>
+  (await api.put(`/admin/commission/vendor/${profileId}`, { percent, allowZero })).data;
+
+/** The limits every commission write is checked against. */
+export const setCommissionBounds = async (minPercent, maxPercent) =>
+  (await api.put('/admin/commission/bounds', { minPercent, maxPercent })).data;
+/** Payout tax withheld from vendor earnings, as a percentage. */
+export const setTaxPercent = async (percent) => (await api.put('/admin/commission/tax', { percent })).data;
+
+/* Rate changes dated into the future. The server applies them on the minute. */
+export const scheduleCommissionChange = async (body) =>
+  (await api.post('/admin/commission/schedules', body)).data;
+export const cancelCommissionSchedule = async (id) =>
+  (await api.delete(`/admin/commission/schedules/${id}`)).data;
 export const fetchAdminPayouts = async (params = {}) => (await api.get('/admin/payouts', { params })).data;
 export const payAdminPayout = async (id, utr) => (await api.post(`/admin/payouts/${id}/pay`, { utr })).data;
 export const fetchAdminWalletOverview = async () => (await api.get('/admin/wallet-overview')).data;
@@ -258,8 +322,10 @@ export const revokeMatchSubscription = async (id, reason = '') =>
   (await api.post(`/admin/subscriptions/${id}/revoke`, { reason })).data;
 
 /* ── Public banners (user-app Home) ───────────────────────── */
-export async function fetchPublicBanners() {
-  const { data } = await api.get('/banners');
+/** Public banner rows; `slots` narrows the response the same way. */
+export async function fetchPublicBanners(slots) {
+  const slot = Array.isArray(slots) ? slots.join(',') : slots;
+  const { data } = await api.get('/banners', { params: slot ? { slot } : {} });
   return data;
 }
 

@@ -28,7 +28,7 @@ import { seedSocial } from './seeders/social.seed.js';
 import { seedWallet } from './seeders/wallet.seed.js';
 import { seedVendors } from './seeders/vendors.seed.js';
 import { seedClinic } from './seeders/clinic.seed.js';
-import { seedAdmin } from './seeders/admin.seed.js';
+import { seedAdmin, seedHomeServiceBanners, seedPlatformSettings } from './seeders/admin.seed.js';
 import { seedAdminConfig } from './seeders/adminConfig.seed.js';
 registerSeeder('demo-user', seedDemoUser);
 registerSeeder('breeds', seedBreeds);
@@ -41,6 +41,8 @@ registerSeeder('wallet', seedWallet);
 registerSeeder('vendors', seedVendors);
 registerSeeder('clinic', seedClinic);
 registerSeeder('admin', seedAdmin);
+registerSeeder('home-services', seedHomeServiceBanners);
+registerSeeder('settings', seedPlatformSettings);
 registerSeeder('admin-config', seedAdminConfig);
 
 async function main() {

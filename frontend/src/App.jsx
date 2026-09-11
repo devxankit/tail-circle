@@ -384,7 +384,6 @@ const FinanceAdminView = lazy(() => import('./modules/Admin/MealPortalAdmin/view
 const AdminDashboard = lazy(() => import('./modules/Admin/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard || m.default })));
 const AdminManagement = lazy(() => import('./modules/Admin/admin/AdminManagement').then(m => ({ default: m.AdminManagement || m.default })));
 const Users = lazy(() => import('./modules/Admin/admin/views/users/Users').then(m => ({ default: m.Users || m.default })));
-const Pets = lazy(() => import('./modules/Admin/admin/views/users/Pets').then(m => ({ default: m.Pets || m.default })));
 const AllVendors = lazy(() => import('./modules/Admin/admin/views/vendors/AllVendors').then(m => ({ default: m.AllVendors || m.default })));
 const PendingApprovals = lazy(() => import('./modules/Admin/admin/views/vendors/PendingApprovals').then(m => ({ default: m.PendingApprovals || m.default })));
 const ShopVendors = lazy(() => import('./modules/Admin/admin/views/vendors/ShopVendors').then(m => ({ default: m.ShopVendors || m.default })));
@@ -420,6 +419,7 @@ const AdminNotifications = lazy(() => import('./modules/Admin/admin/views/platfo
 const AdminCommunity = lazy(() => import('./modules/Admin/admin/views/platform/Community').then(m => ({ default: m.Community || m.default })));
 const Reviews = lazy(() => import('./modules/Admin/admin/views/platform/Reviews').then(m => ({ default: m.Reviews || m.default })));
 const BannersContent = lazy(() => import('./modules/Admin/admin/views/platform/BannersContent').then(m => ({ default: m.BannersContent || m.default })));
+const HomeServiceImages = lazy(() => import('./modules/Admin/admin/views/platform/HomeServiceImages').then(m => ({ default: m.HomeServiceImages || m.default })));
 const PetPromptsAdminView = lazy(() => import('./modules/Admin/admin/views/platform/PetPromptsAdminView').then(m => ({ default: m.PetPromptsAdminView || m.default })));
 const Reports = lazy(() => import('./modules/Admin/admin/views/platform/Reports').then(m => ({ default: m.Reports || m.default })));
 const Security = lazy(() => import('./modules/Admin/admin/views/platform/Security').then(m => ({ default: m.Security || m.default })));
@@ -644,7 +644,8 @@ function App() {
                   {/* Main */}
                   <Route path="dashboard" element={<AdminDashboard />} />
                   <Route path="users" element={<Users />} />
-                  <Route path="pets" element={<Pets />} />
+                  {/* Pet management moved into User Management; keep old links working. */}
+                  <Route path="pets" element={<Navigate to="/admin/users" replace />} />
 
                   {/* Vendors */}
                   <Route path="vendors" element={<AllVendors />} />
@@ -690,6 +691,7 @@ function App() {
                   <Route path="platform/community" element={<AdminCommunity />} />
                   <Route path="platform/reviews" element={<Reviews />} />
                   <Route path="platform/content" element={<BannersContent />} />
+                  <Route path="platform/service-images" element={<HomeServiceImages />} />
                   <Route path="platform/prompts" element={<PetPromptsAdminView />} />
                   <Route path="platform/reports" element={<Reports />} />
                   <Route path="platform/security" element={<Security />} />

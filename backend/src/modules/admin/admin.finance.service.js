@@ -6,6 +6,23 @@ import { credit, debit } from '../wallet/wallet.service.js';
 import { Payout, VendorProfile, VendorLedgerEntry } from '../vendor/vendor.models.js';
 import { PlatformSetting } from './admin.models.js';
 import { writeAudit } from './admin.service.js';
+import { CommissionSchedule } from './commissionSchedule.model.js';
+import { VENDOR_TYPE_LABEL } from '../vendor/vendorTypeLabels.js';
+import {
+  commissionMatrix,
+  commissionRateFor,
+  commissionBounds,
+  assertWithinBounds,
+  MIN_KEY,
+  MAX_KEY,
+  TAX_KEY,
+  clearCommissionCache,
+  rateFromPercent,
+  percentFromRate,
+  sanitizeRate,
+  taxRate,
+  VENDOR_TYPES,
+} from '../vendor/commission.service.js';
 
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 const startOfMonth = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); };
@@ -75,16 +92,342 @@ export async function paymentsOverview() {
 }
 
 /* ── Commission settings ──────────────────────────────────────────── */
+
+/** Raw settings rows, still used by the generic settings screen. */
 export async function getCommissionSettings() {
   const rows = await PlatformSetting.find({ group: 'commission' }).sort({ key: 1 });
   return rows.map((s) => ({ key: s.key, value: s.value, label: s.label }));
 }
+
+/** Global default, every category, every vendor override, plus limits and queue. */
+export async function getCommissionMatrix() {
+  // Apply anything already due before reporting, so the screen never shows a
+  // change as "upcoming" when its moment has passed.
+  await applyDueCommissionSchedules();
+  const [matrix, bounds, scheduled, tax] = await Promise.all([
+    commissionMatrix(),
+    commissionBounds(),
+    listCommissionSchedules({ status: 'pending' }),
+    taxRate(),
+  ]);
+  return { ...matrix, bounds, scheduled, taxPercent: percentFromRate(tax) };
+}
+
+/**
+ * Move the guardrails themselves.
+ *
+ * Needs its own setter because these two rows hold percentages while every
+ * other `commission.*` row holds a fraction. Routing them through either of
+ * the rate setters would store 5% as 0.05 and make the minimum meaningless.
+ */
+export async function setCommissionBounds(actor, { minPercent, maxPercent }, ip) {
+  const min = Number(minPercent);
+  const max = Number(maxPercent);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) throw ApiError.badRequest('Limits must be numbers');
+  if (min < 0 || max > 100) throw ApiError.badRequest('Limits must be between 0 and 100 percent');
+  if (min > max) throw ApiError.badRequest('Minimum cannot be above the maximum');
+
+  const before = await commissionBounds();
+  await PlatformSetting.updateOne(
+    { key: MIN_KEY },
+    { $set: { value: min, group: 'commission', label: 'Minimum commission (%)' } },
+    { upsert: true }
+  );
+  await PlatformSetting.updateOne(
+    { key: MAX_KEY },
+    { $set: { value: max, group: 'commission', label: 'Maximum commission (%)' } },
+    { upsert: true }
+  );
+  clearCommissionCache();
+  await writeAudit(actor, {
+    action: 'commission.bounds.update',
+    targetType: 'setting',
+    targetId: 'commission.bounds',
+    before,
+    after: { minPercent: min, maxPercent: max },
+    ip,
+  });
+  return commissionBounds();
+}
+
+/** Payout tax rate, as a percentage. Shares the settings cache with commission. */
+export async function setTaxPercent(actor, percent, ip) {
+  const value = rateFromPercent(percent);
+  const before = await PlatformSetting.findOne({ key: TAX_KEY }).lean();
+  await PlatformSetting.updateOne(
+    { key: TAX_KEY },
+    { $set: { value, group: 'tax', label: 'GST rate' } },
+    { upsert: true }
+  );
+  clearCommissionCache();
+  await writeAudit(actor, {
+    action: 'tax.update',
+    targetType: 'setting',
+    targetId: TAX_KEY,
+    before: before ? { value: before.value } : null,
+    after: { value },
+    ip,
+  });
+  return { key: TAX_KEY, value, percent: percentFromRate(value) };
+}
+
+/* ── Scheduled rate changes ───────────────────────────────────────── */
+
+const SCOPE_LABEL = { global: 'Global default', category: 'Category', vendor: 'Vendor' };
+
+export async function listCommissionSchedules({ status, limit = 100 } = {}) {
+  const filter = status ? { status } : {};
+  const rows = await CommissionSchedule.find(filter).sort({ effectiveFrom: 1 }).limit(limit).lean();
+  return rows.map((r) => ({
+    id: String(r._id),
+    scope: r.scope,
+    scopeLabel: SCOPE_LABEL[r.scope] || r.scope,
+    targetKey: r.targetKey,
+    targetLabel: r.targetLabel,
+    percent: r.clearsOverride ? null : r.percent,
+    clearsOverride: r.clearsOverride,
+    effectiveFrom: r.effectiveFrom,
+    status: r.status,
+    previousPercent: r.previousPercent,
+    appliedAt: r.appliedAt,
+    error: r.error,
+    note: r.note,
+    createdByName: r.createdByName,
+  }));
+}
+
+/**
+ * Queue a rate change for later.
+ *
+ * Validated now as well as at apply time: telling an operator their 2% is out
+ * of bounds three weeks from now, in a log nobody reads, is not a guardrail.
+ */
+export async function scheduleCommissionChange(actor, body, ip) {
+  const { scope, targetKey, percent, clearsOverride = false, effectiveFrom, note = '' } = body;
+
+  const when = new Date(effectiveFrom);
+  if (Number.isNaN(when.getTime())) throw ApiError.badRequest('Invalid effective date');
+  if (when.getTime() <= Date.now()) {
+    throw ApiError.badRequest('Effective date must be in the future. To change a rate now, edit it directly.');
+  }
+
+  let targetLabel = SCOPE_LABEL[scope] || scope;
+  if (scope === 'category') {
+    if (!VENDOR_TYPES.includes(targetKey)) throw ApiError.badRequest(`Unknown category "${targetKey}"`);
+    targetLabel = VENDOR_TYPE_LABEL[targetKey];
+  } else if (scope === 'vendor') {
+    if (!mongoose.isValidObjectId(targetKey)) throw ApiError.badRequest('Invalid vendor id');
+    const profile = await VendorProfile.findById(targetKey).select('businessName').lean();
+    if (!profile) throw ApiError.notFound('Vendor not found');
+    targetLabel = profile.businessName || 'Vendor';
+  } else if (scope !== 'global') {
+    throw ApiError.badRequest(`Unknown scope "${scope}"`);
+  }
+
+  if (!clearsOverride) {
+    assertWithinBounds(percent, await commissionBounds());
+  } else if (scope !== 'vendor') {
+    throw ApiError.badRequest('Only a vendor rate can be cleared back to inheriting');
+  }
+
+  const row = await CommissionSchedule.create({
+    scope,
+    targetKey,
+    targetLabel,
+    percent: clearsOverride ? 0 : percent,
+    clearsOverride,
+    effectiveFrom: when,
+    note,
+    createdById: actor?._id || null,
+    createdByName: actor?.name || '',
+  });
+
+  await writeAudit(actor, {
+    action: 'commission.schedule',
+    targetType: 'commission_schedule',
+    targetId: String(row._id),
+    before: null,
+    after: { scope, targetKey, percent, clearsOverride, effectiveFrom: when },
+    ip,
+  });
+
+  return (await listCommissionSchedules({ status: 'pending' })).find((r) => r.id === String(row._id));
+}
+
+export async function cancelCommissionSchedule(actor, id, ip) {
+  if (!mongoose.isValidObjectId(id)) throw ApiError.badRequest('Invalid schedule id');
+  const row = await CommissionSchedule.findOneAndUpdate(
+    { _id: id, status: 'pending' },
+    { $set: { status: 'cancelled' } },
+    { returnDocument: 'after' }
+  );
+  if (!row) throw ApiError.notFound('No pending scheduled change with that id');
+  await writeAudit(actor, {
+    action: 'commission.schedule.cancel',
+    targetType: 'commission_schedule',
+    targetId: id,
+    before: { status: 'pending' },
+    after: { status: 'cancelled' },
+    ip,
+  });
+  return { id, status: 'cancelled' };
+}
+
+/**
+ * Apply every scheduled change whose moment has arrived.
+ *
+ * Each row is claimed with a conditional update before it is acted on, so two
+ * servers running this at the same time cannot apply the same change twice.
+ * A row that fails is marked failed with its reason rather than retried
+ * forever — a rate that is out of bounds by the time it comes due is a
+ * decision for an operator, not something to keep attempting.
+ *
+ * Applying goes through the ordinary setters, so a scheduled change is
+ * bounds-checked, cache-invalidated and audited exactly like a manual one.
+ */
+export async function applyDueCommissionSchedules(now = new Date()) {
+  const due = await CommissionSchedule.find({ status: 'pending', effectiveFrom: { $lte: now } })
+    .sort({ effectiveFrom: 1 })
+    .limit(50)
+    .lean();
+
+  const applied = [];
+  for (const row of due) {
+    const claimed = await CommissionSchedule.findOneAndUpdate(
+      { _id: row._id, status: 'pending' },
+      { $set: { status: 'applied', appliedAt: new Date() } },
+      { returnDocument: 'after' }
+    );
+    if (!claimed) continue; // another worker got there first
+
+    const actor = { _id: row.createdById, name: `${row.createdByName || 'Admin'} (scheduled)` };
+    try {
+      let previousPercent = null;
+      if (row.scope === 'vendor') {
+        const profile = await VendorProfile.findById(row.targetKey).select('commissionRate').lean();
+        previousPercent = percentFromRate(profile?.commissionRate);
+        await setVendorCommission(
+          actor,
+          row.targetKey,
+          row.clearsOverride ? null : row.percent,
+          'scheduler',
+          { allowZero: true }
+        );
+      } else {
+        const key = row.scope === 'global' ? 'commission.default' : `commission.${row.targetKey}`;
+        const before = await PlatformSetting.findOne({ key }).lean();
+        previousPercent = percentFromRate(before?.value);
+        await setCommissionPercent(actor, key, row.percent, 'scheduler', { allowZero: true });
+      }
+      await CommissionSchedule.updateOne({ _id: row._id }, { $set: { previousPercent } });
+      applied.push(String(row._id));
+    } catch (err) {
+      await CommissionSchedule.updateOne(
+        { _id: row._id },
+        { $set: { status: 'failed', error: err?.message || 'Apply failed', appliedAt: null } }
+      );
+    }
+  }
+  if (applied.length) clearCommissionCache();
+  return applied;
+}
+
+/**
+ * Set the global or a category default.
+ *
+ * Takes a percentage because that is what the screen shows; the fraction that
+ * actually multiplies money is derived once, here, by `rateFromPercent`.
+ * Writing a percentage straight into the settings row would make every future
+ * settlement bill 100x the intended rate.
+ */
+export async function setCommissionPercent(actor, key, percent, ip, { allowZero = false } = {}) {
+  if (!key.startsWith('commission.')) throw ApiError.badRequest('Not a commission setting');
+  const suffix = key.slice('commission.'.length);
+  if (suffix !== 'default' && !VENDOR_TYPES.includes(suffix)) {
+    throw ApiError.badRequest(`Unknown commission category "${suffix}"`);
+  }
+  const bounds = await commissionBounds();
+  // A category may legitimately be free; the caller has to say so explicitly.
+  assertWithinBounds(percent, bounds, { allowZero: percent === 0 && allowZero });
+  const value = rateFromPercent(percent);
+  const before = await PlatformSetting.findOne({ key });
+  const label =
+    suffix === 'default' ? 'Default commission rate' : `${VENDOR_TYPE_LABEL[suffix]} commission`;
+  const s = await PlatformSetting.findOneAndUpdate(
+    { key },
+    { $set: { value, group: 'commission', label } },
+    { new: true, upsert: true }
+  );
+  clearCommissionCache();
+  await writeAudit(actor, {
+    action: 'commission.update',
+    targetType: 'setting',
+    targetId: key,
+    before: before ? { value: before.value } : null,
+    after: { value },
+    ip,
+  });
+  return { key: s.key, value: s.value, percent: percentFromRate(s.value) };
+}
+
+/**
+ * Legacy fraction-valued setter, kept for the generic settings screen.
+ *
+ * That screen posts the stored fraction directly, so it must not go through
+ * the percentage conversion above.
+ */
 export async function setCommission(actor, key, value, ip) {
   if (!key.startsWith('commission.')) throw ApiError.badRequest('Not a commission setting');
+  if (sanitizeRate(value) === null) {
+    throw ApiError.badRequest('Commission rate must be a fraction between 0 and 1');
+  }
   const before = await PlatformSetting.findOne({ key });
   const s = await PlatformSetting.findOneAndUpdate({ key }, { $set: { value } }, { new: true, upsert: true });
+  clearCommissionCache();
   await writeAudit(actor, { action: 'commission.update', targetType: 'setting', targetId: key, before: before ? { value: before.value } : null, after: { value }, ip });
   return { key: s.key, value: s.value };
+}
+
+/**
+ * Give one vendor its own rate, or clear it back to inheriting.
+ *
+ * `percent === null` removes the override rather than storing a zero -- those
+ * are very different instructions, and storing 0 would hand the vendor the
+ * platform's entire cut.
+ */
+export async function setVendorCommission(actor, profileId, percent, ip, { allowZero = false } = {}) {
+  if (!mongoose.isValidObjectId(profileId)) throw ApiError.badRequest('Invalid vendor id');
+  const profile = await VendorProfile.findById(profileId);
+  if (!profile) throw ApiError.notFound('Vendor not found');
+
+  const clearing = percent === null || percent === undefined;
+  if (!clearing) {
+    const bounds = await commissionBounds();
+    assertWithinBounds(percent, bounds, { allowZero: percent === 0 && allowZero });
+  }
+
+  const before = { commissionRate: profile.commissionRate };
+  profile.commissionRate = clearing ? null : rateFromPercent(percent);
+  await profile.save();
+  clearCommissionCache();
+
+  await writeAudit(actor, {
+    action: profile.commissionRate === null ? 'vendor.commission.clear' : 'vendor.commission.set',
+    targetType: 'vendor',
+    targetId: String(profile._id),
+    before,
+    after: { commissionRate: profile.commissionRate },
+    ip,
+  });
+
+  const resolved = await commissionRateFor(profile.userId, profile.vendorType, { profile });
+  return {
+    id: String(profile._id),
+    vendorType: profile.vendorType,
+    overridePercent: percentFromRate(profile.commissionRate),
+    effectivePercent: percentFromRate(resolved.rate),
+    source: resolved.source,
+  };
 }
 
 /* ── Payout queue ─────────────────────────────────────────────────── */
@@ -207,8 +550,6 @@ export async function adjustWallet(actor, walletId, { action, amount, reason }, 
 
 /* ── Tax / GST report ─────────────────────────────────────────────── */
 
-/** Platform GST rate, matching the 5% applied to payouts in vendor.service.js. */
-const GST_RATE = 0.05;
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -236,6 +577,11 @@ export async function taxReport({ limit = 200 } = {}) {
       .populate('userId', 'name email')
       .lean(),
   ]);
+
+  // The same `tax.gst` setting payouts withhold at. This was a second
+  // hardcoded 0.05, so the report and the payouts could disagree the moment
+  // either was edited.
+  const GST_RATE = await taxRate();
 
   const summary = monthly.map((r) => {
     const gross = rupees(r.gross);
