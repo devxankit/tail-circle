@@ -1,0 +1,336 @@
+/* ==========================================================================
+   TAIL CIRCLE — CLOSING SECTION (A SIMPLER, HAPPIER TOMORROW)
+   Clean, Fully Responsive Editorial & Conversion Design
+   ========================================================================== */
+
+.tc-closing-section-root {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  margin: clamp(24px, 4.5vw, 56px) 0 0;
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  color: #173B3C;
+}
+
+/* Main Content Grid */
+.tc-closing-grid {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.tc-closing-copy-col {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* ── Badge ───────────────────────────────────────────────────────────────── */
+.tc-closing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: clamp(30px, 6vw, 36px);
+  padding: 0 clamp(12px, 2.5vw, 16px);
+  border-radius: 999px;
+  background: #E8F7F3;
+  border: 1.5px solid #BFEAE1;
+  color: #07847E;
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-size: clamp(10px, 2.2vw, 12px);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: clamp(12px, 2.5vw, 18px);
+  align-self: flex-start;
+  user-select: none;
+  box-shadow: 0 2px 8px rgba(7, 132, 126, 0.08);
+}
+
+.tc-closing-badge-icon {
+  font-size: clamp(12px, 2.6vw, 15px);
+  line-height: 1;
+}
+
+/* ── Headline ────────────────────────────────────────────────────────────── */
+.tc-closing-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: clamp(2.1rem, 6vw, 4.4rem);
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  margin: 0 0 clamp(12px, 2.5vw, 18px);
+  text-wrap: balance;
+}
+
+.tc-closing-title-teal {
+  display: block;
+  color: #0A3C3B;
+}
+
+.tc-closing-title-coral {
+  display: block;
+  color: #FF5B4D;
+  margin-top: 4px;
+}
+
+/* ── Description ─────────────────────────────────────────────────────────── */
+.tc-closing-desc {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: clamp(14px, 2.5vw, 17px);
+  line-height: 1.6;
+  color: #556B6D;
+  margin: 0 0 clamp(22px, 4vw, 32px);
+  max-width: 620px;
+}
+
+/* ── Four Benefit Modules (2x2 on Mobile, 4x1 on Tablet/Desktop) ────────── */
+.tc-closing-benefits-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: clamp(10px, 2vw, 16px);
+  margin-bottom: clamp(24px, 4vw, 34px);
+  width: 100%;
+  max-width: 780px;
+}
+
+@media (min-width: 680px) {
+  .tc-closing-benefits-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.tc-benefit-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #FFFFFF;
+  border: 1.5px solid #ECEEE9;
+  border-radius: 16px;
+  padding: 10px 14px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.03);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+@media (min-width: 768px) {
+  .tc-benefit-item {
+    flex-direction: column;
+    text-align: center;
+    justify-content: center;
+    padding: 14px 12px;
+    gap: 8px;
+  }
+}
+
+.tc-benefit-item:hover {
+  transform: translateY(-2px);
+  border-color: #DDE2DC;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+}
+
+.tc-benefit-circle {
+  width: clamp(38px, 8vw, 48px);
+  height: clamp(38px, 8vw, 48px);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.04);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.tc-benefit-circle svg {
+  width: clamp(16px, 3.6vw, 20px);
+  height: clamp(16px, 3.6vw, 20px);
+}
+
+.tc-benefit-mint {
+  background: #E8F7F3;
+  color: #07847E;
+}
+
+.tc-benefit-peach {
+  background: #FFF0EC;
+  color: #FF5B4F;
+}
+
+.tc-benefit-label {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: clamp(12px, 2.2vw, 13.5px);
+  font-weight: 700;
+  color: #173B3C;
+  line-height: 1.25;
+  text-align: left;
+}
+
+@media (min-width: 768px) {
+  .tc-benefit-label {
+    text-align: center;
+    font-size: 13px;
+  }
+}
+
+/* ── Primary CTA Button ──────────────────────────────────────────────────── */
+.tc-closing-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: clamp(210px, 50vw, 290px);
+  height: clamp(46px, 9vw, 56px);
+  background: linear-gradient(135deg, #07847E 0%, #056A65 100%);
+  color: #FFFFFF !important;
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  font-size: clamp(13.5px, 2.6vw, 16.5px);
+  font-weight: 800;
+  border-radius: 999px;
+  text-decoration: none;
+  box-shadow: 0 8px 24px rgba(7, 132, 126, 0.32);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  user-select: none;
+  box-sizing: border-box;
+  padding: 0 clamp(18px, 3vw, 28px);
+  align-self: flex-start;
+}
+
+@media (max-width: 500px) {
+  .tc-closing-cta-btn {
+    max-width: 100%;
+  }
+}
+
+.tc-closing-cta-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px rgba(7, 132, 126, 0.42);
+}
+
+.tc-closing-cta-btn:active {
+  transform: scale(0.98);
+}
+
+.tc-closing-btn-arrow {
+  font-size: clamp(14px, 2.8vw, 18px);
+  transition: transform 0.18s ease;
+}
+
+.tc-closing-cta-btn:hover .tc-closing-btn-arrow {
+  transform: translateX(4px);
+}
+
+/* ── Bottom Social Proof Strip ───────────────────────────────────────────── */
+.tc-closing-bottom-strip {
+  background: #FFF0EC;
+  border: 1px solid #FEDCD4;
+  border-radius: clamp(14px, 2.5vw, 20px);
+  padding: clamp(10px, 1.8vw, 14px) clamp(14px, 2.5vw, 22px);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: clamp(28px, 4vw, 44px) auto 0;
+  width: 100%;
+  max-width: 860px;
+  box-sizing: border-box;
+  box-shadow: 0 4px 14px rgba(255, 91, 77, 0.04);
+}
+
+.tc-strip-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.tc-strip-paw-icon {
+  color: #FF5B4D;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.tc-strip-text {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: clamp(12px, 2.1vw, 14px);
+  font-weight: 600;
+  color: #384A4B;
+  margin: 0;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tc-strip-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.tc-strip-avatars-group {
+  display: flex;
+  align-items: center;
+}
+
+.tc-strip-avatar {
+  width: clamp(26px, 3.8vw, 32px);
+  height: clamp(26px, 3.8vw, 32px);
+  border-radius: 50%;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  background-size: cover;
+  background-position: center;
+  flex-shrink: 0;
+}
+
+.tc-strip-avatar.tc-avatar-1 {
+  background-image: url('/assets/images/avatar-dog.jpg');
+  z-index: 3;
+}
+
+.tc-strip-avatar.tc-avatar-2 {
+  background-image: url('/assets/images/avatar-cat.jpg');
+  margin-left: -8px;
+  z-index: 2;
+}
+
+.tc-strip-avatar.tc-avatar-3 {
+  background-image: url('/assets/images/avatar-puppy.jpg');
+  margin-left: -8px;
+  z-index: 1;
+}
+
+.tc-strip-badge {
+  background: #FFFFFF;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-family: 'Outfit', sans-serif;
+  font-size: clamp(11px, 1.8vw, 12.5px);
+  font-weight: 850;
+  color: #07847E;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  white-space: nowrap;
+}
+
+@media (max-width: 460px) {
+  .tc-closing-bottom-strip {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .tc-strip-text {
+    font-size: 11px;
+  }
+  .tc-strip-avatar {
+    width: 24px;
+    height: 24px;
+  }
+}

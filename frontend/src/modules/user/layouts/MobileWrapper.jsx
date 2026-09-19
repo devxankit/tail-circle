@@ -5,6 +5,15 @@ import { OfflineBanner } from '../components/OfflineBanner';
 export function MobileWrapper({ children }) {
   const location = useLocation();
   const isAdminOrVendor = location.pathname.startsWith('/admin') || location.pathname.startsWith('/vendor');
+  const isLanding = location.pathname === '/' || location.pathname.startsWith('/landing');
+
+  if (isLanding) {
+    return (
+      <div className="min-h-screen w-full overflow-x-hidden flex flex-col" style={{ userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', msUserSelect: 'text' }}>
+        {children}
+      </div>
+    );
+  }
 
   if (isAdminOrVendor) {
     return (

@@ -1,0 +1,409 @@
+/* ==========================================================================
+   TAIL CIRCLE — APP DOWNLOAD CARD (PREMIUM PET-TECH SHOWCASE)
+   ========================================================================== */
+
+.tc-app-section-root {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  margin: clamp(8px, 1.8vw, 16px) 0 clamp(24px, 4vw, 40px);
+}
+
+/* Card Container */
+.tc-app-card {
+  position: relative;
+  background: #FFFFFF;
+  border-radius: clamp(24px, 4vw, 34px);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.035);
+  padding: clamp(16px, 3vw, 38px);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* Background Soft Ambient Blobs */
+.tc-app-blob-mint {
+  position: absolute;
+  top: -80px;
+  right: -60px;
+  width: 360px;
+  height: 360px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(232, 247, 243, 0.8) 0%, rgba(255, 255, 255, 0) 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.tc-app-blob-peach {
+  position: absolute;
+  bottom: -60px;
+  left: -60px;
+  width: 340px;
+  height: 340px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 240, 236, 0.7) 0%, rgba(255, 255, 255, 0) 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Card Inner Grid / Layout (2-Column Horizontal on Mobile & Desktop) */
+.tc-app-card-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(10px, 2.5vw, 36px);
+}
+
+.tc-app-copy-col {
+  flex: 1.25;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tc-app-visual-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Left Column: Copy & Actions ─────────────────────────────────────────── */
+/* Small Pill Badge */
+.tc-app-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: clamp(28px, 6vw, 34px);
+  padding: 0 clamp(9px, 2vw, 14px);
+  border-radius: 999px;
+  background: #E8F7F3;
+  border: 1.5px solid #C4EAE2;
+  color: #07847E;
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-size: clamp(9.5px, 2vw, 11.5px);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: clamp(10px, 2vw, 16px);
+  align-self: flex-start;
+  user-select: none;
+}
+
+.tc-app-badge-icon {
+  flex-shrink: 0;
+}
+
+/* Main Headline */
+.tc-app-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: clamp(1.4rem, 5.2vw, 3.6rem);
+  font-weight: 900;
+  line-height: 0.98;
+  letter-spacing: -0.035em;
+  margin: 0 0 clamp(8px, 1.8vw, 14px);
+}
+
+.tc-app-title-teal {
+  display: block;
+  color: #0A3C3B;
+}
+
+.tc-app-title-split {
+  display: block;
+}
+
+.tc-app-title-petlife {
+  color: #0A3C3B;
+}
+
+.tc-app-title-coral {
+  color: #FF5B4F;
+}
+
+/* Supporting Copy */
+.tc-app-desc {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: clamp(11.5px, 2.4vw, 15px);
+  line-height: 1.45;
+  color: #5B6E70;
+  margin: 0 0 clamp(12px, 2.2vw, 20px);
+  max-width: 400px;
+}
+
+/* App Store & Google Play Buttons Row/Stack */
+.tc-app-store-btns {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(6px, 1.4vw, 10px);
+  width: 100%;
+  max-width: clamp(160px, 45vw, 260px);
+  margin-bottom: clamp(10px, 2vw, 18px);
+}
+
+.tc-store-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: clamp(38px, 8.2vw, 54px);
+  padding: 0 clamp(8px, 2vw, 16px);
+  background: #000000;
+  color: #FFFFFF !important;
+  border-radius: clamp(10px, 2vw, 15px);
+  text-decoration: none;
+  transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.tc-store-btn:hover {
+  background: #171E27;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+}
+
+.tc-store-btn:active {
+  transform: scale(0.99);
+}
+
+.tc-store-btn-left {
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 1.8vw, 14px);
+}
+
+.tc-store-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tc-store-icon svg {
+  width: clamp(16px, 3.4vw, 22px);
+  height: auto;
+}
+
+.tc-store-text {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+}
+
+.tc-store-sub {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: clamp(8px, 1.7vw, 10px);
+  font-weight: 500;
+  color: #94A3B8;
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+}
+
+.tc-store-main {
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-size: clamp(11px, 2.4vw, 15px);
+  font-weight: 800;
+  color: #FFFFFF;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.tc-store-arrow {
+  font-size: clamp(13px, 2.5vw, 16px);
+  color: #FFFFFF;
+  transition: transform 0.16s ease;
+}
+
+.tc-store-btn:hover .tc-store-arrow {
+  transform: translateX(3px);
+}
+
+/* Social Proof (Pet Avatars + 100K+) */
+.tc-app-social-proof {
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 2vw, 12px);
+}
+
+.tc-pet-avatars-group {
+  display: flex;
+  align-items: center;
+}
+
+.tc-pet-avatar {
+  width: clamp(26px, 5.5vw, 36px);
+  height: clamp(26px, 5.5vw, 36px);
+  border-radius: 50%;
+  border: 1.5px solid #FFFFFF;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  background-repeat: no-repeat;
+  flex-shrink: 0;
+}
+
+.tc-avatar-1 {
+  background-image: url('/assets/images/avatar-dog.jpg');
+  background-size: cover;
+  background-position: center;
+  z-index: 3;
+}
+
+.tc-avatar-2 {
+  background-image: url('/assets/images/avatar-cat.jpg');
+  background-size: cover;
+  background-position: center;
+  margin-left: -8px;
+  z-index: 2;
+}
+
+.tc-avatar-3 {
+  background-image: url('/assets/images/avatar-puppy.jpg');
+  background-size: cover;
+  background-position: center;
+  margin-left: -8px;
+  z-index: 1;
+}
+
+.tc-social-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.tc-social-count {
+  font-family: 'Outfit', sans-serif;
+  font-size: clamp(12.5px, 2.6vw, 15.5px);
+  font-weight: 850;
+  color: #07847E;
+  line-height: 1.1;
+}
+
+.tc-social-sub {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: clamp(9px, 1.9vw, 11.5px);
+  font-weight: 500;
+  color: #657477;
+  line-height: 1.2;
+}
+
+/* ── Right Column: Phone Mockup & Golden Retriever ───────────────────────── */
+.tc-app-visual-wrap {
+  position: relative;
+  width: 100%;
+  max-width: clamp(130px, 38vw, 360px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tc-app-phone-img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  display: block;
+  border-radius: 0;
+  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.08));
+}
+
+/* Decorative Watermark Paws & Strokes */
+.tc-app-decor-paws {
+  position: absolute;
+  top: 4px;
+  right: 10px;
+  font-size: clamp(16px, 3.5vw, 24px);
+  color: #07847E;
+  opacity: 0.18;
+  pointer-events: none;
+}
+
+.tc-app-motion-left {
+  position: absolute;
+  bottom: 24%;
+  left: -4px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.tc-app-motion-right {
+  position: absolute;
+  top: 36%;
+  right: 4px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.tc-app-coral-heart {
+  position: absolute;
+  top: 30%;
+  right: 8px;
+  transform: rotate(14deg);
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Handwritten Cursive Note (Happier Pets Happier People) */
+.tc-app-script-note {
+  position: absolute;
+  bottom: 4px;
+  right: 2px;
+  font-family: 'Caveat', cursive;
+  font-size: clamp(13px, 3vw, 22px);
+  font-weight: 700;
+  color: #0A3C3B;
+  line-height: 0.92;
+  text-align: right;
+  transform: rotate(-3deg);
+  user-select: none;
+  z-index: 3;
+}
+
+.tc-app-script-heart {
+  color: #FF5B4F;
+  font-size: 13px;
+  margin-left: 2px;
+}
+
+/* Desktop Expansion (>= 900px) */
+@media (min-width: 900px) {
+  .tc-app-card {
+    padding: 36px 44px;
+  }
+
+  .tc-app-card-inner {
+    gap: 48px;
+  }
+
+  .tc-app-title {
+    font-size: 3.8rem;
+  }
+
+  .tc-app-desc {
+    font-size: 16px;
+    max-width: 440px;
+  }
+
+  .tc-app-store-btns {
+    max-width: 320px;
+  }
+
+  .tc-store-btn {
+    height: 60px;
+    padding: 0 20px;
+  }
+
+  .tc-store-sub {
+    font-size: 11px;
+  }
+
+  .tc-store-main {
+    font-size: 16px;
+  }
+
+  .tc-app-visual-wrap {
+    max-width: 380px;
+  }
+}

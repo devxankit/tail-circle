@@ -223,6 +223,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { NotFound } from './components/error/NotFound';
 
 // Lazy Imports
+const LandingPage = lazy(() => import('./modules/landingPage').then(m => ({ default: m.LandingPage || m.default })));
 const AuthLayout = lazy(() => import('./modules/user/layouts/AuthLayout').then(m => ({ default: m.AuthLayout })));
 const Splash = lazy(() => import('./modules/user/features/auth/Splash').then(m => ({ default: m.Splash })));
 const Login = lazy(() => import('./modules/user/features/auth/Login').then(m => ({ default: m.Login })));
@@ -508,7 +509,8 @@ function App() {
               context above it - and any consultation in progress - survives. */}
             <ErrorBoundary>
               <Suspense fallback={<PageLoader />}><Routes>
-                <Route path="/" element={<Navigate to="/splash" replace />} />
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/landing" element={<LandingPage />} />
                 <Route path="/splash" element={<Splash />} />
 
                 {/* Auth Routes */}

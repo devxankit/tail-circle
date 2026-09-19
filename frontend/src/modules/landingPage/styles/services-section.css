@@ -1,0 +1,991 @@
+/* ==========================================================================
+   TAIL CIRCLE — SERVICES ECOSYSTEM SECTION (PREMIUM STARTUP EDITORIAL DESIGN)
+   ========================================================================== */
+
+.tc-services-root {
+  position: relative;
+  width: 100%;
+  background: #FAFAF7;
+  margin-top: 0 !important;
+  padding-top: clamp(24px, 5vw, 40px);
+  padding-bottom: clamp(16px, 3vw, 24px);
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #151918;
+  box-sizing: border-box;
+}
+
+/* ── Section Header ──────────────────────────────────────────────────────── */
+.tc-services-header {
+  position: relative;
+  text-align: center;
+  max-width: 580px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+/* Section Badge */
+.tc-services-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 33px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid #DFE6E2;
+  color: #085F5A;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.025);
+  margin: 0 auto 16px;
+  user-select: none;
+}
+
+.tc-badge-pulse {
+  position: relative;
+  width: 8px;
+  height: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tc-badge-pulse-core {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #087F78;
+}
+
+.tc-badge-pulse-ring {
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: rgba(8, 127, 120, 0.35);
+  animation: tcPulse 2.2s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+@keyframes tcPulse {
+  0% { transform: scale(0.9); opacity: 0.8; }
+  65% { transform: scale(1.9); opacity: 0; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+
+/* Main Headline */
+.tc-services-title {
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: clamp(2.8rem, 11.2vw, 4.4rem);
+  font-weight: 900;
+  line-height: 0.94;
+  letter-spacing: -0.045em;
+  text-align: center;
+  margin: 0 auto 16px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.tc-title-lead {
+  display: block;
+  color: #121A18;
+}
+
+.tc-title-coral {
+  display: block;
+  color: #F45B4B;
+  margin-top: 1px;
+}
+
+/* Description */
+.tc-services-subtitle {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: clamp(14.5px, 3.3vw, 16px);
+  line-height: 1.55;
+  color: #55625E;
+  font-weight: 450;
+  max-width: 400px;
+  margin: 0 auto 28px;
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* ── Category Filters (2x2 Segmented Grid on Mobile) ─────────────────────── */
+.tc-category-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: min(390px, 100%);
+  margin: 0 auto 32px;
+  padding: 0 4px;
+  box-sizing: border-box;
+}
+
+@media (min-width: 768px) {
+  .tc-category-grid {
+    display: flex;
+    justify-content: center;
+    width: auto;
+    gap: 12px;
+  }
+}
+
+.tc-category-pill {
+  height: 48px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid #E2E6E3;
+  background: #FFFFFF;
+  color: #4A5652;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: clamp(11.5px, 3.1vw, 13px);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.02);
+  user-select: none;
+  outline: none;
+}
+
+.tc-category-pill:hover {
+  border-color: #BCDCD6;
+  color: #085F5A;
+}
+
+.tc-category-pill.active {
+  background: #085F5A;
+  border-color: #085F5A;
+  color: #FFFFFF;
+  box-shadow: 0 4px 14px rgba(8, 95, 90, 0.2);
+}
+
+.tc-pill-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tc-pill-count {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #F0F4F2;
+  color: #556360;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.tc-category-pill.active .tc-pill-count {
+  background: rgba(255, 255, 255, 0.22);
+  color: #FFFFFF;
+}
+
+/* ── Feature Card (Match & Meet Flagship) ─────────────────────────────────── */
+.tc-feature-card {
+  background: #F2FAF8;
+  border: 1px solid #C4EAE2;
+  border-radius: 24px;
+  padding: 22px 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 20px rgba(8, 95, 90, 0.04);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.tc-feature-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(8, 95, 90, 0.08);
+  border-color: #085F5A;
+}
+
+.tc-fc-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.tc-fc-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 18px;
+  background: #085F5A;
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 6px 16px rgba(8, 95, 90, 0.22);
+}
+
+.tc-fc-text {
+  flex: 1;
+}
+
+.tc-fc-pill {
+  display: inline-block;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: #085F5A;
+  color: #FFFFFF;
+  padding: 3px 8px;
+  border-radius: 999px;
+  margin-bottom: 4px;
+}
+
+.tc-fc-subtitle {
+  display: block;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #085F5A;
+  margin-bottom: 4px;
+}
+
+.tc-fc-title {
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-size: clamp(22px, 5.5vw, 28px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  color: #151918;
+  margin: 0 0 6px;
+}
+
+.tc-fc-desc {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: #556360;
+  margin: 0;
+}
+
+/* Bottom Action Row inside Feature Card */
+.tc-fc-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(8, 95, 90, 0.1);
+  flex-wrap: wrap;
+}
+
+.tc-fc-avatars {
+  display: flex;
+  align-items: center;
+}
+
+.tc-fc-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  border: 2px solid #F2FAF8;
+  margin-left: -8px;
+  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.06);
+}
+
+.tc-fc-avatar:first-child {
+  margin-left: 0;
+}
+
+.tc-fc-count {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #085F5A;
+  background: #D9F2EC;
+  padding: 4px 8px;
+  border-radius: 999px;
+  margin-left: 6px;
+}
+
+.tc-fc-button {
+  height: 48px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: #085F5A;
+  color: #FFFFFF;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13.5px;
+  font-weight: 700;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(8, 95, 90, 0.2);
+  transition: all 0.16s ease;
+  white-space: nowrap;
+}
+
+.tc-fc-button:hover {
+  background: #064E4A;
+  transform: translateY(-1px);
+}
+
+.tc-fc-btn-arrow {
+  font-size: 15px;
+  transition: transform 0.16s ease;
+}
+
+.tc-fc-button:hover .tc-fc-btn-arrow {
+  transform: translateX(3px);
+}
+
+/* ── Secondary Service Cards Grid (2 cols mobile, 4 cols desktop) ────────── */
+.tc-services-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+@media (min-width: 768px) {
+  .tc-services-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .tc-services-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 18px;
+  }
+}
+
+/* Service Card */
+.tc-service-card {
+  position: relative;
+  background: #FFFFFF;
+  border: 1px solid #E7E7E2;
+  border-radius: 20px;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  user-select: none;
+  box-sizing: border-box;
+  min-height: 146px;
+}
+
+.tc-service-card:hover {
+  transform: translateY(-2px);
+  border-color: #BCDCD6;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
+}
+
+.tc-service-card:active {
+  transform: translateY(-1px);
+}
+
+/* Card Top: Icon Tile + Subtle Badge */
+.tc-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tc-service-icon-tile {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: transform 0.18s ease;
+}
+
+.tc-service-card:hover .tc-service-icon-tile {
+  transform: scale(1.06);
+}
+
+.tc-service-badge {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2.5px 7px;
+  border-radius: 999px;
+  background: #F4F6F4;
+  color: #556360;
+  white-space: nowrap;
+}
+
+/* Card Body */
+.tc-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.tc-service-name {
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-size: 15.5px;
+  font-weight: 750;
+  letter-spacing: -0.2px;
+  color: #151918;
+  margin: 0 0 4px;
+  line-height: 1.2;
+}
+
+.tc-service-desc {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #5A6662;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Card Footer */
+.tc-card-footer {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-top: 6px;
+}
+
+.tc-explore-link {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--card-accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: transform 0.15s ease;
+}
+
+.tc-card-arrow {
+  font-size: 13px;
+  transition: transform 0.15s ease;
+}
+
+.tc-service-card:hover .tc-card-arrow {
+  transform: translateX(3px);
+}
+
+/* ── Bottom Conversion Banner ────────────────────────────────────────────── */
+.tc-services-banner {
+  background: #085F5A;
+  color: #FFFFFF;
+  border-radius: 24px;
+  padding: 24px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  box-shadow: 0 8px 24px rgba(8, 95, 90, 0.15);
+  box-sizing: border-box;
+  margin-top: 12px;
+}
+
+.tc-banner-content {
+  flex: 1;
+}
+
+.tc-banner-badge {
+  display: inline-block;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #8DE0D5;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.tc-banner-title {
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-size: clamp(18px, 4.2vw, 22px);
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  line-height: 1.2;
+  margin: 0 0 6px;
+}
+
+.tc-banner-desc {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: clamp(12.5px, 2.9vw, 13.5px);
+  line-height: 1.45;
+  color: #D3ECE7;
+  margin: 0;
+  max-width: 540px;
+}
+
+.tc-banner-cta {
+  background: #F45B4B;
+  color: #FFFFFF !important;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 750;
+  padding: 12px 22px;
+  border-radius: 999px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-shadow: 0 4px 14px rgba(244, 91, 75, 0.4);
+  transition: transform 0.16s ease, background-color 0.16s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tc-banner-cta:hover {
+  background: #DE4939;
+  transform: translateY(-1px);
+}
+
+.tc-banner-arrow {
+  font-size: 15px;
+  transition: transform 0.16s ease;
+}
+
+.tc-banner-cta:hover .tc-banner-arrow {
+  transform: translateX(3px);
+}
+
+/* ── Mobile Sticky Bottom CTA Bar ────────────────────────────────────────── */
+.tc-sticky-cta-bar {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  background: rgba(250, 250, 247, 0.9);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 1px solid rgba(224, 227, 222, 0.85);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.04);
+  padding: 10px 16px max(12px, env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .tc-sticky-cta-bar {
+    display: block;
+  }
+}
+
+.tc-sticky-cta-inner {
+  max-width: 440px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.tc-sticky-cta-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 52px;
+  box-sizing: border-box;
+  background: #F45B4B;
+  color: #FFFFFF !important;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 750;
+  text-decoration: none;
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(244, 91, 75, 0.35);
+  transition: transform 0.16s ease, background-color 0.16s ease;
+  user-select: none;
+}
+
+.tc-sticky-cta-btn:active {
+  transform: scale(0.98);
+  background: #DE4939;
+}
+
+.tc-cta-arrow {
+  font-size: 16px;
+  transition: transform 0.16s ease;
+}
+
+.tc-sticky-cta-btn:hover .tc-cta-arrow {
+  transform: translateX(3px);
+}
+
+/* ── Interactive Modal / Bottom Sheet ────────────────────────────────────── */
+.tc-service-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(18, 24, 23, 0.6);
+  backdrop-filter: blur(6px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: tcFadeIn 0.2s ease-out;
+}
+
+@keyframes tcFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.tc-service-modal-sheet {
+  background: #FFFFFF;
+  border-radius: 24px;
+  width: min(520px, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+  border: 1px solid #E5EBE7;
+  padding: 24px;
+  box-sizing: border-box;
+  animation: tcSlideUp 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes tcSlideUp {
+  from { transform: translateY(16px) scale(0.98); opacity: 0; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.tc-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid #EFF2EF;
+  padding-bottom: 14px;
+  margin-bottom: 16px;
+}
+
+.tc-modal-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tc-modal-icon-tile {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tc-modal-badge {
+  display: inline-block;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  margin-bottom: 4px;
+}
+
+.tc-modal-title {
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  margin: 0 0 2px;
+  color: #151918;
+}
+
+.tc-modal-subtitle {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 12.5px;
+  color: #5A6662;
+  margin: 0;
+}
+
+.tc-modal-close-btn {
+  background: #F0F4F2;
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #556360;
+  font-weight: 700;
+  font-size: 13px;
+  transition: background 0.15s ease;
+}
+
+.tc-modal-close-btn:hover {
+  background: #E2E8E4;
+  color: #151918;
+}
+
+.tc-modal-desc {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #3E4A47;
+  margin: 0 0 16px;
+}
+
+.tc-modal-perks-title {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 12.5px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #085F5A;
+  margin-bottom: 10px;
+}
+
+.tc-modal-perks-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tc-modal-perk-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 13px;
+  color: #2D3734;
+  line-height: 1.4;
+}
+
+.tc-perk-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: #EBF7F4;
+  color: #085F5A;
+  font-size: 11px;
+  font-weight: 800;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.tc-modal-stats-box {
+  background: #F7FAF8;
+  border: 1px solid #E5EBE7;
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #085F5A;
+  margin-bottom: 20px;
+}
+
+.tc-stats-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #085F5A;
+}
+
+.tc-modal-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tc-modal-cta-primary {
+  flex: 1;
+  background: #F45B4B;
+  color: #FFFFFF !important;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 750;
+  padding: 12px 18px;
+  border-radius: 999px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-shadow: 0 4px 14px rgba(244, 91, 75, 0.35);
+  transition: all 0.15s ease;
+}
+
+.tc-modal-cta-primary:hover {
+  background: #DE4939;
+  transform: translateY(-1px);
+}
+
+.tc-modal-cta-secondary {
+  border: 1px solid #D5DDD8;
+  background: #FFFFFF;
+  color: #4A5652;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 650;
+  padding: 12px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tc-modal-cta-secondary:hover {
+  background: #F2F5F3;
+  color: #121816;
+}
+
+/* ── Mobile Viewport Specifics (320px to 430px) ──────────────────────────── */
+@media (max-width: 640px) {
+  .tc-services-root {
+    margin-top: 0 !important;
+    padding-top: 24px;
+    padding-bottom: 20px;
+  }
+
+  .tc-services-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 20px 18px;
+    border-radius: 20px;
+    gap: 14px;
+  }
+
+  .tc-banner-cta {
+    width: 100%;
+  }
+
+  .tc-fc-header {
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .tc-fc-icon {
+    width: 54px;
+    height: 54px;
+    border-radius: 16px;
+  }
+
+  .tc-fc-bottom {
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .tc-fc-button {
+    height: 44px;
+    padding: 0 14px;
+    font-size: 12.5px;
+  }
+
+  .tc-service-card {
+    padding: 13px 11px;
+    border-radius: 18px;
+    min-height: 136px;
+  }
+
+  .tc-service-icon-tile {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+
+  .tc-service-name {
+    font-size: 14.5px;
+  }
+
+  .tc-service-desc {
+    font-size: 11.5px;
+    line-height: 1.34;
+  }
+
+  .tc-service-modal-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .tc-service-modal-sheet {
+    border-radius: 22px 22px 0 0;
+    max-height: 85vh;
+    padding: 20px 16px;
+  }
+}
+
+/* ── Tiny Screen (320px to 360px) Adjustments ────────────────────────────── */
+@media (max-width: 360px) {
+  .tc-category-pill {
+    padding: 0 8px;
+    font-size: 11px;
+  }
+
+  .tc-pill-count {
+    padding: 1px 5px;
+    font-size: 10px;
+    margin-left: 3px;
+  }
+
+  .tc-fc-bottom {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .tc-fc-button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ── Accessibility: Reduced Motion ───────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .tc-services-root *,
+  .tc-service-card,
+  .tc-feature-card,
+  .tc-category-pill,
+  .tc-banner-cta,
+  .tc-sticky-cta-btn {
+    transition: none !important;
+    animation: none !important;
+  }
+}

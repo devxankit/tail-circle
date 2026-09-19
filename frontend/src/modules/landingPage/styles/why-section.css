@@ -1,0 +1,643 @@
+/* ==========================================================================
+   TAIL CIRCLE — WHY TAIL CIRCLE (PREMIUM EDITORIAL ECOSYSTEM SECTION)
+   ========================================================================== */
+
+.tc-why-root {
+  position: relative;
+  width: 100%;
+  background: #FAFAF7;
+  margin-top: 0 !important;
+  padding: clamp(12px, 2.5vw, 24px) 0 clamp(16px, 3vw, 28px);
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  color: #173B3C;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* Ambient Subtle Background Blobs */
+.tc-why-blob-mint {
+  position: absolute;
+  top: -60px;
+  right: -80px;
+  width: 440px;
+  height: 440px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(232, 247, 244, 0.75) 0%, rgba(250, 250, 247, 0) 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.tc-why-blob-coral {
+  position: absolute;
+  bottom: 80px;
+  left: -100px;
+  width: 480px;
+  height: 480px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 240, 236, 0.65) 0%, rgba(250, 250, 247, 0) 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.tc-why-container {
+  position: relative;
+  z-index: 1;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 clamp(14px, 3.5vw, 24px);
+  box-sizing: border-box;
+}
+
+/* ── Section Intro Grid Layout ─────────────────────────────────────────── */
+.tc-why-intro-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "badge   script"
+    "title   title"
+    "desc    pets";
+  column-gap: 12px;
+  row-gap: 12px;
+  align-items: end;
+  margin-bottom: clamp(24px, 4.5vw, 36px);
+}
+
+.tc-why-badge-col {
+  grid-area: badge;
+  align-self: start;
+}
+
+/* Small Pill Badge */
+.tc-why-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 33px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: #E8F7F4;
+  border: 1.5px solid #C4EAE2;
+  color: #087C78;
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0;
+  user-select: none;
+}
+
+.tc-why-badge-heart {
+  flex-shrink: 0;
+}
+
+/* Handwritten Note (Top Right) */
+.tc-why-script-col {
+  grid-area: script;
+  justify-self: end;
+  align-self: start;
+}
+
+.tc-why-script-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0;
+  z-index: 3;
+}
+
+.tc-why-script-note {
+  font-family: 'Caveat', cursive;
+  font-size: clamp(20px, 4.5vw, 30px);
+  font-weight: 700;
+  color: #0A3C3B;
+  line-height: 0.92;
+  text-align: center;
+  transform: rotate(-3deg);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  user-select: none;
+}
+
+.tc-why-sparkle-dot {
+  position: absolute;
+  font-size: 18px;
+  color: #0A3C3B;
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.tc-why-sdot-1 {
+  top: 2px;
+  left: -10px;
+}
+
+.tc-why-sdot-2 {
+  bottom: 22px;
+  left: -8px;
+}
+
+.tc-why-note-mid-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.tc-why-dash-l,
+.tc-why-dash-r {
+  font-size: 15px;
+  color: #0A3C3B;
+  opacity: 0.8;
+}
+
+.tc-why-note-line {
+  display: block;
+}
+
+.tc-why-note-pets {
+  display: inline-block;
+}
+
+.tc-why-coral-heart {
+  position: absolute;
+  right: -24px;
+  bottom: 4px;
+  transform: rotate(12deg);
+  flex-shrink: 0;
+}
+
+/* Main Headline */
+.tc-why-title {
+  grid-area: title;
+  margin: 0;
+  font-family: 'Outfit', sans-serif;
+  font-size: clamp(2.1rem, 7.8vw, 4.1rem);
+  font-weight: 900;
+  line-height: 0.98;
+  letter-spacing: -0.035em;
+}
+
+.tc-why-title-teal {
+  display: block;
+  color: #0A3C3B;
+}
+
+.tc-why-title-coral {
+  display: block;
+  color: #FF5B4D;
+  margin-top: 2px;
+}
+
+/* Supporting Copy */
+.tc-why-desc {
+  grid-area: desc;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: clamp(13px, 2.7vw, 16px);
+  line-height: 1.52;
+  color: #5B6E70;
+  margin: 0;
+  align-self: center;
+}
+
+/* Pet Visual */
+.tc-why-hero-photo-wrap {
+  grid-area: pets;
+  justify-self: end;
+  position: relative;
+  width: clamp(125px, 36vw, 175px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tc-why-hero-photo {
+  width: 100%;
+  height: auto;
+  max-width: 340px;
+  object-fit: contain;
+  display: block;
+  border-radius: 0;
+  mix-blend-mode: multiply;
+}
+
+.tc-why-motion-left {
+  position: absolute;
+  bottom: 8px;
+  left: -10px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.tc-why-motion-right {
+  position: absolute;
+  top: 12px;
+  right: -6px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* ── Desktop & Tablet Responsive Layout (>= 768px) ───────────────────────── */
+@media (min-width: 768px) {
+  .tc-why-intro-grid {
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "badge   script"
+      "title   pets"
+      "desc    pets";
+    column-gap: clamp(24px, 4vw, 48px);
+    row-gap: 14px;
+    align-items: center;
+    margin-bottom: 44px;
+  }
+
+  .tc-why-title {
+    font-size: clamp(2.5rem, 4.6vw, 4.2rem);
+  }
+
+  .tc-why-desc {
+    font-size: 16px;
+    line-height: 1.56;
+    max-width: 480px;
+  }
+
+  .tc-why-hero-photo-wrap {
+    width: clamp(220px, 30vw, 340px);
+  }
+
+  .tc-why-script-note {
+    font-size: 28px;
+  }
+
+  .tc-why-coral-heart {
+    right: -28px;
+    bottom: 6px;
+  }
+
+  .tc-why-motion-left {
+    bottom: 14px;
+    left: -14px;
+  }
+
+  .tc-why-motion-right {
+    top: 20px;
+    right: -8px;
+  }
+}
+
+/* ── Three Journey Cards Stack ───────────────────────────────────────────── */
+.tc-why-cards-stack {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(14px, 2.5vw, 20px);
+  margin-bottom: clamp(28px, 4.5vw, 40px);
+}
+
+.tc-why-card {
+  border-radius: clamp(24px, 3.8vw, 30px);
+  border: 1px solid transparent;
+  padding: clamp(18px, 3.5vw, 28px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.025);
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
+  box-sizing: border-box;
+}
+
+.tc-why-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.05);
+}
+
+/* Card Main Row: Info (Left) + Organic Image (Right) */
+.tc-why-card-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: clamp(12px, 3vw, 24px);
+  margin-bottom: clamp(12px, 2vw, 18px);
+}
+
+.tc-why-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.tc-why-card-header {
+  margin-bottom: 8px;
+}
+
+.tc-why-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-family: 'Outfit', sans-serif;
+  font-size: 13px;
+  font-weight: 850;
+  letter-spacing: -0.02em;
+}
+
+.tc-why-card-title {
+  font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+  font-size: clamp(20px, 4.2vw, 28px);
+  font-weight: 850;
+  letter-spacing: -0.03em;
+  color: #173B3C;
+  margin: 0 0 6px;
+  line-height: 1.12;
+}
+
+.tc-why-card-desc {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: clamp(13px, 2.4vw, 15.5px);
+  line-height: 1.46;
+  color: #647477;
+  margin: 0;
+  max-width: 440px;
+}
+
+/* Card Media (Right Side) */
+.tc-why-card-media {
+  flex-shrink: 0;
+  position: relative;
+}
+
+.tc-why-media-inner {
+  position: relative;
+  width: clamp(115px, 28vw, 230px);
+  height: clamp(100px, 24vw, 170px);
+}
+
+.tc-why-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 46% 54% 60% 40% / 48% 50% 50% 52%;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+}
+
+/* Floating Contextual Icon Badge */
+.tc-why-floating-badge {
+  position: absolute;
+  bottom: -6px;
+  right: -6px;
+  width: clamp(42px, 8vw, 56px);
+  height: clamp(42px, 8vw, 56px);
+  border-radius: clamp(12px, 2.5vw, 18px);
+  background: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.09);
+  z-index: 2;
+}
+
+/* Decorative Doodles on Cards */
+.tc-why-doodle-heart {
+  position: absolute;
+  top: -8px;
+  left: -6px;
+  font-size: 18px;
+  color: #FF5B4D;
+  transform: rotate(-12deg);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.tc-why-doodle-sparkle {
+  position: absolute;
+  top: 10px;
+  left: -12px;
+  font-size: 14px;
+  color: #087C78;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Card Bottom Row: Feature Tags */
+.tc-why-card-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.tc-why-tag {
+  background: #FFFFFF;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  border-radius: 999px;
+  padding: 5px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: clamp(11px, 2.2vw, 13px);
+  font-weight: 650;
+  color: #173B3C;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.02);
+  white-space: nowrap;
+}
+
+.tc-why-tag-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ── Emotional Quote Banner ──────────────────────────────────────────────── */
+.tc-why-quote-banner {
+  background: #FFF3EF;
+  border: 1px solid #FEDCD4;
+  border-radius: clamp(18px, 3.2vw, 24px);
+  padding: 12px clamp(14px, 3.5vw, 24px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: clamp(20px, 4vw, 28px);
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+}
+
+.tc-why-quote-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tc-why-paw-circle {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #FFE6DF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.tc-why-quote-divider {
+  width: 1px;
+  height: 22px;
+  background: #F8C3B6;
+  flex-shrink: 0;
+}
+
+.tc-why-quote-text {
+  margin: 0;
+  font-family: 'Caveat', cursive;
+  font-size: clamp(18px, 3.6vw, 25px);
+  font-weight: 700;
+  color: #173B3C;
+  line-height: 1.15;
+}
+
+.tc-why-quote-watermark {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0.22;
+  font-size: 18px;
+  color: #087C78;
+}
+
+/* ── Conversion CTA ──────────────────────────────────────────────────────── */
+.tc-why-cta-wrap {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.tc-why-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: min(100%, 640px);
+  height: clamp(48px, 10vw, 56px);
+  background: #FF5B4D;
+  color: #FFFFFF !important;
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  font-size: clamp(14.5px, 3.2vw, 16.5px);
+  font-weight: 800;
+  border-radius: 999px;
+  text-decoration: none;
+  box-shadow: 0 8px 24px rgba(255, 91, 77, 0.36);
+  transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+  user-select: none;
+  box-sizing: border-box;
+  padding: 0 24px;
+}
+
+.tc-why-cta-btn:hover {
+  background: #E84D3F;
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(255, 91, 77, 0.46);
+}
+
+.tc-why-cta-btn:active {
+  transform: scale(0.99);
+}
+
+.tc-why-btn-arrow {
+  font-size: 18px;
+  transition: transform 0.16s ease;
+}
+
+.tc-why-cta-btn:hover .tc-why-btn-arrow {
+  transform: translateX(4px);
+}
+
+.tc-why-cta-sub {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 12.5px;
+  color: #647477;
+  margin: 10px 0 0;
+}
+
+/* ── Seamless Bottom Transition Curve & Paw ──────────────────────────────── */
+.tc-why-bottom-wave {
+  display: none;
+}
+
+/* ── Mobile Viewport Responsive Adjustments (max-width: 680px) ───────────── */
+@media (max-width: 680px) {
+  .tc-why-card {
+    padding: 15px 13px;
+    border-radius: 22px;
+  }
+
+  .tc-why-card-main {
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .tc-why-media-inner {
+    width: clamp(105px, 28vw, 140px);
+    height: clamp(90px, 24vw, 115px);
+  }
+
+  .tc-why-floating-badge {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    bottom: -4px;
+    right: -4px;
+  }
+
+  .tc-why-card-tags {
+    gap: 5px;
+  }
+
+  .tc-why-tag {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+
+  .tc-why-quote-banner {
+    padding: 10px 12px;
+  }
+
+  .tc-why-paw-circle {
+    width: 32px;
+    height: 32px;
+  }
+}
+
+/* Very Small Mobile (<360px) */
+@media (max-width: 360px) {
+  .tc-why-intro-grid {
+    column-gap: 8px;
+    row-gap: 8px;
+  }
+
+  .tc-why-hero-photo-wrap {
+    width: 110px;
+  }
+
+  .tc-why-media-inner {
+    width: 95px;
+    height: 85px;
+  }
+
+  .tc-why-tag {
+    font-size: 10px;
+    padding: 3px 6px;
+  }
+}
+
+/* ── Accessibility: Reduced Motion ───────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .tc-why-card,
+  .tc-why-cta-btn {
+    transition: none !important;
+  }
+}
