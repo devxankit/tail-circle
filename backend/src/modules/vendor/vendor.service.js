@@ -7,6 +7,13 @@ import {
   splitPayout,
   taxRate,
 } from './commission.service.js';
+import {
+  commissionRateFor,
+  sanitizeRate,
+  splitAmount,
+  splitPayout,
+  taxRate,
+} from './commission.service.js';
 import { maskAccount, encryptField } from '../../utils/fieldCrypto.js';
 import { Order } from '../order/order.model.js';
 import { Product } from '../shop/product.model.js';
@@ -70,340 +77,376 @@ export async function profileFor(userId, vendorType) {
  * fallback, which ignored the category and global settings entirely.
  */
 export async function commissionFor(userId, vendorType) {
-  const profile = await profileFor(userId, vendorType);
-  const { rate } = await commissionRateFor(userId, vendorType, { profile });
-  return rate;
-}
-
-/** Public-safe serialization — bank number masked, never raw. */
-export function serializeProfile(profile) {
-  return {
-    id: String(profile._id),
-    businessName: profile.businessName,
-    registrationNo: profile.registrationNo,
-    vendorType: profile.vendorType,
-    email: profile.email,
-    phone: profile.phone,
-    city: profile.city,
-    address: profile.address,
-    logo: profile.logo,
-    online: profile.online,
-    approvalStatus: profile.approvalStatus,
-    rejectionReason: profile.rejectionReason,
-    commissionRate: profile.commissionRate,
-    rating: profile.rating,
-    gst: profile.gst || { hasGst: false, number: '' },
-    documents: (profile.documents || []).map((d) => ({
-      kind: d.kind, url: d.url, status: d.status, verifiedAt: d.verifiedAt,
-    })),
-    policies: {
-      codEnabled: profile.policies?.codEnabled ?? true,
-      returnsEnabled: profile.policies?.returnsEnabled ?? true,
-      minOrderValue: profile.policies?.minOrderValue ?? 0,
-    },
-    bank: {
-      bankName: profile.bank?.bankName || '',
-      accountHolder: profile.bank?.accountHolder || '',
-      ifsc: profile.bank?.ifsc || '',
-      accountType: profile.bank?.accountType || 'Saving',
-      accountMasked: maskAccount(profile.bank?.accountNumberEnc),
-    },
-    createdAt: profile.createdAt,
-  };
-}
-
-const EDITABLE = ['businessName', 'phone', 'city', 'address', 'logo', 'online'];
-
-export async function updateVendorProfile(userId, patch, vendorType = null) {
-  const profile = await getVendorProfile(userId, vendorType);
-  for (const key of EDITABLE) if (key in patch) profile[key] = patch[key];
-  if (patch.gst) profile.gst = { hasGst: Boolean(patch.gst.hasGst), number: patch.gst.number || '' };
-  if (patch.bank) {
-    profile.bank = {
-      bankName: patch.bank.bankName ?? (profile.bank?.bankName || ''),
-      accountHolder: patch.bank.accountHolder ?? (profile.bank?.accountHolder || profile.businessName),
-      accountNumberEnc: patch.bank.accountNumber ? encryptField(patch.bank.accountNumber) : (profile.bank?.accountNumberEnc || null),
-      ifsc: patch.bank.ifsc ?? (profile.bank?.ifsc || ''),
-      accountType: patch.bank.accountType ?? (profile.bank?.accountType || 'Saving'),
-    };
-  }
-  if (patch.policies) {
-    profile.policies = {
-      codEnabled: patch.policies.codEnabled !== undefined ? Boolean(patch.policies.codEnabled) : (profile.policies?.codEnabled ?? true),
-      returnsEnabled: patch.policies.returnsEnabled !== undefined ? Boolean(patch.policies.returnsEnabled) : (profile.policies?.returnsEnabled ?? true),
-      minOrderValue: patch.policies.minOrderValue !== undefined ? Number(patch.policies.minOrderValue) : (profile.policies?.minOrderValue ?? 0),
-    };
-  }
-  await profile.save();
-  return serializeProfile(profile);
-}
-
-/**
- * Generic KYC document re-upload — every vendor type except clinic (which has
- * its own per-doctor documents on the `Doctor` record) shares this. Re-adding
- * a document resets it to `Pending` so admin reviews it again.
- */
-export async function addVendorDocument(userId, { kind, url }, vendorType = null) {
-  const profile = await getVendorProfile(userId, vendorType);
-  profile.documents = (profile.documents || []).filter((d) => d.kind !== kind);
-  profile.documents.push({ kind, url, status: 'Pending' });
-  await profile.save();
-  return serializeProfile(profile);
-}
-
-export async function removeVendorDocument(userId, index, vendorType = null) {
-  const profile = await getVendorProfile(userId, vendorType);
-  const i = Number(index);
-  if (!Number.isInteger(i) || i < 0 || i >= (profile.documents || []).length) {
-    throw ApiError.badRequest('Invalid document index');
-  }
-  profile.documents.splice(i, 1);
-  await profile.save();
-  return serializeProfile(profile);
-}
-
-/* ── Ledger + payouts ─────────────────────────────────────── */
-
-/**
- * Post a settleable entry for a vendor. Idempotent on (refType, refId) so
- * re-fulfilment (verify + webhook) never double-credits the vendor.
- */
-export async function postLedgerEntry({ vendorId, refType, refId, label, gross, commissionRate, vendorType = null }) {
-  if (!vendorId || !gross) return null;
-  /*
-   * Resolve here too, rather than trusting the caller's argument.
+  /**
+   * Commission fraction for a vendor's given business line.
    *
-   * Every caller already passes a resolved rate, but this is the last point
-   * before money is written down: an omitted or malformed rate must fall back
-   * to the configured chain, never to 0% commission. `splitAmount` is the only
-   * place the arithmetic lives, so gross always equals commission + net.
+   * Thin wrapper over the resolver so every settlement path -- orders, bookings,
+   * consults, meals, adoption -- goes through the same vendor/category/global
+   * chain. It used to read `profile.commissionRate` directly against a hardcoded
+   * fallback, which ignored the category and global settings entirely.
    */
-  const rate =
-    sanitizeRate(commissionRate) ??
-    (await commissionRateFor(vendorId, vendorType)).rate;
-  const amounts = splitAmount(gross, rate);
-  try {
-    return await VendorLedgerEntry.create({
-      vendorId,
+  export async function commissionFor(userId, vendorType) {
+    const profile = await profileFor(userId, vendorType);
+    const { rate } = await commissionRateFor(userId, vendorType, { profile });
+    return rate;
+    const { rate } = await commissionRateFor(userId, vendorType, { profile });
+    return rate;
+  }
+
+  /** Public-safe serialization — bank number masked, never raw. */
+  export function serializeProfile(profile) {
+    return {
+      id: String(profile._id),
+      businessName: profile.businessName,
+      registrationNo: profile.registrationNo,
+      vendorType: profile.vendorType,
+      email: profile.email,
+      phone: profile.phone,
+      city: profile.city,
+      address: profile.address,
+      logo: profile.logo,
+      online: profile.online,
+      approvalStatus: profile.approvalStatus,
+      rejectionReason: profile.rejectionReason,
+      commissionRate: profile.commissionRate,
+      rating: profile.rating,
+      gst: profile.gst || { hasGst: false, number: '' },
+      documents: (profile.documents || []).map((d) => ({
+        kind: d.kind, url: d.url, status: d.status, verifiedAt: d.verifiedAt,
+      })),
+      policies: {
+        codEnabled: profile.policies?.codEnabled ?? true,
+        returnsEnabled: profile.policies?.returnsEnabled ?? true,
+        minOrderValue: profile.policies?.minOrderValue ?? 0,
+      },
+      bank: {
+        bankName: profile.bank?.bankName || '',
+        accountHolder: profile.bank?.accountHolder || '',
+        ifsc: profile.bank?.ifsc || '',
+        accountType: profile.bank?.accountType || 'Saving',
+        accountMasked: maskAccount(profile.bank?.accountNumberEnc),
+      },
+      createdAt: profile.createdAt,
+    };
+  }
+
+  const EDITABLE = ['businessName', 'phone', 'city', 'address', 'logo', 'online'];
+
+  export async function updateVendorProfile(userId, patch, vendorType = null) {
+    const profile = await getVendorProfile(userId, vendorType);
+    for (const key of EDITABLE) if (key in patch) profile[key] = patch[key];
+    if (patch.gst) profile.gst = { hasGst: Boolean(patch.gst.hasGst), number: patch.gst.number || '' };
+    if (patch.bank) {
+      profile.bank = {
+        bankName: patch.bank.bankName ?? (profile.bank?.bankName || ''),
+        accountHolder: patch.bank.accountHolder ?? (profile.bank?.accountHolder || profile.businessName),
+        accountNumberEnc: patch.bank.accountNumber ? encryptField(patch.bank.accountNumber) : (profile.bank?.accountNumberEnc || null),
+        ifsc: patch.bank.ifsc ?? (profile.bank?.ifsc || ''),
+        accountType: patch.bank.accountType ?? (profile.bank?.accountType || 'Saving'),
+      };
+    }
+    if (patch.policies) {
+      profile.policies = {
+        codEnabled: patch.policies.codEnabled !== undefined ? Boolean(patch.policies.codEnabled) : (profile.policies?.codEnabled ?? true),
+        returnsEnabled: patch.policies.returnsEnabled !== undefined ? Boolean(patch.policies.returnsEnabled) : (profile.policies?.returnsEnabled ?? true),
+        minOrderValue: patch.policies.minOrderValue !== undefined ? Number(patch.policies.minOrderValue) : (profile.policies?.minOrderValue ?? 0),
+      };
+    }
+    await profile.save();
+    return serializeProfile(profile);
+  }
+
+  /**
+   * Generic KYC document re-upload — every vendor type except clinic (which has
+   * its own per-doctor documents on the `Doctor` record) shares this. Re-adding
+   * a document resets it to `Pending` so admin reviews it again.
+   */
+  export async function addVendorDocument(userId, { kind, url }, vendorType = null) {
+    const profile = await getVendorProfile(userId, vendorType);
+    profile.documents = (profile.documents || []).filter((d) => d.kind !== kind);
+    profile.documents.push({ kind, url, status: 'Pending' });
+    await profile.save();
+    return serializeProfile(profile);
+  }
+
+  export async function removeVendorDocument(userId, index, vendorType = null) {
+    const profile = await getVendorProfile(userId, vendorType);
+    const i = Number(index);
+    if (!Number.isInteger(i) || i < 0 || i >= (profile.documents || []).length) {
+      throw ApiError.badRequest('Invalid document index');
+    }
+    profile.documents.splice(i, 1);
+    await profile.save();
+    return serializeProfile(profile);
+  }
+
+  /* ── Ledger + payouts ─────────────────────────────────────── */
+
+  /**
+   * Post a settleable entry for a vendor. Idempotent on (refType, refId) so
+   * re-fulfilment (verify + webhook) never double-credits the vendor.
+   */
+  export async function postLedgerEntry({ vendorId, refType, refId, label, gross, commissionRate, vendorType = null }) {
+    export async function postLedgerEntry({ vendorId, refType, refId, label, gross, commissionRate, vendorType = null }) {
+      if (!vendorId || !gross) return null;
+      /*
+       * Resolve here too, rather than trusting the caller's argument.
+       *
+       * Every caller already passes a resolved rate, but this is the last point
+       * before money is written down: an omitted or malformed rate must fall back
+       * to the configured chain, never to 0% commission. `splitAmount` is the only
+       * place the arithmetic lives, so gross always equals commission + net.
+       */
+      const rate =
+        sanitizeRate(commissionRate) ??
+        (await commissionRateFor(vendorId, vendorType)).rate;
+      const amounts = splitAmount(gross, rate);
+      /*
+       * Resolve here too, rather than trusting the caller's argument.
+       *
+       * Every caller already passes a resolved rate, but this is the last point
+       * before money is written down: an omitted or malformed rate must fall back
+       * to the configured chain, never to 0% commission. `splitAmount` is the only
+       * place the arithmetic lives, so gross always equals commission + net.
+       */
+      const rate =
+        sanitizeRate(commissionRate) ??
+        (await commissionRateFor(vendorId, vendorType)).rate;
+      const amounts = splitAmount(gross, rate);
+      try {
+        return await VendorLedgerEntry.create({
+          vendorId,
+          refType,
+          refId,
+          label: label || '',
+          gross: amounts.gross,
+          commission: amounts.commission,
+          net: amounts.net,
+          commissionRate: amounts.rate,
+          gross: amounts.gross,
+          commission: amounts.commission,
+          net: amounts.net,
+          commissionRate: amounts.rate,
+          // Which business line earned it, so a vendor running several can break
+          // their combined earnings down per business.
+          vendorType,
+          status: 'unsettled',
+        });
+      } catch (err) {
+        if (err.code === 11000) return null; // already posted
+        throw err;
+      }
+    }
+
+    /**
+     * Claw back vendor earnings when a customer is refunded.
+     *
+     * Posts a NEGATIVE `reversal` entry against every earning row for the
+     * reference, pro-rated to the share of the payment being refunded. A full
+     * refund reverses the whole earning; a ₹500 refund on a ₹2000 booking reverses
+     * a quarter of it, commission included — the platform gives back its cut of
+     * money it no longer holds.
+     *
+     * Reversing rather than deleting or flagging the earning row is deliberate:
+     *   - an already-settled earning cannot be un-paid, so the clawback has to
+     *     land as an unsettled negative that nets off the vendor's NEXT payout;
+     *   - the vendor's earnings list must still show the sale and the reversal,
+     *     not a row that silently vanished.
+     *
+     * Idempotent per (vendor, refund) at the index level, so retrying a reversal
+     * that failed after a successful gateway refund cannot double-debit.
+     *
+     * Returns the reversal rows created. Never throws for "nothing to reverse" —
+     * a refund on an unfulfilled booking has no earning to claw back.
+     */
+    export async function reverseLedgerForRefund({
       refType,
       refId,
-      label: label || '',
-      gross: amounts.gross,
-      commission: amounts.commission,
-      net: amounts.net,
-      commissionRate: amounts.rate,
-      // Which business line earned it, so a vendor running several can break
-      // their combined earnings down per business.
-      vendorType,
-      status: 'unsettled',
-    });
-  } catch (err) {
-    if (err.code === 11000) return null; // already posted
-    throw err;
-  }
-}
+      refundId = null,
+      refundedPaise,
+      paymentAmountPaise,
+      label = '',
+    }) {
+      if (!refId || !refundedPaise) return [];
 
-/**
- * Claw back vendor earnings when a customer is refunded.
- *
- * Posts a NEGATIVE `reversal` entry against every earning row for the
- * reference, pro-rated to the share of the payment being refunded. A full
- * refund reverses the whole earning; a ₹500 refund on a ₹2000 booking reverses
- * a quarter of it, commission included — the platform gives back its cut of
- * money it no longer holds.
- *
- * Reversing rather than deleting or flagging the earning row is deliberate:
- *   - an already-settled earning cannot be un-paid, so the clawback has to
- *     land as an unsettled negative that nets off the vendor's NEXT payout;
- *   - the vendor's earnings list must still show the sale and the reversal,
- *     not a row that silently vanished.
- *
- * Idempotent per (vendor, refund) at the index level, so retrying a reversal
- * that failed after a successful gateway refund cannot double-debit.
- *
- * Returns the reversal rows created. Never throws for "nothing to reverse" —
- * a refund on an unfulfilled booking has no earning to claw back.
- */
-export async function reverseLedgerForRefund({
-  refType,
-  refId,
-  refundId = null,
-  refundedPaise,
-  paymentAmountPaise,
-  label = '',
-}) {
-  if (!refId || !refundedPaise) return [];
-
-  const earnings = await VendorLedgerEntry.find({
-    refType,
-    refId,
-    kind: 'earning',
-  });
-  if (!earnings.length) return [];
-
-  /*
-   * Fraction of the customer's payment being handed back. Falls back to the
-   * summed gross when the payment total is unknown, and is clamped to 1 so a
-   * mis-stated amount can never reverse more than the vendor ever earned.
-   */
-  const basis =
-    Math.round(Number(paymentAmountPaise) || 0) ||
-    earnings.reduce((sum, e) => sum + (e.gross || 0), 0);
-  const share = basis > 0 ? Math.min(1, refundedPaise / basis) : 1;
-
-  const created = [];
-  for (const earning of earnings) {
-    // Never reverse more than what is still standing against this earning.
-    const alreadyReversed = await sumReversedFor(earning._id);
-    const wantGross = Math.round(earning.gross * share);
-    const gross = Math.min(wantGross, Math.max(0, earning.gross - alreadyReversed));
-    if (gross <= 0) continue;
-
-    // Reverse at the rate the earning was BILLED at, not today's rate — a
-    // commission change between sale and refund must not reprice the reversal.
-    const rate = earning.commissionRate ?? (earning.gross ? earning.commission / earning.gross : 0);
-    const commission = Math.round(gross * rate);
-
-    try {
-      const row = await VendorLedgerEntry.create({
-        vendorId: earning.vendorId,
-        refType: earning.refType,
-        refId: earning.refId,
-        vendorType: earning.vendorType,
-        label: label || `Refund reversal — ${earning.label || refType}`,
-        gross: -gross,
-        commission: -commission,
-        net: -(gross - commission),
-        commissionRate: earning.commissionRate,
-        kind: 'reversal',
-        reversalOf: earning._id,
-        refundId,
-        status: 'unsettled',
+      const earnings = await VendorLedgerEntry.find({
+        refType,
+        refId,
+        kind: 'earning',
       });
-      created.push(row);
-    } catch (err) {
-      if (err.code === 11000) continue; // this refund already reversed this vendor
-      throw err;
+      if (!earnings.length) return [];
+
+      /*
+       * Fraction of the customer's payment being handed back. Falls back to the
+       * summed gross when the payment total is unknown, and is clamped to 1 so a
+       * mis-stated amount can never reverse more than the vendor ever earned.
+       */
+      const basis =
+        Math.round(Number(paymentAmountPaise) || 0) ||
+        earnings.reduce((sum, e) => sum + (e.gross || 0), 0);
+      const share = basis > 0 ? Math.min(1, refundedPaise / basis) : 1;
+
+      const created = [];
+      for (const earning of earnings) {
+        // Never reverse more than what is still standing against this earning.
+        const alreadyReversed = await sumReversedFor(earning._id);
+        const wantGross = Math.round(earning.gross * share);
+        const gross = Math.min(wantGross, Math.max(0, earning.gross - alreadyReversed));
+        if (gross <= 0) continue;
+
+        // Reverse at the rate the earning was BILLED at, not today's rate — a
+        // commission change between sale and refund must not reprice the reversal.
+        const rate = earning.commissionRate ?? (earning.gross ? earning.commission / earning.gross : 0);
+        const commission = Math.round(gross * rate);
+
+        try {
+          const row = await VendorLedgerEntry.create({
+            vendorId: earning.vendorId,
+            refType: earning.refType,
+            refId: earning.refId,
+            vendorType: earning.vendorType,
+            label: label || `Refund reversal — ${earning.label || refType}`,
+            gross: -gross,
+            commission: -commission,
+            net: -(gross - commission),
+            commissionRate: earning.commissionRate,
+            kind: 'reversal',
+            reversalOf: earning._id,
+            refundId,
+            status: 'unsettled',
+          });
+          created.push(row);
+        } catch (err) {
+          if (err.code === 11000) continue; // this refund already reversed this vendor
+          throw err;
+        }
+      }
+      return created;
     }
-  }
-  return created;
-}
 
-/** Paise already reversed against one earning row (positive number). */
-async function sumReversedFor(earningId) {
-  const [agg] = await VendorLedgerEntry.aggregate([
-    { $match: { reversalOf: new mongoose.Types.ObjectId(String(earningId)) } },
-    { $group: { _id: null, total: { $sum: '$gross' } } },
-  ]);
-  return Math.abs(agg?.total || 0);
-}
+    /** Paise already reversed against one earning row (positive number). */
+    async function sumReversedFor(earningId) {
+      const [agg] = await VendorLedgerEntry.aggregate([
+        { $match: { reversalOf: new mongoose.Types.ObjectId(String(earningId)) } },
+        { $group: { _id: null, total: { $sum: '$gross' } } },
+      ]);
+      return Math.abs(agg?.total || 0);
+    }
 
-export async function listLedger(vendorId, { limit = 100 } = {}) {
-  return VendorLedgerEntry.find({ vendorId }).sort({ createdAt: -1 }).limit(limit);
-}
+    export async function listLedger(vendorId, { limit = 100 } = {}) {
+      return VendorLedgerEntry.find({ vendorId }).sort({ createdAt: -1 }).limit(limit);
+    }
 
-export async function listPayouts(vendorId) {
-  return Payout.find({ vendorId }).sort({ createdAt: -1 }).limit(100);
-}
+    export async function listPayouts(vendorId) {
+      return Payout.find({ vendorId }).sort({ createdAt: -1 }).limit(100);
+    }
 
-/**
- * Request settlement of all unsettled ledger entries: bundles them into one
- * pending Payout and marks them settled.
- *
- * Totals are summed from the entries, never recomputed from a rate: each entry
- * already holds the commission it was billed at, and re-deriving it here would
- * quietly reprice historical earnings whenever an admin changed a rate. Tax is
- * the configured `tax.gst` rather than the 0.05 this used to hardcode.
- */
-export async function requestPayout(vendorId) {
-  const entries = await VendorLedgerEntry.find({ vendorId, status: 'unsettled' });
-  if (!entries.length) throw ApiError.badRequest('No unsettled earnings to request');
+    /**
+     * Request settlement of all unsettled ledger entries: bundles them into one
+     * pending Payout and marks them settled.
+     *
+     * Totals are summed from the entries, never recomputed from a rate: each entry
+     * already holds the commission it was billed at, and re-deriving it here would
+     * quietly reprice historical earnings whenever an admin changed a rate. Tax is
+     * the configured `tax.gst` rather than the 0.05 this used to hardcode.
+     * pending Payout and marks them settled.
+     *
+     * Totals are summed from the entries, never recomputed from a rate: each entry
+     * already holds the commission it was billed at, and re-deriving it here would
+     * quietly reprice historical earnings whenever an admin changed a rate. Tax is
+     * the configured `tax.gst` rather than the 0.05 this used to hardcode.
+     */
+    export async function requestPayout(vendorId) {
+      const entries = await VendorLedgerEntry.find({ vendorId, status: 'unsettled' });
+      if (!entries.length) throw ApiError.badRequest('No unsettled earnings to request');
 
-  const gross = entries.reduce((s, e) => s + e.gross, 0);
-  const commission = entries.reduce((s, e) => s + e.commission, 0);
-  const net = entries.reduce((s, e) => s + e.net, 0);
+      const gross = entries.reduce((s, e) => s + e.gross, 0);
+      const commission = entries.reduce((s, e) => s + e.commission, 0);
+      const net = entries.reduce((s, e) => s + e.net, 0);
 
-  /*
-   * Refund clawbacks post as negative entries, so a vendor whose refunds
-   * outweigh their new earnings has a non-positive balance. Settling that
-   * would mint a zero or negative payout AND mark the negative rows settled,
-   * writing the debt off in the vendor's favour. Leave everything unsettled so
-   * the deficit carries into the next period.
-   */
-  if (net <= 0) {
-    throw ApiError.badRequest(
-      net === 0
-        ? 'Nothing payable — earnings are fully offset by refunds'
-        : `Refunds exceed earnings by ₹${Math.abs(Math.round(net / 100)).toLocaleString('en-IN')}. This balance carries forward.`
-    );
-  }
+      /*
+       * Refund clawbacks post as negative entries, so a vendor whose refunds
+       * outweigh their new earnings has a non-positive balance. Settling that
+       * would mint a zero or negative payout AND mark the negative rows settled,
+       * writing the debt off in the vendor's favour. Leave everything unsettled so
+       * the deficit carries into the next period.
+       */
+      if (net <= 0) {
+        throw ApiError.badRequest(
+          net === 0
+            ? 'Nothing payable — earnings are fully offset by refunds'
+            : `Refunds exceed earnings by ₹${Math.abs(Math.round(net / 100)).toLocaleString('en-IN')}. This balance carries forward.`
+        );
+      }
 
-  const { tax, payable, rate } = splitPayout(net, await taxRate());
+      const { tax, payable, rate } = splitPayout(net, await taxRate());
 
-  const payout = await Payout.create({
-    vendorId,
-    period: new Date().toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }),
-    grossAmount: gross,
-    commission,
-    tax,
-    taxRate: rate,
-    netAmount: payable,
-    status: 'pending',
-    lineItemIds: entries.map((e) => e._id),
-  });
+      const payout = await Payout.create({
+        vendorId,
+        period: new Date().toLocaleDateString('en-IN', { month: 'short', year: 'numeric' }),
+        grossAmount: gross,
+        commission,
+        tax,
+        taxRate: rate,
+        netAmount: payable,
+        taxRate: rate,
+        netAmount: payable,
+        status: 'pending',
+        lineItemIds: entries.map((e) => e._id),
+      });
 
-  await VendorLedgerEntry.updateMany(
-    { _id: { $in: entries.map((e) => e._id) } },
-    { $set: { status: 'settled', settledPayoutId: payout._id } }
-  );
-  return payout;
-}
+      await VendorLedgerEntry.updateMany(
+        { _id: { $in: entries.map((e) => e._id) } },
+        { $set: { status: 'settled', settledPayoutId: payout._id } }
+      );
+      return payout;
+    }
 
-/* ── Dashboard stats (per vendor type) ────────────────────── */
+    /* ── Dashboard stats (per vendor type) ────────────────────── */
 
-export async function getDashboard(vendorId, vendorType) {
-  const [ledger, unsettled] = await Promise.all([
-    VendorLedgerEntry.find({ vendorId }),
-    VendorLedgerEntry.aggregate([
-      { $match: { vendorId: oid(vendorId), status: 'unsettled' } },
-      { $group: { _id: null, net: { $sum: '$net' } } },
-    ]),
-  ]);
-  const totalNet = ledger.reduce((s, e) => s + e.net, 0);
-  const stats = {
-    lifetimeEarnings: totalNet, // paise
-    pendingSettlement: unsettled[0]?.net || 0,
-    totalTransactions: ledger.length,
-  };
+    export async function getDashboard(vendorId, vendorType) {
+      const [ledger, unsettled] = await Promise.all([
+        VendorLedgerEntry.find({ vendorId }),
+        VendorLedgerEntry.aggregate([
+          { $match: { vendorId: oid(vendorId), status: 'unsettled' } },
+          { $group: { _id: null, net: { $sum: '$net' } } },
+        ]),
+      ]);
+      const totalNet = ledger.reduce((s, e) => s + e.net, 0);
+      const stats = {
+        lifetimeEarnings: totalNet, // paise
+        pendingSettlement: unsettled[0]?.net || 0,
+        totalTransactions: ledger.length,
+      };
 
-  if (vendorType === 'shop') {
-    const [productCount, lowStock, orderAgg, reviewAgg] = await Promise.all([
-      Product.countDocuments({ vendorId, deletedAt: null }),
-      Product.countDocuments({ vendorId, deletedAt: null, 'packSizes.stock': { $lte: 5 } }),
-      // Matched on the line owner, not the order-level `vendorId` — that field
-      // is only set when one seller owns the whole basket, and nothing set it
-      // at all until recently, so this counted zero orders for every vendor.
-      Order.aggregate([
-        { $match: { 'items.vendorId': oid(vendorId), status: { $ne: 'pending_payment' } } },
-        { $group: { _id: '$status', count: { $sum: 1 } } },
-      ]),
-      (async () => {
-        const productIds = await Product.find({ vendorId }).distinct('_id');
-        if (!productIds.length) return null;
-        const res = await Review.aggregate([
-          { $match: { targetType: 'product', targetId: { $in: productIds }, status: 'visible' } },
-          { $group: { _id: null, avgRating: { $avg: '$rating' } } },
+      if (vendorType === 'shop') {
+        const [productCount, lowStock, orderAgg, reviewAgg] = await Promise.all([
+          Product.countDocuments({ vendorId, deletedAt: null }),
+          Product.countDocuments({ vendorId, deletedAt: null, 'packSizes.stock': { $lte: 5 } }),
+          // Matched on the line owner, not the order-level `vendorId` — that field
+          // is only set when one seller owns the whole basket, and nothing set it
+          // at all until recently, so this counted zero orders for every vendor.
+          Order.aggregate([
+            { $match: { 'items.vendorId': oid(vendorId), status: { $ne: 'pending_payment' } } },
+            { $group: { _id: '$status', count: { $sum: 1 } } },
+          ]),
+          (async () => {
+            const productIds = await Product.find({ vendorId }).distinct('_id');
+            if (!productIds.length) return null;
+            const res = await Review.aggregate([
+              { $match: { targetType: 'product', targetId: { $in: productIds }, status: 'visible' } },
+              { $group: { _id: null, avgRating: { $avg: '$rating' } } },
+            ]);
+            return res[0]?.avgRating || null;
+          })(),
         ]);
-        return res[0]?.avgRating || null;
-      })(),
-    ]);
-    const byStatus = Object.fromEntries(orderAgg.map((o) => [o._id, o.count]));
-    stats.products = productCount;
-    stats.lowStock = lowStock;
-    stats.newOrders = byStatus.placed || 0;
-    stats.totalOrders = orderAgg.reduce((s, o) => s + o.count, 0);
-    stats.avgRating = reviewAgg;
-  }
+        const byStatus = Object.fromEntries(orderAgg.map((o) => [o._id, o.count]));
+        stats.products = productCount;
+        stats.lowStock = lowStock;
+        stats.newOrders = byStatus.placed || 0;
+        stats.totalOrders = orderAgg.reduce((s, o) => s + o.count, 0);
+        stats.avgRating = reviewAgg;
+      }
 
-  return stats;
-}
+      return stats;
+    }

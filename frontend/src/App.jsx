@@ -431,6 +431,7 @@ const AdminCommunity = lazy(() => import('./modules/Admin/admin/views/platform/C
 const Reviews = lazy(() => import('./modules/Admin/admin/views/platform/Reviews').then(m => ({ default: m.Reviews || m.default })));
 const BannersContent = lazy(() => import('./modules/Admin/admin/views/platform/BannersContent').then(m => ({ default: m.BannersContent || m.default })));
 const HomeServiceImages = lazy(() => import('./modules/Admin/admin/views/platform/HomeServiceImages').then(m => ({ default: m.HomeServiceImages || m.default })));
+const HomeServiceImages = lazy(() => import('./modules/Admin/admin/views/platform/HomeServiceImages').then(m => ({ default: m.HomeServiceImages || m.default })));
 const PetPromptsAdminView = lazy(() => import('./modules/Admin/admin/views/platform/PetPromptsAdminView').then(m => ({ default: m.PetPromptsAdminView || m.default })));
 const Reports = lazy(() => import('./modules/Admin/admin/views/platform/Reports').then(m => ({ default: m.Reports || m.default })));
 const Security = lazy(() => import('./modules/Admin/admin/views/platform/Security').then(m => ({ default: m.Security || m.default })));
@@ -665,6 +666,8 @@ function App() {
                   <Route path="users" element={<Users />} />
                   {/* Pet management moved into User Management; keep old links working. */}
                   <Route path="pets" element={<Navigate to="/admin/users" replace />} />
+                  {/* Pet management moved into User Management; keep old links working. */}
+                  <Route path="pets" element={<Navigate to="/admin/users" replace />} />
 
                   {/* Vendors */}
                   <Route path="vendors" element={<AllVendors />} />
@@ -712,6 +715,7 @@ function App() {
                   <Route path="platform/community" element={<AdminCommunity />} />
                   <Route path="platform/reviews" element={<Reviews />} />
                   <Route path="platform/content" element={<BannersContent />} />
+                  <Route path="platform/service-images" element={<HomeServiceImages />} />
                   <Route path="platform/service-images" element={<HomeServiceImages />} />
                   <Route path="platform/prompts" element={<PetPromptsAdminView />} />
                   <Route path="platform/reports" element={<Reports />} />

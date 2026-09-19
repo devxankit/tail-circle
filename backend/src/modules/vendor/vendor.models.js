@@ -89,6 +89,17 @@ const vendorProfileSchema = new mongoose.Schema(
      * of its vendors.
      */
     commissionRate: { type: Number, default: null, min: 0, max: 1 },
+    /*
+     * Per-vendor commission override, as a fraction (0.1 === 10%).
+     *
+     * `null` means "inherit", which is the normal state: the rate then comes
+     * from the category default and finally the global default, resolved in
+     * commission.service.js. It defaulted to 0.15 before, which made every
+     * profile look deliberately customised and left no way to express
+     * inheritance -- changing the grooming category rate could not reach any
+     * of its vendors.
+     */
+    commissionRate: { type: Number, default: null, min: 0, max: 1 },
     rating: { type: Number, default: 0 },
 
     policies: {
@@ -209,6 +220,8 @@ const payoutSchema = new mongoose.Schema(
     grossAmount: { type: Number, default: 0 }, // paise
     commission: { type: Number, default: 0 },
     tax: { type: Number, default: 0 },
+    /* The tax fraction withheld, snapshotted so a settled payout stays explainable. */
+    taxRate: { type: Number, default: null },
     /* The tax fraction withheld, snapshotted so a settled payout stays explainable. */
     taxRate: { type: Number, default: null },
     netAmount: { type: Number, default: 0 },

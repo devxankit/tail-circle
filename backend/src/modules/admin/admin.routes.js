@@ -12,8 +12,10 @@ import {
   listActionItems,
   listUsers,
   userStats,
+  userStats,
   setUserBlocked,
   listPets,
+  listUserPets,
   listUserPets,
   listVendors,
   listPendingVendors,
@@ -104,7 +106,15 @@ import {
   paymentsOverview,
   getCommissionSettings,
   getCommissionMatrix,
+  getCommissionMatrix,
   setCommission,
+  setCommissionPercent,
+  setVendorCommission,
+  setCommissionBounds,
+  setTaxPercent,
+  listCommissionSchedules,
+  scheduleCommissionChange,
+  cancelCommissionSchedule,
   setCommissionPercent,
   setVendorCommission,
   setCommissionBounds,
@@ -218,6 +228,10 @@ router.get('/users', asyncHandler(async (req, res) => {
 router.get('/users/stats', asyncHandler(async (_req, res) => {
   sendSuccess(res, { data: await userStats() });
 }));
+/* Platform-wide counters for the header cards — not derivable from the capped list. */
+router.get('/users/stats', asyncHandler(async (_req, res) => {
+  sendSuccess(res, { data: await userStats() });
+}));
 router.patch(
   '/users/:id/block',
   validate(z.object({ blocked: z.boolean() })),
@@ -227,6 +241,10 @@ router.patch(
 );
 router.get('/pets', asyncHandler(async (req, res) => {
   sendSuccess(res, { data: await listPets({ search: req.query.search }) });
+}));
+/* Pets for one owner — the expandable panel on User Management. */
+router.get('/users/:id/pets', asyncHandler(async (req, res) => {
+  sendSuccess(res, { data: await listUserPets(req.params.id) });
 }));
 /* Pets for one owner — the expandable panel on User Management. */
 router.get('/users/:id/pets', asyncHandler(async (req, res) => {
@@ -279,668 +297,747 @@ adminBannersRouter.use(authenticate, authorize('admin', 'vendor', 'user'));
 
 adminBannersRouter.get('/', asyncHandler(async (req, res) => {
   sendSuccess(res, { data: await listBanners({ slot: req.query.slot }) });
-}));
-adminBannersRouter.post(
-  '/',
-  validate(
-    z.object({
-      key: z.string().max(60).optional(),
-      title: z.string().max(160).optional(),
-      subtitle: z.string().max(200).optional(),
-      image: z.string().optional(),
-      link: z.string().max(500).optional(),
-      slot: z.string().max(60).optional(),
-      btnText: z.string().max(40).optional(),
-      bg: z.string().max(120).optional(),
-      badge: z.string().max(40).optional(),
-      active: z.boolean().optional(),
-      sort: z.number().int().optional(),
+  adminBannersRouter.get('/', asyncHandler(async (req, res) => {
+    sendSuccess(res, { data: await listBanners({ slot: req.query.slot }) });
+  }));
+  adminBannersRouter.post(
+    '/',
+    validate(
+      z.object({
+        key: z.string().max(60).optional(),
+        title: z.string().max(160).optional(),
+        subtitle: z.string().max(200).optional(),
+        image: z.string().optional(),
+        link: z.string().max(500).optional(),
+        slot: z.string().max(60).optional(),
+        btnText: z.string().max(40).optional(),
+        bg: z.string().max(120).optional(),
+        badge: z.string().max(40).optional(),
+        active: z.boolean().optional(),
+        sort: z.number().int().optional(),
+      })
+    ),
+    asyncHandler(async (req, res) => {
+      sendSuccess(res, { statusCode: 201, data: await createBanner(req.user, req.body, req.ip) });
     })
-  ),
-  asyncHandler(async (req, res) => {
-    sendSuccess(res, { statusCode: 201, data: await createBanner(req.user, req.body, req.ip) });
-  })
-);
-adminBannersRouter.patch('/:id', asyncHandler(async (req, res) => {
-  sendSuccess(res, { data: await updateBanner(req.user, req.params.id, req.body, req.ip) });
-}));
-adminBannersRouter.delete('/:id', asyncHandler(async (req, res) => {
-  await deleteBanner(req.user, req.params.id, req.ip);
-  sendSuccess(res, { message: 'Banner removed' });
-}));
+  );
+  adminBannersRouter.patch('/:id', asyncHandler(async (req, res) => {
+    sendSuccess(res, { data: await updateBanner(req.user, req.params.id, req.body, req.ip) });
+  }));
+  adminBannersRouter.delete('/:id', asyncHandler(async (req, res) => {
+    await deleteBanner(req.user, req.params.id, req.ip);
+    sendSuccess(res, { message: 'Banner removed' });
+  }));
 
-/* Settings & audit (super-only) */
-router.get('/settings', asyncHandler(async (_req, res) => {
-  sendSuccess(res, { data: await getSettings() });
-}));
-router.put(
-  '/settings/:key',
-  superOnly,
-  validate(z.object({ value: z.any() })),
-  asyncHandler(async (req, res) => {
-    sendSuccess(res, { data: await updateSetting(req.user, req.params.key, req.body.value, req.ip) });
-  })
-);
-router.get('/audit-logs', superOnly, asyncHandler(async (_req, res) => {
-  sendSuccess(res, { data: await listAuditLogs() });
-}));
-
-/* ── Operations ───────────────────────────────────────────── */
-
-/*
- * Admin was read-only on every operational object: there was not one mutating
- * route for a booking, an order, a payment or a refund. An operator could watch
- * the business but not run it - no cancel, no refund, no status correction, no
- * way to answer a customer on the phone. Everything below is audited, and every
- * destructive action requires a written reason.
- */
-
-/** Shared list query: filters, date range and paging. */
-const listQuery = (req) => ({
-  status: req.query.status,
-  type: req.query.type,
-  vendorId: req.query.vendorId,
-  providerId: req.query.providerId,
-  search: req.query.search,
-  from: req.query.from,
-  to: req.query.to,
-  page: req.query.page,
-  limit: req.query.limit,
-});
-
-const reasonSchema = z.string().trim().min(3).max(500);
-/** Rupees in from the UI, paise on the wire — amounts are paise end to end. */
-const amountRupees = z.number().positive().max(10_000_000).optional();
-const toPaise = (rupees) => (rupees == null ? null : Math.round(rupees * 100));
-
-router.get('/orders', asyncHandler(async (req, res) => sendSuccess(res, { data: await listOrders(listQuery(req)) })));
-router.get('/orders/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await getOrderDetail(req.params.id) })));
-router.post(
-  '/orders/:id/cancel',
-  validate(z.object({ reason: reasonSchema, refund: z.boolean().optional(), amount: amountRupees })),
-  asyncHandler(async (req, res) =>
-    sendSuccess(res, {
-      data: await adminCancelOrder(
-        req.user,
-        req.params.id,
-        { reason: req.body.reason, refund: req.body.refund !== false, amountPaise: toPaise(req.body.amount) },
-        req.ip
-      ),
+  /* Settings & audit (super-only) */
+  router.get('/settings', asyncHandler(async (_req, res) => {
+    sendSuccess(res, { data: await getSettings() });
+  }));
+  router.put(
+    '/settings/:key',
+    superOnly,
+    validate(z.object({ value: z.any() })),
+    asyncHandler(async (req, res) => {
+      sendSuccess(res, { data: await updateSetting(req.user, req.params.key, req.body.value, req.ip) });
     })
-  )
-);
-router.post(
-  '/orders/:id/refund',
-  validate(z.object({ reason: reasonSchema, amount: amountRupees })),
-  asyncHandler(async (req, res) =>
-    sendSuccess(res, {
-      data: await adminRefundOrder(
-        req.user,
-        req.params.id,
-        { reason: req.body.reason, amountPaise: toPaise(req.body.amount) },
-        req.ip
-      ),
-    })
-  )
-);
-router.patch(
-  '/orders/:id/status',
-  validate(z.object({ status: z.enum(ORDER_STATUSES), reason: reasonSchema })),
-  asyncHandler(async (req, res) =>
-    sendSuccess(res, { data: await adminSetOrderStatus(req.user, req.params.id, req.body, req.ip) })
-  )
-);
+  );
+  router.get('/audit-logs', superOnly, asyncHandler(async (_req, res) => {
+    sendSuccess(res, { data: await listAuditLogs() });
+  }));
 
-router.get('/bookings', asyncHandler(async (req, res) => sendSuccess(res, { data: await listBookings(listQuery(req)) })));
-router.get('/bookings/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await getBookingDetail(req.params.id) })));
-router.post(
-  '/bookings/:id/cancel',
-  validate(
-    z.object({
-      reason: reasonSchema,
-      refund: z.boolean().optional(),
-      onBehalfOf: z.enum(['admin', 'vendor', 'customer']).optional(),
-      amount: amountRupees,
-    })
-  ),
-  asyncHandler(async (req, res) =>
-    sendSuccess(res, {
-      data: await adminCancelBooking(
-        req.user,
-        req.params.id,
-        {
-          reason: req.body.reason,
-          refund: req.body.refund !== false,
-          onBehalfOf: req.body.onBehalfOf || 'admin',
-          amountPaise: toPaise(req.body.amount),
-        },
-        req.ip
-      ),
-    })
-  )
-);
-router.post(
-  '/bookings/:id/refund',
-  validate(z.object({ reason: reasonSchema, amount: amountRupees })),
-  asyncHandler(async (req, res) =>
-    sendSuccess(res, {
-      data: await adminRefundBooking(
-        req.user,
-        req.params.id,
-        { reason: req.body.reason, amountPaise: toPaise(req.body.amount) },
-        req.ip
-      ),
-    })
-  )
-);
-router.patch(
-  '/bookings/:id/status',
-  validate(
-    z.object({
-      status: z.enum(BOOKING_STATUSES),
-      reason: reasonSchema,
-      // Breaking the lifecycle is allowed but never accidental — it is a
-      // separate, separately-audited flag.
-      force: z.boolean().optional(),
-    })
-  ),
-  asyncHandler(async (req, res) =>
-    sendSuccess(res, { data: await adminSetBookingStatus(req.user, req.params.id, req.body, req.ip) })
-  )
-);
+  /* ── Operations ───────────────────────────────────────────── */
 
-router.get('/appointments', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listOpsAppointments() })));
-router.get('/deliveries', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listDeliveries() })));
-router.get('/returns', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listReturns() })));
-router.post(
-  '/returns/:id/resolve',
-  validate(
-    z.object({
-      action: z.enum(['approve', 'reject']),
-      reason: z.string().trim().max(500).optional(),
-      amount: amountRupees,
-    })
-  ),
-  asyncHandler(async (req, res) =>
-    sendSuccess(res, {
-      data: await resolveReturn(req.user, req.params.id, req.body.action, req.ip, {
-        amountPaise: toPaise(req.body.amount),
-        reason: req.body.reason || '',
-      }),
-    })
-  )
-);
+  /*
+   * Admin was read-only on every operational object: there was not one mutating
+   * route for a booking, an order, a payment or a refund. An operator could watch
+   * the business but not run it - no cancel, no refund, no status correction, no
+   * way to answer a customer on the phone. Everything below is audited, and every
+   * destructive action requires a written reason.
+   */
 
-/* ── Refund register ──────────────────────────────────────── */
-
-/*
- * "How much was refunded, why, by whom, and did it actually land?" had no
- * answer before: refunds left only a bumped counter on the payment. This is the
- * reconciliation surface for every rupee that went back.
- */
-router.get(
-  '/refunds',
-  asyncHandler(async (req, res) =>
-    sendSuccess(res, {
-      data: await listRefunds({
-        status: req.query.status,
-        refType: req.query.refType,
-        from: req.query.from,
-        to: req.query.to,
-        page: req.query.page,
-        limit: req.query.limit,
-      }),
-    })
-  )
-);
-router.get('/refunds/totals', asyncHandler(async (_req, res) => sendSuccess(res, { data: await refundTotals() })));
-router.post(
-  '/refunds/:id/retry',
-  asyncHandler(async (req, res) => {
-    const refund = await retryRefund(req.params.id, req.user);
-    await writeAudit(req.user, {
-      action: 'refund.retry',
-      targetType: 'refund',
-      targetId: req.params.id,
-      after: { status: refund.status, attempts: refund.attempts },
-      ip: req.ip,
-    });
-    if (refund.status !== 'processed') {
-      throw ApiError.serviceUnavailable(refund.failureReason || 'Refund failed again at the gateway');
-    }
-    return sendSuccess(res, { data: { refundNo: refund.refundNo, status: refund.status } });
-  })
-);
-/* Re-run a clawback that failed after the customer was already refunded. */
-router.post(
-  '/refunds/:id/reverse-ledger',
-  asyncHandler(async (req, res) => {
-    const refund = await retryLedgerReversal(req.params.id);
-    await writeAudit(req.user, {
-      action: 'refund.reverse_ledger',
-      targetType: 'refund',
-      targetId: req.params.id,
-      after: { ledgerReversed: refund.ledgerReversed },
-      ip: req.ip,
-    });
-    return sendSuccess(res, {
-      data: { refundNo: refund.refundNo, ledgerReversed: refund.ledgerReversed, error: refund.ledgerReversalError },
-    });
-  })
-);
-
-/*
- * Sweep booking requests the partner let expire: auto-decline and refund.
- *
- * Exposed as an endpoint so it is usable today and testable by hand. It still
- * wants a scheduler — see the note in booking.service.js — but an operator can
- * clear the backlog from Admin rather than having customers wait on a partner
- * who is never going to answer.
- */
-router.post(
-  '/bookings/sweep-unanswered',
-  asyncHandler(async (req, res) => {
-    const { expireUnansweredBookings } = await import('../booking/booking.service.js');
-    const results = await expireUnansweredBookings();
-    await writeAudit(req.user, {
-      action: 'booking.sweep_unanswered',
-      targetType: 'booking',
-      after: { swept: results.length, failed: results.filter((r) => !r.ok).length },
-      ip: req.ip,
-    });
-    return sendSuccess(res, { data: { swept: results.length, results } });
-  })
-);
-
-/* ── Business reporting ───────────────────────────────────── */
-/*
- * Aggregated in the database over an explicit date range. The Reports screen
- * used to total the bookings list in the browser, which silently meant "the
- * last 300 rows" — every headline number was wrong and nothing said so.
- */
-const reportRange = (req) => ({ from: req.query.from, to: req.query.to });
-
-/*
- * Every series the dashboard plots, aggregated server-side. Separate from
- * `/dashboard` so the charts can be re-fetched on a range change without
- * re-running the counters and the action queue.
- */
-router.get('/dashboard/charts', asyncHandler(async (req, res) =>
-  sendSuccess(res, { data: await dashboardCharts({ range: req.query.range }) })));
-
-router.get('/reports/business', asyncHandler(async (req, res) =>
-  sendSuccess(res, { data: await businessReport(reportRange(req)) })));
-router.get('/reports/by-vendor', asyncHandler(async (req, res) =>
-  sendSuccess(res, { data: await revenueByVendor({ ...reportRange(req), limit: req.query.limit }) })));
-router.get('/reports/trend', asyncHandler(async (req, res) =>
-  sendSuccess(res, { data: await revenueTrend(reportRange(req)) })));
-router.get('/reports/by-location', asyncHandler(async (req, res) =>
-  sendSuccess(res, { data: await revenueByLocation(reportRange(req)) })));
-
-/* ── Partner compliance ───────────────────────────────────── */
-/*
- * Violations, the policy that scores them, and suspension/reinstatement.
- * Mounted here so it inherits this router's admin authentication.
- */
-router.use('/compliance', complianceAdminRouter());
-
-/* ── Notification delivery health ─────────────────────────── */
-router.get(
-  '/notification-health',
-  asyncHandler(async (req, res) =>
-    sendSuccess(res, { data: await deliveryHealth({ hours: Number(req.query.hours) || 24 }) })
-  )
-);
-router.get('/support', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listSupport() })));
-router.post(
-  '/support/:id/reply',
-  validate(z.object({ message: z.string().trim().min(1).max(2000) })),
-  asyncHandler(async (req, res) => sendSuccess(res, { data: await replySupport(req.user, req.params.id, req.body.message, req.ip) }))
-);
-
-/* ── Catalogs ─────────────────────────────────────────────── */
-router.get('/products', asyncHandler(async (req, res) => sendSuccess(res, { data: await listProducts({ search: req.query.search, category: req.query.category, vendorId: req.query.vendorId }) })));
-router.post('/products', asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await createProduct(req.user, req.body, req.ip) })));
-router.patch('/products/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateProduct(req.user, req.params.id, req.body, req.ip) })));
-router.delete('/products/:id', asyncHandler(async (req, res) => { await deleteProduct(req.user, req.params.id, req.ip); sendSuccess(res, { message: 'Product removed' }); }));
-
-router.get('/product-categories', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listProductCategories() })));
-router.post('/product-categories', asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await createProductCategory(req.user, req.body, req.ip) })));
-router.patch('/product-categories/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateProductCategory(req.user, req.params.id, req.body, req.ip) })));
-router.delete('/product-categories/:id', asyncHandler(async (req, res) => { await deleteProductCategory(req.user, req.params.id, req.ip); sendSuccess(res, { message: 'Category removed' }); }));
-
-router.get('/breeds', asyncHandler(async (req, res) => sendSuccess(res, { data: await listBreeds({ search: req.query.search, petType: req.query.petType }) })));
-router.post('/breeds', asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await createBreed(req.user, req.body, req.ip) })));
-router.patch('/breeds/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateBreed(req.user, req.params.id, req.body, req.ip) })));
-router.delete('/breeds/:id', asyncHandler(async (req, res) => { await deleteBreed(req.user, req.params.id, req.ip); sendSuccess(res, { message: 'Breed removed' }); }));
-
-router.get('/meal-plans', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listMealPlans() })));
-router.post('/meal-plans', asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await createMealPlan(req.user, req.body, req.ip) })));
-router.patch('/meal-plans/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateMealPlan(req.user, req.params.id, req.body, req.ip) })));
-router.delete('/meal-plans/:id', asyncHandler(async (req, res) => { await deleteMealPlan(req.user, req.params.id, req.ip); sendSuccess(res, { message: 'Plan removed' }); }));
-
-router.get('/doctor-services', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listDoctorServices() })));
-router.patch('/doctor-services/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateDoctorService(req.user, req.params.id, req.body, req.ip) })));
-
-/* ── Vet credential verification ──────────────────────────
- * A vet is invisible to pet parents until approved here, so this is the gate
- * between a self-declared registration number and a bookable professional.
- * Responses include the verification documents, which are stripped from every
- * public doctor response. */
-
-router.get('/vets', asyncHandler(async (req, res) => {
-  sendSuccess(res, { data: await listVetApplications({ status: req.query.status || 'pending' }) });
-}));
-
-router.get('/vets/:id', asyncHandler(async (req, res) => {
-  sendSuccess(res, { data: await getVetApplication(req.params.id) });
-}));
-
-router.post(
-  '/vets/:id/approve',
-  validate(z.object({ force: z.boolean().optional() })),
-  asyncHandler(async (req, res) => {
-    const data = await approveVet(req.user, req.params.id, { force: req.body.force });
-    sendSuccess(res, { message: 'Vet approved and listed', data });
-  })
-);
-
-router.post(
-  '/vets/:id/reject',
-  validate(z.object({ reason: z.string().trim().min(3).max(500), allowResubmit: z.boolean().optional() })),
-  asyncHandler(async (req, res) => {
-    const data = await rejectVet(req.user, req.params.id, req.body);
-    sendSuccess(res, { message: 'Vet application rejected', data });
-  })
-);
-
-router.patch(
-  '/vets/:id/active',
-  validate(z.object({ active: z.boolean() })),
-  asyncHandler(async (req, res) => {
-    const data = await setVetActive(req.user, req.params.id, req.body.active);
-    sendSuccess(res, { message: req.body.active ? 'Vet restored' : 'Vet suspended', data });
-  })
-);
-router.get('/event-categories', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listEventCategories() })));
-router.get('/memorial-packages', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listMemorialPackages() })));
-router.get('/grooming-daycare', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listGroomingDaycare() })));
-router.patch('/grooming-daycare/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateGroomingDaycare(req.user, req.params.id, req.body, req.ip) })));
-router.get('/grooming-facilities', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listGroomingFacilities() })));
-router.get('/addons', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listAddons() })));
-router.patch('/addons/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateAddon(req.user, req.params.id, req.body, req.ip) })));
-
-/* Generic catalog-config store (product categories, doctor services, add-ons/
-   amenities, memorial packages, event categories, grooming/day-care). */
-router.get('/config/:group', asyncHandler(async (req, res) => sendSuccess(res, { data: await listConfig(req.params.group) })));
-router.post('/config/:group', asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await createConfig(req.user, req.params.group, req.body, req.ip) })));
-router.patch('/config/item/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateConfig(req.user, req.params.id, req.body, req.ip) })));
-router.delete('/config/item/:id', asyncHandler(async (req, res) => { await deleteConfig(req.user, req.params.id, req.ip); sendSuccess(res, { message: 'Removed' }); }));
-
-/* ── Finance ──────────────────────────────────────────────── */
-router.get('/transactions', asyncHandler(async (req, res) => sendSuccess(res, { data: await listTransactions({ status: req.query.status }) })));
-router.get('/payments-overview', asyncHandler(async (_req, res) => sendSuccess(res, { data: await paymentsOverview() })));
-router.get('/commission', asyncHandler(async (_req, res) => sendSuccess(res, { data: await getCommissionSettings() })));
-/* Global default + per-category + per-vendor, for the Commission screen. */
-router.get('/commission/matrix', asyncHandler(async (_req, res) => sendSuccess(res, { data: await getCommissionMatrix() })));
-/* Set the global or a category rate, as a percentage. */
-router.put(
-  '/commission/category/:key',
-  superOnly,
-  validate(z.object({ percent: z.number().min(0).max(100), allowZero: z.boolean().optional() })),
-  asyncHandler(async (req, res) =>
-    sendSuccess(res, {
-      data: await setCommissionPercent(req.user, `commission.${req.params.key}`, req.body.percent, req.ip, {
-        allowZero: Boolean(req.body.allowZero),
-      }),
-    })
-  )
-);
-/* One vendor's override; `percent: null` clears it back to inheriting. */
-router.put(
-  '/commission/vendor/:profileId',
-  superOnly,
-  validate(z.object({ percent: z.number().min(0).max(100).nullable(), allowZero: z.boolean().optional() })),
-  asyncHandler(async (req, res) =>
-    sendSuccess(res, {
-      data: await setVendorCommission(req.user, req.params.profileId, req.body.percent, req.ip, {
-        allowZero: Boolean(req.body.allowZero),
-      }),
-    })
-  )
-);
-
-/* The limits every commission write is checked against. */
-router.put(
-  '/commission/bounds',
-  superOnly,
-  validate(z.object({ minPercent: z.number().min(0).max(100), maxPercent: z.number().min(0).max(100) })),
-  asyncHandler(async (req, res) => sendSuccess(res, { data: await setCommissionBounds(req.user, req.body, req.ip) }))
-);
-/* Payout tax, as a percentage. */
-router.put(
-  '/commission/tax',
-  superOnly,
-  validate(z.object({ percent: z.number().min(0).max(100) })),
-  asyncHandler(async (req, res) => sendSuccess(res, { data: await setTaxPercent(req.user, req.body.percent, req.ip) }))
-);
-
-/* ── Scheduled rate changes ── */
-router.get(
-  '/commission/schedules',
-  asyncHandler(async (req, res) =>
-    sendSuccess(res, { data: await listCommissionSchedules({ status: req.query.status }) })
-  )
-);
-router.post(
-  '/commission/schedules',
-  superOnly,
-  validate(
-    z.object({
-      scope: z.enum(['global', 'category', 'vendor']),
-      targetKey: z.string().min(1).max(120),
-      percent: z.number().min(0).max(100).optional(),
-      clearsOverride: z.boolean().optional(),
-      effectiveFrom: z.string().min(1),
-      note: z.string().max(200).optional(),
-    })
-  ),
-  asyncHandler(async (req, res) =>
-    sendSuccess(res, { statusCode: 201, data: await scheduleCommissionChange(req.user, req.body, req.ip) })
-  )
-);
-router.delete(
-  '/commission/schedules/:id',
-  superOnly,
-  asyncHandler(async (req, res) =>
-    sendSuccess(res, { data: await cancelCommissionSchedule(req.user, req.params.id, req.ip) })
-  )
-);
-router.put(
-  '/commission/:key',
-  superOnly,
-  validate(z.object({ value: z.number() })),
-  asyncHandler(async (req, res) => sendSuccess(res, { data: await setCommission(req.user, req.params.key, req.body.value, req.ip) }))
-);
-router.get('/payouts', asyncHandler(async (req, res) => sendSuccess(res, { data: await listPayouts({ status: req.query.status }) })));
-router.post(
-  '/payouts/:id/pay',
-  validate(z.object({ utr: z.string().max(40).optional() })),
-  asyncHandler(async (req, res) => sendSuccess(res, { data: await markPayoutPaid(req.user, req.params.id, req.body.utr, req.ip) }))
-);
-router.get('/wallet-overview', asyncHandler(async (_req, res) => sendSuccess(res, { data: await walletOverview() })));
-router.post(
-  '/wallet/:id/adjust',
-  validate(z.object({ action: z.enum(['credit', 'debit']), amount: z.number().positive(), reason: z.string().trim().min(1).max(200) })),
-  asyncHandler(async (req, res) => sendSuccess(res, { data: await adjustWallet(req.user, req.params.id, req.body, req.ip) }))
-);
-router.get('/tax-report', asyncHandler(async (_req, res) => sendSuccess(res, { data: await taxReport() })));
-
-/* ── Platform tools ───────────────────────────────────────── */
-router.post(
-  '/broadcast',
-  validate(z.object({ scope: z.enum(['All', 'Users', 'Vendors']).optional(), title: z.string().trim().min(1).max(160), message: z.string().trim().min(1).max(1000), confirm: z.literal(true) })),
-  asyncHandler(async (req, res) => sendSuccess(res, { data: await broadcast(req.user, req.body, req.ip) }))
-);
-router.get('/posts', asyncHandler(async (req, res) => sendSuccess(res, { data: req.query.reported ? await listReportedPosts() : await listAllPosts() })));
-router.post(
-  '/posts/:id/moderate',
-  validate(z.object({ action: z.enum(['hide', 'restore', 'delete']) })),
-  asyncHandler(async (req, res) => sendSuccess(res, { data: await moderatePost(req.user, req.params.id, req.body.action, req.ip) }))
-);
-router.get('/reviews', asyncHandler(async (req, res) => sendSuccess(res, { data: await listReviews({ status: req.query.status }) })));
-router.post(
-  '/reviews/:id/moderate',
-  validate(z.object({ action: z.enum(['hide', 'restore']) })),
-  asyncHandler(async (req, res) => sendSuccess(res, { data: await moderateReview(req.user, req.params.id, req.body.action, req.ip) }))
-);
-router.get('/reports', asyncHandler(async (_req, res) => sendSuccess(res, { data: await reportsSummary() })));
-router.get('/meal-portal', asyncHandler(async (_req, res) => sendSuccess(res, { data: await getMealPortalData() })));
-
-/* ── Match subscriptions ──────────────────────────────────
- *
- * The plan catalog behind the swipe deck's like limits. The free plan's
- * allowance — the "10 likes a day" every new user starts with — is a field on
- * one of these rows, so it is retuned here rather than in a deploy.
- */
-const planBody = z.object({
-  name: z.string().trim().min(2).max(60).optional(),
-  key: z.string().trim().max(60).optional(),
-  tagline: z.string().trim().max(160).optional(),
-  tier: z.number().int().min(0).max(99).optional(),
-  priceInr: z.number().min(0).max(1_000_000).optional(),
-  durationDays: z.number().int().min(0).max(3650).optional(),
-  // `unlimited` and `likeLimit` are two views of one field: send unlimited to
-  // clear the cap, or a number to set one. 0 is a real value (a tier that
-  // cannot like at all), so it must not be coerced away.
-  unlimited: z.boolean().optional(),
-  likeLimit: z.number().int().min(0).max(100000).nullable().optional(),
-  limitPeriod: z.enum(['day', 'total']).optional(),
-  features: z.array(z.string().trim().max(120)).max(12).optional(),
-  badge: z.string().trim().max(40).optional(),
-  accentColor: z.string().trim().max(32).optional(),
-  active: z.boolean().optional(),
-  sort: z.number().int().min(0).max(999).optional(),
-});
-
-router.get('/match-plans', asyncHandler(async (_req, res) => sendSuccess(res, { data: await adminListPlans() })));
-router.post(
-  '/match-plans',
-  validate(planBody),
-  asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await adminCreatePlan(req.user, req.body, req.ip) }))
-);
-router.patch(
-  '/match-plans/reorder',
-  validate(z.object({ order: z.array(z.string().regex(/^[0-9a-fA-F]{24}$/)).min(1) })),
-  asyncHandler(async (req, res) => sendSuccess(res, { data: await adminReorderPlans(req.user, req.body.order, req.ip) }))
-);
-router.patch(
-  '/match-plans/:id',
-  validate(planBody),
-  asyncHandler(async (req, res) => sendSuccess(res, { data: await adminUpdatePlan(req.user, req.params.id, req.body, req.ip) }))
-);
-router.post(
-  '/match-plans/:id/default',
-  asyncHandler(async (req, res) => sendSuccess(res, { data: await adminSetDefaultPlan(req.user, req.params.id, req.ip) }))
-);
-router.delete(
-  '/match-plans/:id',
-  asyncHandler(async (req, res) => sendSuccess(res, { data: await adminDeletePlan(req.user, req.params.id, req.ip) }))
-);
-
-router.get('/subscriptions/stats', asyncHandler(async (_req, res) => sendSuccess(res, { data: await adminSubscriptionStats() })));
-router.get(
-  '/subscriptions',
-  asyncHandler(async (req, res) =>
-    sendSuccess(res, {
-      data: await adminListSubscriptions({
-        status: req.query.status,
-        planId: req.query.planId,
-        search: req.query.search,
-        limit: req.query.limit,
-      }),
-    })
-  )
-);
-router.get(
-  '/subscriptions/user/:userId',
-  asyncHandler(async (req, res) => sendSuccess(res, { data: await adminUserEntitlement(req.params.userId) }))
-);
-router.post(
-  '/subscriptions/grant',
-  validate(
-    z.object({
-      userId: z.string().regex(/^[0-9a-fA-F]{24}$/),
-      planId: z.string().regex(/^[0-9a-fA-F]{24}$/),
-      note: z.string().trim().max(300).optional(),
-    })
-  ),
-  asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await adminGrantSubscription(req.user, req.body, req.ip) }))
-);
-router.post(
-  '/subscriptions/:id/extend',
-  validate(z.object({ days: z.number().int().min(-3650).max(3650) })),
-  asyncHandler(async (req, res) => sendSuccess(res, { data: await adminExtendSubscription(req.user, req.params.id, req.body.days, req.ip) }))
-);
-router.post(
-  '/subscriptions/:id/revoke',
-  validate(z.object({ reason: z.string().trim().max(300).default('') })),
-  asyncHandler(async (req, res) => sendSuccess(res, { data: await adminRevokeSubscription(req.user, req.params.id, req.body.reason, req.ip) }))
-);
-
-router.get('/staff', superOnly, asyncHandler(async (_req, res) => sendSuccess(res, { data: await listStaff() })));
-router.post(
-  '/staff',
-  superOnly,
-  validate(z.object({ name: z.string().trim().min(2).max(120), email: z.string().email(), password: z.string().min(6).max(72).optional(), adminRole: z.enum(['super', 'ops', 'finance', 'support', 'moderator']).optional(), permissions: z.array(z.string()).optional() })),
-  asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await createStaff(req.user, req.body, req.ip) }))
-);
-router.patch('/staff/:id', superOnly, asyncHandler(async (req, res) => sendSuccess(res, { data: await updateStaff(req.user, req.params.id, req.body, req.ip) })));
-router.delete('/staff/:id', superOnly, asyncHandler(async (req, res) => { await removeStaff(req.user, req.params.id, req.ip); sendSuccess(res, { message: 'Staff removed' }); }));
-
-/* ── Pet Prompts & Fun Facts CRUD ─────────────────────────── */
-router.get('/prompts', asyncHandler(async (req, res) => {
-  const data = await listPetPrompts({
-    temperament: req.query.temperament,
-    mood: req.query.mood,
+  /** Shared list query: filters, date range and paging. */
+  const listQuery = (req) => ({
+    status: req.query.status,
+    type: req.query.type,
+    vendorId: req.query.vendorId,
+    providerId: req.query.providerId,
     search: req.query.search,
+    from: req.query.from,
+    to: req.query.to,
+    page: req.query.page,
+    limit: req.query.limit,
   });
-  sendSuccess(res, { data });
-}));
 
-router.post(
-  '/prompts',
-  validate(
-    z.object({
-      question: z.string().trim().min(1),
-      answerTemplate: z.string().trim().min(1),
-      temperament: z.string().optional(),
-      mood: z.string().optional(),
-      species: z.string().optional(),
-      category: z.string().optional(),
-      isActive: z.boolean().optional(),
+  const reasonSchema = z.string().trim().min(3).max(500);
+  /** Rupees in from the UI, paise on the wire — amounts are paise end to end. */
+  const amountRupees = z.number().positive().max(10_000_000).optional();
+  const toPaise = (rupees) => (rupees == null ? null : Math.round(rupees * 100));
+
+  router.get('/orders', asyncHandler(async (req, res) => sendSuccess(res, { data: await listOrders(listQuery(req)) })));
+  router.get('/orders/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await getOrderDetail(req.params.id) })));
+  router.post(
+    '/orders/:id/cancel',
+    validate(z.object({ reason: reasonSchema, refund: z.boolean().optional(), amount: amountRupees })),
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, {
+        data: await adminCancelOrder(
+          req.user,
+          req.params.id,
+          { reason: req.body.reason, refund: req.body.refund !== false, amountPaise: toPaise(req.body.amount) },
+          req.ip
+        ),
+      })
+    )
+  );
+  router.post(
+    '/orders/:id/refund',
+    validate(z.object({ reason: reasonSchema, amount: amountRupees })),
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, {
+        data: await adminRefundOrder(
+          req.user,
+          req.params.id,
+          { reason: req.body.reason, amountPaise: toPaise(req.body.amount) },
+          req.ip
+        ),
+      })
+    )
+  );
+  router.patch(
+    '/orders/:id/status',
+    validate(z.object({ status: z.enum(ORDER_STATUSES), reason: reasonSchema })),
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, { data: await adminSetOrderStatus(req.user, req.params.id, req.body, req.ip) })
+    )
+  );
+
+  router.get('/bookings', asyncHandler(async (req, res) => sendSuccess(res, { data: await listBookings(listQuery(req)) })));
+  router.get('/bookings/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await getBookingDetail(req.params.id) })));
+  router.post(
+    '/bookings/:id/cancel',
+    validate(
+      z.object({
+        reason: reasonSchema,
+        refund: z.boolean().optional(),
+        onBehalfOf: z.enum(['admin', 'vendor', 'customer']).optional(),
+        amount: amountRupees,
+      })
+    ),
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, {
+        data: await adminCancelBooking(
+          req.user,
+          req.params.id,
+          {
+            reason: req.body.reason,
+            refund: req.body.refund !== false,
+            onBehalfOf: req.body.onBehalfOf || 'admin',
+            amountPaise: toPaise(req.body.amount),
+          },
+          req.ip
+        ),
+      })
+    )
+  );
+  router.post(
+    '/bookings/:id/refund',
+    validate(z.object({ reason: reasonSchema, amount: amountRupees })),
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, {
+        data: await adminRefundBooking(
+          req.user,
+          req.params.id,
+          { reason: req.body.reason, amountPaise: toPaise(req.body.amount) },
+          req.ip
+        ),
+      })
+    )
+  );
+  router.patch(
+    '/bookings/:id/status',
+    validate(
+      z.object({
+        status: z.enum(BOOKING_STATUSES),
+        reason: reasonSchema,
+        // Breaking the lifecycle is allowed but never accidental — it is a
+        // separate, separately-audited flag.
+        force: z.boolean().optional(),
+      })
+    ),
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, { data: await adminSetBookingStatus(req.user, req.params.id, req.body, req.ip) })
+    )
+  );
+
+  router.get('/appointments', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listOpsAppointments() })));
+  router.get('/deliveries', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listDeliveries() })));
+  router.get('/returns', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listReturns() })));
+  router.post(
+    '/returns/:id/resolve',
+    validate(
+      z.object({
+        action: z.enum(['approve', 'reject']),
+        reason: z.string().trim().max(500).optional(),
+        amount: amountRupees,
+      })
+    ),
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, {
+        data: await resolveReturn(req.user, req.params.id, req.body.action, req.ip, {
+          amountPaise: toPaise(req.body.amount),
+          reason: req.body.reason || '',
+        }),
+      })
+    )
+  );
+
+  /* ── Refund register ──────────────────────────────────────── */
+
+  /*
+   * "How much was refunded, why, by whom, and did it actually land?" had no
+   * answer before: refunds left only a bumped counter on the payment. This is the
+   * reconciliation surface for every rupee that went back.
+   */
+  router.get(
+    '/refunds',
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, {
+        data: await listRefunds({
+          status: req.query.status,
+          refType: req.query.refType,
+          from: req.query.from,
+          to: req.query.to,
+          page: req.query.page,
+          limit: req.query.limit,
+        }),
+      })
+    )
+  );
+  router.get('/refunds/totals', asyncHandler(async (_req, res) => sendSuccess(res, { data: await refundTotals() })));
+  router.post(
+    '/refunds/:id/retry',
+    asyncHandler(async (req, res) => {
+      const refund = await retryRefund(req.params.id, req.user);
+      await writeAudit(req.user, {
+        action: 'refund.retry',
+        targetType: 'refund',
+        targetId: req.params.id,
+        after: { status: refund.status, attempts: refund.attempts },
+        ip: req.ip,
+      });
+      if (refund.status !== 'processed') {
+        throw ApiError.serviceUnavailable(refund.failureReason || 'Refund failed again at the gateway');
+      }
+      return sendSuccess(res, { data: { refundNo: refund.refundNo, status: refund.status } });
     })
-  ),
-  asyncHandler(async (req, res) => {
-    const data = await createPetPrompt(req.user, req.body, req.ip);
-    sendSuccess(res, { statusCode: 201, data });
-  })
-);
+  );
+  /* Re-run a clawback that failed after the customer was already refunded. */
+  router.post(
+    '/refunds/:id/reverse-ledger',
+    asyncHandler(async (req, res) => {
+      const refund = await retryLedgerReversal(req.params.id);
+      await writeAudit(req.user, {
+        action: 'refund.reverse_ledger',
+        targetType: 'refund',
+        targetId: req.params.id,
+        after: { ledgerReversed: refund.ledgerReversed },
+        ip: req.ip,
+      });
+      return sendSuccess(res, {
+        data: { refundNo: refund.refundNo, ledgerReversed: refund.ledgerReversed, error: refund.ledgerReversalError },
+      });
+    })
+  );
 
-router.put('/prompts/:id', asyncHandler(async (req, res) => {
-  const data = await updatePetPrompt(req.user, req.params.id, req.body, req.ip);
-  sendSuccess(res, { data });
-}));
+  /*
+   * Sweep booking requests the partner let expire: auto-decline and refund.
+   *
+   * Exposed as an endpoint so it is usable today and testable by hand. It still
+   * wants a scheduler — see the note in booking.service.js — but an operator can
+   * clear the backlog from Admin rather than having customers wait on a partner
+   * who is never going to answer.
+   */
+  router.post(
+    '/bookings/sweep-unanswered',
+    asyncHandler(async (req, res) => {
+      const { expireUnansweredBookings } = await import('../booking/booking.service.js');
+      const results = await expireUnansweredBookings();
+      await writeAudit(req.user, {
+        action: 'booking.sweep_unanswered',
+        targetType: 'booking',
+        after: { swept: results.length, failed: results.filter((r) => !r.ok).length },
+        ip: req.ip,
+      });
+      return sendSuccess(res, { data: { swept: results.length, results } });
+    })
+  );
 
-router.delete('/prompts/:id', asyncHandler(async (req, res) => {
-  const data = await deletePetPrompt(req.user, req.params.id, req.ip);
-  sendSuccess(res, { message: 'Prompt deleted successfully', data });
-}));
+  /* ── Business reporting ───────────────────────────────────── */
+  /*
+   * Aggregated in the database over an explicit date range. The Reports screen
+   * used to total the bookings list in the browser, which silently meant "the
+   * last 300 rows" — every headline number was wrong and nothing said so.
+   */
+  const reportRange = (req) => ({ from: req.query.from, to: req.query.to });
 
-export default router;
+  /*
+   * Every series the dashboard plots, aggregated server-side. Separate from
+   * `/dashboard` so the charts can be re-fetched on a range change without
+   * re-running the counters and the action queue.
+   */
+  router.get('/dashboard/charts', asyncHandler(async (req, res) =>
+    sendSuccess(res, { data: await dashboardCharts({ range: req.query.range }) })));
 
-/* ── Public banners (user-app Home rails) ─────────────────── */
-export const bannersRouter = Router();
-bannersRouter.get('/', asyncHandler(async (req, res) => {
-  sendSuccess(res, { data: await listPublicBanners({ slot: req.query.slot }) });
-}));
+  router.get('/reports/business', asyncHandler(async (req, res) =>
+    sendSuccess(res, { data: await businessReport(reportRange(req)) })));
+  router.get('/reports/by-vendor', asyncHandler(async (req, res) =>
+    sendSuccess(res, { data: await revenueByVendor({ ...reportRange(req), limit: req.query.limit }) })));
+  router.get('/reports/trend', asyncHandler(async (req, res) =>
+    sendSuccess(res, { data: await revenueTrend(reportRange(req)) })));
+  router.get('/reports/by-location', asyncHandler(async (req, res) =>
+    sendSuccess(res, { data: await revenueByLocation(reportRange(req)) })));
+
+  /* ── Partner compliance ───────────────────────────────────── */
+  /*
+   * Violations, the policy that scores them, and suspension/reinstatement.
+   * Mounted here so it inherits this router's admin authentication.
+   */
+  router.use('/compliance', complianceAdminRouter());
+
+  /* ── Notification delivery health ─────────────────────────── */
+  router.get(
+    '/notification-health',
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, { data: await deliveryHealth({ hours: Number(req.query.hours) || 24 }) })
+    )
+  );
+  router.get('/support', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listSupport() })));
+  router.post(
+    '/support/:id/reply',
+    validate(z.object({ message: z.string().trim().min(1).max(2000) })),
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await replySupport(req.user, req.params.id, req.body.message, req.ip) }))
+  );
+
+  /* ── Catalogs ─────────────────────────────────────────────── */
+  router.get('/products', asyncHandler(async (req, res) => sendSuccess(res, { data: await listProducts({ search: req.query.search, category: req.query.category, vendorId: req.query.vendorId }) })));
+  router.post('/products', asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await createProduct(req.user, req.body, req.ip) })));
+  router.patch('/products/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateProduct(req.user, req.params.id, req.body, req.ip) })));
+  router.delete('/products/:id', asyncHandler(async (req, res) => { await deleteProduct(req.user, req.params.id, req.ip); sendSuccess(res, { message: 'Product removed' }); }));
+
+  router.get('/product-categories', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listProductCategories() })));
+  router.post('/product-categories', asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await createProductCategory(req.user, req.body, req.ip) })));
+  router.patch('/product-categories/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateProductCategory(req.user, req.params.id, req.body, req.ip) })));
+  router.delete('/product-categories/:id', asyncHandler(async (req, res) => { await deleteProductCategory(req.user, req.params.id, req.ip); sendSuccess(res, { message: 'Category removed' }); }));
+
+  router.get('/breeds', asyncHandler(async (req, res) => sendSuccess(res, { data: await listBreeds({ search: req.query.search, petType: req.query.petType }) })));
+  router.post('/breeds', asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await createBreed(req.user, req.body, req.ip) })));
+  router.patch('/breeds/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateBreed(req.user, req.params.id, req.body, req.ip) })));
+  router.delete('/breeds/:id', asyncHandler(async (req, res) => { await deleteBreed(req.user, req.params.id, req.ip); sendSuccess(res, { message: 'Breed removed' }); }));
+
+  router.get('/meal-plans', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listMealPlans() })));
+  router.post('/meal-plans', asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await createMealPlan(req.user, req.body, req.ip) })));
+  router.patch('/meal-plans/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateMealPlan(req.user, req.params.id, req.body, req.ip) })));
+  router.delete('/meal-plans/:id', asyncHandler(async (req, res) => { await deleteMealPlan(req.user, req.params.id, req.ip); sendSuccess(res, { message: 'Plan removed' }); }));
+
+  router.get('/doctor-services', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listDoctorServices() })));
+  router.patch('/doctor-services/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateDoctorService(req.user, req.params.id, req.body, req.ip) })));
+
+  /* ── Vet credential verification ──────────────────────────
+   * A vet is invisible to pet parents until approved here, so this is the gate
+   * between a self-declared registration number and a bookable professional.
+   * Responses include the verification documents, which are stripped from every
+   * public doctor response. */
+
+  router.get('/vets', asyncHandler(async (req, res) => {
+    sendSuccess(res, { data: await listVetApplications({ status: req.query.status || 'pending' }) });
+  }));
+
+  router.get('/vets/:id', asyncHandler(async (req, res) => {
+    sendSuccess(res, { data: await getVetApplication(req.params.id) });
+  }));
+
+  router.post(
+    '/vets/:id/approve',
+    validate(z.object({ force: z.boolean().optional() })),
+    asyncHandler(async (req, res) => {
+      const data = await approveVet(req.user, req.params.id, { force: req.body.force });
+      sendSuccess(res, { message: 'Vet approved and listed', data });
+    })
+  );
+
+  router.post(
+    '/vets/:id/reject',
+    validate(z.object({ reason: z.string().trim().min(3).max(500), allowResubmit: z.boolean().optional() })),
+    asyncHandler(async (req, res) => {
+      const data = await rejectVet(req.user, req.params.id, req.body);
+      sendSuccess(res, { message: 'Vet application rejected', data });
+    })
+  );
+
+  router.patch(
+    '/vets/:id/active',
+    validate(z.object({ active: z.boolean() })),
+    asyncHandler(async (req, res) => {
+      const data = await setVetActive(req.user, req.params.id, req.body.active);
+      sendSuccess(res, { message: req.body.active ? 'Vet restored' : 'Vet suspended', data });
+    })
+  );
+  router.get('/event-categories', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listEventCategories() })));
+  router.get('/memorial-packages', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listMemorialPackages() })));
+  router.get('/grooming-daycare', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listGroomingDaycare() })));
+  router.patch('/grooming-daycare/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateGroomingDaycare(req.user, req.params.id, req.body, req.ip) })));
+  router.get('/grooming-facilities', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listGroomingFacilities() })));
+  router.get('/addons', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listAddons() })));
+  router.patch('/addons/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateAddon(req.user, req.params.id, req.body, req.ip) })));
+
+  /* Generic catalog-config store (product categories, doctor services, add-ons/
+     amenities, memorial packages, event categories, grooming/day-care). */
+  router.get('/config/:group', asyncHandler(async (req, res) => sendSuccess(res, { data: await listConfig(req.params.group) })));
+  router.post('/config/:group', asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await createConfig(req.user, req.params.group, req.body, req.ip) })));
+  router.patch('/config/item/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await updateConfig(req.user, req.params.id, req.body, req.ip) })));
+  router.delete('/config/item/:id', asyncHandler(async (req, res) => { await deleteConfig(req.user, req.params.id, req.ip); sendSuccess(res, { message: 'Removed' }); }));
+
+  /* ── Finance ──────────────────────────────────────────────── */
+  router.get('/transactions', asyncHandler(async (req, res) => sendSuccess(res, { data: await listTransactions({ status: req.query.status }) })));
+  router.get('/payments-overview', asyncHandler(async (_req, res) => sendSuccess(res, { data: await paymentsOverview() })));
+  router.get('/commission', asyncHandler(async (_req, res) => sendSuccess(res, { data: await getCommissionSettings() })));
+  /* Global default + per-category + per-vendor, for the Commission screen. */
+  router.get('/commission/matrix', asyncHandler(async (_req, res) => sendSuccess(res, { data: await getCommissionMatrix() })));
+  /* Set the global or a category rate, as a percentage. */
+  router.put(
+    '/commission/category/:key',
+    superOnly,
+    validate(z.object({ percent: z.number().min(0).max(100), allowZero: z.boolean().optional() })),
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, {
+        data: await setCommissionPercent(req.user, `commission.${req.params.key}`, req.body.percent, req.ip, {
+          allowZero: Boolean(req.body.allowZero),
+        }),
+      })
+    )
+  );
+  /* One vendor's override; `percent: null` clears it back to inheriting. */
+  router.put(
+    '/commission/vendor/:profileId',
+    superOnly,
+    validate(z.object({ percent: z.number().min(0).max(100).nullable(), allowZero: z.boolean().optional() })),
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, {
+        data: await setVendorCommission(req.user, req.params.profileId, req.body.percent, req.ip, {
+          allowZero: Boolean(req.body.allowZero),
+        }),
+      })
+    )
+  );
+
+  /* The limits every commission write is checked against. */
+  router.put(
+    '/commission/bounds',
+    superOnly,
+    validate(z.object({ minPercent: z.number().min(0).max(100), maxPercent: z.number().min(0).max(100) })),
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await setCommissionBounds(req.user, req.body, req.ip) }))
+  );
+  /* Payout tax, as a percentage. */
+  router.put(
+    '/commission/tax',
+    superOnly,
+    validate(z.object({ percent: z.number().min(0).max(100) })),
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await setTaxPercent(req.user, req.body.percent, req.ip) }))
+  );
+
+  /* ── Scheduled rate changes ── */
+  router.get(
+    '/commission/schedules',
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, { data: await listCommissionSchedules({ status: req.query.status }) })
+    )
+  );
+  router.post(
+    '/commission/schedules',
+    superOnly,
+    validate(
+      z.object({
+        scope: z.enum(['global', 'category', 'vendor']),
+        targetKey: z.string().min(1).max(120),
+        percent: z.number().min(0).max(100).optional(),
+        clearsOverride: z.boolean().optional(),
+        effectiveFrom: z.string().min(1),
+        note: z.string().max(200).optional(),
+      })
+    ),
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, { statusCode: 201, data: await scheduleCommissionChange(req.user, req.body, req.ip) })
+    )
+  );
+  router.delete(
+    '/commission/schedules/:id',
+    superOnly,
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, { data: await cancelCommissionSchedule(req.user, req.params.id, req.ip) })
+    )
+  );
+  /* Global default + per-category + per-vendor, for the Commission screen. */
+  router.get('/commission/matrix', asyncHandler(async (_req, res) => sendSuccess(res, { data: await getCommissionMatrix() })));
+  /* Set the global or a category rate, as a percentage. */
+  router.put(
+    '/commission/category/:key',
+    superOnly,
+    validate(z.object({ percent: z.number().min(0).max(100), allowZero: z.boolean().optional() })),
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, {
+        data: await setCommissionPercent(req.user, `commission.${req.params.key}`, req.body.percent, req.ip, {
+          allowZero: Boolean(req.body.allowZero),
+        }),
+      })
+    )
+  );
+  /* One vendor's override; `percent: null` clears it back to inheriting. */
+  router.put(
+    '/commission/vendor/:profileId',
+    superOnly,
+    validate(z.object({ percent: z.number().min(0).max(100).nullable(), allowZero: z.boolean().optional() })),
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, {
+        data: await setVendorCommission(req.user, req.params.profileId, req.body.percent, req.ip, {
+          allowZero: Boolean(req.body.allowZero),
+        }),
+      })
+    )
+  );
+
+  /* The limits every commission write is checked against. */
+  router.put(
+    '/commission/bounds',
+    superOnly,
+    validate(z.object({ minPercent: z.number().min(0).max(100), maxPercent: z.number().min(0).max(100) })),
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await setCommissionBounds(req.user, req.body, req.ip) }))
+  );
+  /* Payout tax, as a percentage. */
+  router.put(
+    '/commission/tax',
+    superOnly,
+    validate(z.object({ percent: z.number().min(0).max(100) })),
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await setTaxPercent(req.user, req.body.percent, req.ip) }))
+  );
+
+  /* ── Scheduled rate changes ── */
+  router.get(
+    '/commission/schedules',
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, { data: await listCommissionSchedules({ status: req.query.status }) })
+    )
+  );
+  router.post(
+    '/commission/schedules',
+    superOnly,
+    validate(
+      z.object({
+        scope: z.enum(['global', 'category', 'vendor']),
+        targetKey: z.string().min(1).max(120),
+        percent: z.number().min(0).max(100).optional(),
+        clearsOverride: z.boolean().optional(),
+        effectiveFrom: z.string().min(1),
+        note: z.string().max(200).optional(),
+      })
+    ),
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, { statusCode: 201, data: await scheduleCommissionChange(req.user, req.body, req.ip) })
+    )
+  );
+  router.delete(
+    '/commission/schedules/:id',
+    superOnly,
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, { data: await cancelCommissionSchedule(req.user, req.params.id, req.ip) })
+    )
+  );
+  router.put(
+    '/commission/:key',
+    superOnly,
+    validate(z.object({ value: z.number() })),
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await setCommission(req.user, req.params.key, req.body.value, req.ip) }))
+  );
+  router.get('/payouts', asyncHandler(async (req, res) => sendSuccess(res, { data: await listPayouts({ status: req.query.status }) })));
+  router.post(
+    '/payouts/:id/pay',
+    validate(z.object({ utr: z.string().max(40).optional() })),
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await markPayoutPaid(req.user, req.params.id, req.body.utr, req.ip) }))
+  );
+  router.get('/wallet-overview', asyncHandler(async (_req, res) => sendSuccess(res, { data: await walletOverview() })));
+  router.post(
+    '/wallet/:id/adjust',
+    validate(z.object({ action: z.enum(['credit', 'debit']), amount: z.number().positive(), reason: z.string().trim().min(1).max(200) })),
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await adjustWallet(req.user, req.params.id, req.body, req.ip) }))
+  );
+  router.get('/tax-report', asyncHandler(async (_req, res) => sendSuccess(res, { data: await taxReport() })));
+
+  /* ── Platform tools ───────────────────────────────────────── */
+  router.post(
+    '/broadcast',
+    validate(z.object({ scope: z.enum(['All', 'Users', 'Vendors']).optional(), title: z.string().trim().min(1).max(160), message: z.string().trim().min(1).max(1000), confirm: z.literal(true) })),
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await broadcast(req.user, req.body, req.ip) }))
+  );
+  router.get('/posts', asyncHandler(async (req, res) => sendSuccess(res, { data: req.query.reported ? await listReportedPosts() : await listAllPosts() })));
+  router.post(
+    '/posts/:id/moderate',
+    validate(z.object({ action: z.enum(['hide', 'restore', 'delete']) })),
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await moderatePost(req.user, req.params.id, req.body.action, req.ip) }))
+  );
+  router.get('/reviews', asyncHandler(async (req, res) => sendSuccess(res, { data: await listReviews({ status: req.query.status }) })));
+  router.post(
+    '/reviews/:id/moderate',
+    validate(z.object({ action: z.enum(['hide', 'restore']) })),
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await moderateReview(req.user, req.params.id, req.body.action, req.ip) }))
+  );
+  router.get('/reports', asyncHandler(async (_req, res) => sendSuccess(res, { data: await reportsSummary() })));
+  router.get('/meal-portal', asyncHandler(async (_req, res) => sendSuccess(res, { data: await getMealPortalData() })));
+
+  /* ── Match subscriptions ──────────────────────────────────
+   *
+   * The plan catalog behind the swipe deck's like limits. The free plan's
+   * allowance — the "10 likes a day" every new user starts with — is a field on
+   * one of these rows, so it is retuned here rather than in a deploy.
+   */
+  const planBody = z.object({
+    name: z.string().trim().min(2).max(60).optional(),
+    key: z.string().trim().max(60).optional(),
+    tagline: z.string().trim().max(160).optional(),
+    tier: z.number().int().min(0).max(99).optional(),
+    priceInr: z.number().min(0).max(1_000_000).optional(),
+    durationDays: z.number().int().min(0).max(3650).optional(),
+    // `unlimited` and `likeLimit` are two views of one field: send unlimited to
+    // clear the cap, or a number to set one. 0 is a real value (a tier that
+    // cannot like at all), so it must not be coerced away.
+    unlimited: z.boolean().optional(),
+    likeLimit: z.number().int().min(0).max(100000).nullable().optional(),
+    limitPeriod: z.enum(['day', 'total']).optional(),
+    features: z.array(z.string().trim().max(120)).max(12).optional(),
+    badge: z.string().trim().max(40).optional(),
+    accentColor: z.string().trim().max(32).optional(),
+    active: z.boolean().optional(),
+    sort: z.number().int().min(0).max(999).optional(),
+  });
+
+  router.get('/match-plans', asyncHandler(async (_req, res) => sendSuccess(res, { data: await adminListPlans() })));
+  router.post(
+    '/match-plans',
+    validate(planBody),
+    asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await adminCreatePlan(req.user, req.body, req.ip) }))
+  );
+  router.patch(
+    '/match-plans/reorder',
+    validate(z.object({ order: z.array(z.string().regex(/^[0-9a-fA-F]{24}$/)).min(1) })),
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await adminReorderPlans(req.user, req.body.order, req.ip) }))
+  );
+  router.patch(
+    '/match-plans/:id',
+    validate(planBody),
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await adminUpdatePlan(req.user, req.params.id, req.body, req.ip) }))
+  );
+  router.post(
+    '/match-plans/:id/default',
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await adminSetDefaultPlan(req.user, req.params.id, req.ip) }))
+  );
+  router.delete(
+    '/match-plans/:id',
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await adminDeletePlan(req.user, req.params.id, req.ip) }))
+  );
+
+  router.get('/subscriptions/stats', asyncHandler(async (_req, res) => sendSuccess(res, { data: await adminSubscriptionStats() })));
+  router.get(
+    '/subscriptions',
+    asyncHandler(async (req, res) =>
+      sendSuccess(res, {
+        data: await adminListSubscriptions({
+          status: req.query.status,
+          planId: req.query.planId,
+          search: req.query.search,
+          limit: req.query.limit,
+        }),
+      })
+    )
+  );
+  router.get(
+    '/subscriptions/user/:userId',
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await adminUserEntitlement(req.params.userId) }))
+  );
+  router.post(
+    '/subscriptions/grant',
+    validate(
+      z.object({
+        userId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+        planId: z.string().regex(/^[0-9a-fA-F]{24}$/),
+        note: z.string().trim().max(300).optional(),
+      })
+    ),
+    asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await adminGrantSubscription(req.user, req.body, req.ip) }))
+  );
+  router.post(
+    '/subscriptions/:id/extend',
+    validate(z.object({ days: z.number().int().min(-3650).max(3650) })),
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await adminExtendSubscription(req.user, req.params.id, req.body.days, req.ip) }))
+  );
+  router.post(
+    '/subscriptions/:id/revoke',
+    validate(z.object({ reason: z.string().trim().max(300).default('') })),
+    asyncHandler(async (req, res) => sendSuccess(res, { data: await adminRevokeSubscription(req.user, req.params.id, req.body.reason, req.ip) }))
+  );
+
+  router.get('/staff', superOnly, asyncHandler(async (_req, res) => sendSuccess(res, { data: await listStaff() })));
+  router.post(
+    '/staff',
+    superOnly,
+    validate(z.object({ name: z.string().trim().min(2).max(120), email: z.string().email(), password: z.string().min(6).max(72).optional(), adminRole: z.enum(['super', 'ops', 'finance', 'support', 'moderator']).optional(), permissions: z.array(z.string()).optional() })),
+    asyncHandler(async (req, res) => sendSuccess(res, { statusCode: 201, data: await createStaff(req.user, req.body, req.ip) }))
+  );
+  router.patch('/staff/:id', superOnly, asyncHandler(async (req, res) => sendSuccess(res, { data: await updateStaff(req.user, req.params.id, req.body, req.ip) })));
+  router.delete('/staff/:id', superOnly, asyncHandler(async (req, res) => { await removeStaff(req.user, req.params.id, req.ip); sendSuccess(res, { message: 'Staff removed' }); }));
+
+  /* ── Pet Prompts & Fun Facts CRUD ─────────────────────────── */
+  router.get('/prompts', asyncHandler(async (req, res) => {
+    const data = await listPetPrompts({
+      temperament: req.query.temperament,
+      mood: req.query.mood,
+      search: req.query.search,
+    });
+    sendSuccess(res, { data });
+  }));
+
+  router.post(
+    '/prompts',
+    validate(
+      z.object({
+        question: z.string().trim().min(1),
+        answerTemplate: z.string().trim().min(1),
+        temperament: z.string().optional(),
+        mood: z.string().optional(),
+        species: z.string().optional(),
+        category: z.string().optional(),
+        isActive: z.boolean().optional(),
+      })
+    ),
+    asyncHandler(async (req, res) => {
+      const data = await createPetPrompt(req.user, req.body, req.ip);
+      sendSuccess(res, { statusCode: 201, data });
+    })
+  );
+
+  router.put('/prompts/:id', asyncHandler(async (req, res) => {
+    const data = await updatePetPrompt(req.user, req.params.id, req.body, req.ip);
+    sendSuccess(res, { data });
+  }));
+
+  router.delete('/prompts/:id', asyncHandler(async (req, res) => {
+    const data = await deletePetPrompt(req.user, req.params.id, req.ip);
+    sendSuccess(res, { message: 'Prompt deleted successfully', data });
+  }));
+
+  export default router;
+
+  /* ── Public banners (user-app Home rails) ─────────────────── */
+  export const bannersRouter = Router();
+  bannersRouter.get('/', asyncHandler(async (req, res) => {
+    sendSuccess(res, { data: await listPublicBanners({ slot: req.query.slot }) });
+    bannersRouter.get('/', asyncHandler(async (req, res) => {
+      sendSuccess(res, { data: await listPublicBanners({ slot: req.query.slot }) });
+    }));

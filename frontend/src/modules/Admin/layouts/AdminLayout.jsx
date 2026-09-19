@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
-import { 
-  Menu, X, Bell, LogOut, LayoutDashboard, Users, Store, 
-  Settings, Shield, ChevronDown, ChevronRight, Activity, Calendar, 
-  ShoppingBag, ClipboardList, Briefcase, FileText, PieChart, 
+import {
+  Menu, X, Bell, LogOut, LayoutDashboard, Users, Store,
+  Menu, X, Bell, LogOut, LayoutDashboard, Users, Store,
+  Settings, Shield, ChevronDown, ChevronRight, Activity, Calendar,
+  ShoppingBag, ClipboardList, Briefcase, FileText, PieChart,
   ShieldAlert, Cpu, Database, Search, Package, DollarSign,
   HeartPulse, Navigation, MessageSquare, AlertTriangle, Layers
 } from 'lucide-react';
@@ -15,6 +16,10 @@ const navigationGroups = [
     title: 'Main',
     items: [
       { label: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
+      // Pets are managed inside User Management now -- each user row expands to
+      // the pets registered to it, so a separate screen would only split the
+      // same records across two places.
+      { label: 'Users & Pets', path: '/admin/users', icon: Users },
       // Pets are managed inside User Management now -- each user row expands to
       // the pets registered to it, so a separate screen would only split the
       // same records across two places.
@@ -87,6 +92,7 @@ const navigationGroups = [
       { label: 'Reviews', path: '/admin/platform/reviews' },
       { label: 'Banners & Content', path: '/admin/platform/content' },
       { label: 'Home Service Images', path: '/admin/platform/service-images' },
+      { label: 'Home Service Images', path: '/admin/platform/service-images' },
       { label: 'Pet Prompts & Fun Facts', path: '/admin/platform/prompts' },
       { label: 'Reports', path: '/admin/platform/reports' },
       { label: 'Security', path: '/admin/platform/security' },
@@ -118,7 +124,7 @@ const CollapsibleNavGroup = ({ group, currentPath, openGroups, toggleGroup }) =>
           {isOpen ? <ChevronDown size={14} className="text-slate-300 shrink-0" /> : <ChevronRight size={14} className="text-slate-300 shrink-0" />}
         </div>
       </button>
-      
+
       {/* Tooltip for Tablet */}
       <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2.5 py-1.5 bg-slate-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none hidden sm:block lg:hidden z-50 whitespace-nowrap shadow-lg border border-slate-700">
         {group.title}
@@ -137,8 +143,8 @@ const CollapsibleNavGroup = ({ group, currentPath, openGroups, toggleGroup }) =>
                 to={subItem.path}
                 className={cn(
                   "block px-3 py-2 rounded-lg text-xs font-medium transition-colors",
-                  isSubActive 
-                    ? "bg-[#66B4B1]/10 text-[#66B4B1]" 
+                  isSubActive
+                    ? "bg-[#66B4B1]/10 text-[#66B4B1]"
                     : "text-slate-300 hover:text-white hover:bg-white/10"
                 )}
               >
@@ -159,7 +165,7 @@ export function AdminLayout() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [admin, setAdmin] = useState({ name: 'SuperAdmin', role: 'System Administrator' });
-  
+
   // Track open accordion groups
   const [openGroups, setOpenGroups] = useState({
     Vendors: location.pathname.includes('/vendors'),
@@ -274,12 +280,12 @@ export function AdminLayout() {
             } else {
               // Grouped Accordion Items
               return (
-                <CollapsibleNavGroup 
-                  key={idx} 
-                  group={group} 
-                  currentPath={location.pathname} 
-                  openGroups={openGroups} 
-                  toggleGroup={toggleGroup} 
+                <CollapsibleNavGroup
+                  key={idx}
+                  group={group}
+                  currentPath={location.pathname}
+                  openGroups={openGroups}
+                  toggleGroup={toggleGroup}
                 />
               );
             }
