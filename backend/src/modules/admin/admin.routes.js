@@ -10,7 +10,6 @@ import { adminPasswordLogin } from './admin.auth.service.js';
 import {
   getDashboard,
   listActionItems,
-  resolveActionItem,
   listUsers,
   userStats,
   setUserBlocked,
@@ -33,6 +32,7 @@ import {
   getSettings,
   updateSetting,
   listAuditLogs,
+  writeAudit,
 } from './admin.service.js';
 import {
   listOrders,
@@ -43,7 +43,28 @@ import {
   resolveReturn,
   listSupport,
   replySupport,
+  getBookingDetail,
+  adminCancelBooking,
+  adminRefundBooking,
+  adminSetBookingStatus,
+  getOrderDetail,
+  adminCancelOrder,
+  adminRefundOrder,
+  adminSetOrderStatus,
 } from './admin.ops.service.js';
+import { listRefunds, refundTotals, retryRefund, retryLedgerReversal } from '../payment/refund.service.js';
+import { deliveryHealth } from '../../services/notify.js';
+import { resolveActionItem } from './admin.actions.service.js';
+import { complianceAdminRouter } from '../compliance/compliance.routes.js';
+import {
+  businessReport,
+  revenueByVendor,
+  revenueTrend,
+  revenueByLocation,
+  dashboardCharts,
+} from './admin.reports.service.js';
+import { BOOKING_STATUSES } from '../booking/booking.model.js';
+import { ORDER_STATUSES } from '../order/order.model.js';
 import {
   listProducts,
   createProduct,
@@ -169,10 +190,22 @@ router.get('/action-items', asyncHandler(async (req, res) => {
 
 router.post(
   '/action-items/:id/resolve',
-  validate(z.object({ action: z.enum(['approve', 'reject']).optional(), note: z.string().optional() })),
+  validate(
+    z.object({
+      action: z.enum(['approve', 'reject']).optional(),
+      note: z.string().optional(),
+      /* Waves a partner through with unverified KYC — audited as a forced approval. */
+      force: z.boolean().optional(),
+    })
+  ),
   asyncHandler(async (req, res) => {
     sendSuccess(res, {
-      data: await resolveActionItem(req.user, req.params.id, { action: req.body.action, note: req.body.note }, req.ip),
+      data: await resolveActionItem(
+        req.user,
+        req.params.id,
+        { action: req.body.action, note: req.body.note, force: req.body.force },
+        req.ip
+      ),
     });
   })
 );
@@ -293,15 +326,270 @@ router.get('/audit-logs', superOnly, asyncHandler(async (_req, res) => {
 }));
 
 /* ── Operations ───────────────────────────────────────────── */
-router.get('/orders', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listOrders() })));
-router.get('/bookings', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listBookings() })));
+
+/*
+ * Admin was read-only on every operational object: there was not one mutating
+ * route for a booking, an order, a payment or a refund. An operator could watch
+ * the business but not run it - no cancel, no refund, no status correction, no
+ * way to answer a customer on the phone. Everything below is audited, and every
+ * destructive action requires a written reason.
+ */
+
+/** Shared list query: filters, date range and paging. */
+const listQuery = (req) => ({
+  status: req.query.status,
+  type: req.query.type,
+  vendorId: req.query.vendorId,
+  providerId: req.query.providerId,
+  search: req.query.search,
+  from: req.query.from,
+  to: req.query.to,
+  page: req.query.page,
+  limit: req.query.limit,
+});
+
+const reasonSchema = z.string().trim().min(3).max(500);
+/** Rupees in from the UI, paise on the wire — amounts are paise end to end. */
+const amountRupees = z.number().positive().max(10_000_000).optional();
+const toPaise = (rupees) => (rupees == null ? null : Math.round(rupees * 100));
+
+router.get('/orders', asyncHandler(async (req, res) => sendSuccess(res, { data: await listOrders(listQuery(req)) })));
+router.get('/orders/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await getOrderDetail(req.params.id) })));
+router.post(
+  '/orders/:id/cancel',
+  validate(z.object({ reason: reasonSchema, refund: z.boolean().optional(), amount: amountRupees })),
+  asyncHandler(async (req, res) =>
+    sendSuccess(res, {
+      data: await adminCancelOrder(
+        req.user,
+        req.params.id,
+        { reason: req.body.reason, refund: req.body.refund !== false, amountPaise: toPaise(req.body.amount) },
+        req.ip
+      ),
+    })
+  )
+);
+router.post(
+  '/orders/:id/refund',
+  validate(z.object({ reason: reasonSchema, amount: amountRupees })),
+  asyncHandler(async (req, res) =>
+    sendSuccess(res, {
+      data: await adminRefundOrder(
+        req.user,
+        req.params.id,
+        { reason: req.body.reason, amountPaise: toPaise(req.body.amount) },
+        req.ip
+      ),
+    })
+  )
+);
+router.patch(
+  '/orders/:id/status',
+  validate(z.object({ status: z.enum(ORDER_STATUSES), reason: reasonSchema })),
+  asyncHandler(async (req, res) =>
+    sendSuccess(res, { data: await adminSetOrderStatus(req.user, req.params.id, req.body, req.ip) })
+  )
+);
+
+router.get('/bookings', asyncHandler(async (req, res) => sendSuccess(res, { data: await listBookings(listQuery(req)) })));
+router.get('/bookings/:id', asyncHandler(async (req, res) => sendSuccess(res, { data: await getBookingDetail(req.params.id) })));
+router.post(
+  '/bookings/:id/cancel',
+  validate(
+    z.object({
+      reason: reasonSchema,
+      refund: z.boolean().optional(),
+      onBehalfOf: z.enum(['admin', 'vendor', 'customer']).optional(),
+      amount: amountRupees,
+    })
+  ),
+  asyncHandler(async (req, res) =>
+    sendSuccess(res, {
+      data: await adminCancelBooking(
+        req.user,
+        req.params.id,
+        {
+          reason: req.body.reason,
+          refund: req.body.refund !== false,
+          onBehalfOf: req.body.onBehalfOf || 'admin',
+          amountPaise: toPaise(req.body.amount),
+        },
+        req.ip
+      ),
+    })
+  )
+);
+router.post(
+  '/bookings/:id/refund',
+  validate(z.object({ reason: reasonSchema, amount: amountRupees })),
+  asyncHandler(async (req, res) =>
+    sendSuccess(res, {
+      data: await adminRefundBooking(
+        req.user,
+        req.params.id,
+        { reason: req.body.reason, amountPaise: toPaise(req.body.amount) },
+        req.ip
+      ),
+    })
+  )
+);
+router.patch(
+  '/bookings/:id/status',
+  validate(
+    z.object({
+      status: z.enum(BOOKING_STATUSES),
+      reason: reasonSchema,
+      // Breaking the lifecycle is allowed but never accidental — it is a
+      // separate, separately-audited flag.
+      force: z.boolean().optional(),
+    })
+  ),
+  asyncHandler(async (req, res) =>
+    sendSuccess(res, { data: await adminSetBookingStatus(req.user, req.params.id, req.body, req.ip) })
+  )
+);
+
 router.get('/appointments', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listOpsAppointments() })));
 router.get('/deliveries', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listDeliveries() })));
 router.get('/returns', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listReturns() })));
 router.post(
   '/returns/:id/resolve',
-  validate(z.object({ action: z.enum(['approve', 'reject']) })),
-  asyncHandler(async (req, res) => sendSuccess(res, { data: await resolveReturn(req.user, req.params.id, req.body.action, req.ip) }))
+  validate(
+    z.object({
+      action: z.enum(['approve', 'reject']),
+      reason: z.string().trim().max(500).optional(),
+      amount: amountRupees,
+    })
+  ),
+  asyncHandler(async (req, res) =>
+    sendSuccess(res, {
+      data: await resolveReturn(req.user, req.params.id, req.body.action, req.ip, {
+        amountPaise: toPaise(req.body.amount),
+        reason: req.body.reason || '',
+      }),
+    })
+  )
+);
+
+/* ── Refund register ──────────────────────────────────────── */
+
+/*
+ * "How much was refunded, why, by whom, and did it actually land?" had no
+ * answer before: refunds left only a bumped counter on the payment. This is the
+ * reconciliation surface for every rupee that went back.
+ */
+router.get(
+  '/refunds',
+  asyncHandler(async (req, res) =>
+    sendSuccess(res, {
+      data: await listRefunds({
+        status: req.query.status,
+        refType: req.query.refType,
+        from: req.query.from,
+        to: req.query.to,
+        page: req.query.page,
+        limit: req.query.limit,
+      }),
+    })
+  )
+);
+router.get('/refunds/totals', asyncHandler(async (_req, res) => sendSuccess(res, { data: await refundTotals() })));
+router.post(
+  '/refunds/:id/retry',
+  asyncHandler(async (req, res) => {
+    const refund = await retryRefund(req.params.id, req.user);
+    await writeAudit(req.user, {
+      action: 'refund.retry',
+      targetType: 'refund',
+      targetId: req.params.id,
+      after: { status: refund.status, attempts: refund.attempts },
+      ip: req.ip,
+    });
+    if (refund.status !== 'processed') {
+      throw ApiError.serviceUnavailable(refund.failureReason || 'Refund failed again at the gateway');
+    }
+    return sendSuccess(res, { data: { refundNo: refund.refundNo, status: refund.status } });
+  })
+);
+/* Re-run a clawback that failed after the customer was already refunded. */
+router.post(
+  '/refunds/:id/reverse-ledger',
+  asyncHandler(async (req, res) => {
+    const refund = await retryLedgerReversal(req.params.id);
+    await writeAudit(req.user, {
+      action: 'refund.reverse_ledger',
+      targetType: 'refund',
+      targetId: req.params.id,
+      after: { ledgerReversed: refund.ledgerReversed },
+      ip: req.ip,
+    });
+    return sendSuccess(res, {
+      data: { refundNo: refund.refundNo, ledgerReversed: refund.ledgerReversed, error: refund.ledgerReversalError },
+    });
+  })
+);
+
+/*
+ * Sweep booking requests the partner let expire: auto-decline and refund.
+ *
+ * Exposed as an endpoint so it is usable today and testable by hand. It still
+ * wants a scheduler — see the note in booking.service.js — but an operator can
+ * clear the backlog from Admin rather than having customers wait on a partner
+ * who is never going to answer.
+ */
+router.post(
+  '/bookings/sweep-unanswered',
+  asyncHandler(async (req, res) => {
+    const { expireUnansweredBookings } = await import('../booking/booking.service.js');
+    const results = await expireUnansweredBookings();
+    await writeAudit(req.user, {
+      action: 'booking.sweep_unanswered',
+      targetType: 'booking',
+      after: { swept: results.length, failed: results.filter((r) => !r.ok).length },
+      ip: req.ip,
+    });
+    return sendSuccess(res, { data: { swept: results.length, results } });
+  })
+);
+
+/* ── Business reporting ───────────────────────────────────── */
+/*
+ * Aggregated in the database over an explicit date range. The Reports screen
+ * used to total the bookings list in the browser, which silently meant "the
+ * last 300 rows" — every headline number was wrong and nothing said so.
+ */
+const reportRange = (req) => ({ from: req.query.from, to: req.query.to });
+
+/*
+ * Every series the dashboard plots, aggregated server-side. Separate from
+ * `/dashboard` so the charts can be re-fetched on a range change without
+ * re-running the counters and the action queue.
+ */
+router.get('/dashboard/charts', asyncHandler(async (req, res) =>
+  sendSuccess(res, { data: await dashboardCharts({ range: req.query.range }) })));
+
+router.get('/reports/business', asyncHandler(async (req, res) =>
+  sendSuccess(res, { data: await businessReport(reportRange(req)) })));
+router.get('/reports/by-vendor', asyncHandler(async (req, res) =>
+  sendSuccess(res, { data: await revenueByVendor({ ...reportRange(req), limit: req.query.limit }) })));
+router.get('/reports/trend', asyncHandler(async (req, res) =>
+  sendSuccess(res, { data: await revenueTrend(reportRange(req)) })));
+router.get('/reports/by-location', asyncHandler(async (req, res) =>
+  sendSuccess(res, { data: await revenueByLocation(reportRange(req)) })));
+
+/* ── Partner compliance ───────────────────────────────────── */
+/*
+ * Violations, the policy that scores them, and suspension/reinstatement.
+ * Mounted here so it inherits this router's admin authentication.
+ */
+router.use('/compliance', complianceAdminRouter());
+
+/* ── Notification delivery health ─────────────────────────── */
+router.get(
+  '/notification-health',
+  asyncHandler(async (req, res) =>
+    sendSuccess(res, { data: await deliveryHealth({ hours: Number(req.query.hours) || 24 }) })
+  )
 );
 router.get('/support', asyncHandler(async (_req, res) => sendSuccess(res, { data: await listSupport() })));
 router.post(

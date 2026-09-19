@@ -318,6 +318,137 @@ router.get('/lines', withAnyVendor, asyncHandler(async (req, res) => {
   sendSuccess(res, { data: req.vendorProfiles.map(serializeProfile) });
 }));
 
+/* ── Booking requests awaiting this partner ───────────────── */
+
+/*
+ * Vertical-agnostic accept/reject.
+ *
+ * `vendorAcceptBooking` resolves the owning partner through
+ * `resolveBookingVendor`, which already understands every vertical, so one pair
+ * of routes covers grooming, daycare, clinics, events and memorials. The
+ * grooming/daycare provider router keeps its own copies because those panels
+ * address bookings under their own base path.
+ *
+ * Without these a clinic that turned on manual acceptance would park bookings
+ * in `awaiting_vendor` with no way to answer them — they would silently expire
+ * and refund two hours later.
+ */
+router.get('/bookings/pending', withAnyVendor, asyncHandler(async (req, res) => {
+  const { Booking } = await import('../booking/booking.model.js');
+  const { resolveBookingVendor } = await import('../booking/booking.service.js');
+
+  /*
+   * Filtered in JS rather than the query because ownership lives behind a
+   * different reference per vertical (providerId / doctorId / eventId) and
+   * there is no single field to match on. The set is small by construction —
+   * these expire within hours.
+   */
+  const candidates = await Booking.find({ status: 'awaiting_vendor' })
+    .populate('userId', 'name phone')
+    .populate('petId', 'name breed species')
+    .sort({ vendorRespondBy: 1 })
+    .limit(200);
+
+  const mine = [];
+  for (const b of candidates) {
+    const { vendorId, vendorType } = await resolveBookingVendor(b);
+    if (!vendorId || String(vendorId) !== String(req.user.id)) continue;
+    if (req.vendor?.vendorType && vendorType && vendorType !== req.vendor.vendorType) continue;
+    mine.push({
+      _id: String(b._id),
+      bookingNo: b.bookingNo,
+      type: b.type,
+      vendorType,
+      customerName: b.userId?.name || 'Customer',
+      customerPhone: b.userId?.phone || '',
+      pet: b.petSnapshot?.name || b.petId?.name || '',
+      petBreed: b.petSnapshot?.breed || b.petId?.breed || '',
+      schedule: b.schedule,
+      visitType: b.visitType,
+      items: b.items,
+      amount: Math.round((b.amounts?.total || 0) / 100),
+      address: b.addressSnapshot || null,
+      respondBy: b.vendorRespondBy,
+      overdue: b.vendorRespondBy ? new Date(b.vendorRespondBy) < new Date() : false,
+      createdAt: b.createdAt,
+    });
+  }
+  sendSuccess(res, { data: mine });
+}));
+
+router.post(
+  '/bookings/:id/accept',
+  withVendor,
+  validate(z.object({ note: z.string().max(300).optional() })),
+  asyncHandler(async (req, res) => {
+    const { vendorAcceptBooking } = await import('../booking/booking.service.js');
+    const booking = await vendorAcceptBooking(req.user.id, req.params.id, {
+      note: req.body.note || '',
+      actor: req.user,
+    });
+    sendSuccess(res, { message: 'Booking accepted', data: booking });
+  })
+);
+
+router.post(
+  '/bookings/:id/reject',
+  withVendor,
+  validate(z.object({ reason: z.string().trim().min(3).max(300) })),
+  asyncHandler(async (req, res) => {
+    const { vendorRejectBooking } = await import('../booking/booking.service.js');
+    const booking = await vendorRejectBooking(req.user.id, req.params.id, {
+      reason: req.body.reason,
+      actor: req.user,
+    });
+    sendSuccess(res, { message: 'Booking declined and customer refunded', data: booking });
+  })
+);
+
+/* ── Compliance standing ──────────────────────────────────── */
+
+/*
+ * What this partner has been marked down for, and how close they are to a
+ * review. `withAnyVendor` because a SUSPENDED partner most of all needs to be
+ * able to read why — gating this on approval would suspend someone and then
+ * hide the reason from them.
+ */
+router.get('/compliance', withAnyVendor, asyncHandler(async (req, res) => {
+  const { vendorStanding } = await import('../compliance/compliance.service.js');
+  sendSuccess(res, {
+    data: await vendorStanding(req.user.id, req.vendor?.vendorType || null),
+  });
+}));
+
+/** Partner confirms they have read their warnings. */
+router.post('/compliance/acknowledge', withAnyVendor, asyncHandler(async (req, res) => {
+  const { acknowledgeViolations } = await import('../compliance/compliance.service.js');
+  sendSuccess(res, {
+    data: await acknowledgeViolations(req.user.id, req.vendor?.vendorType || null),
+  });
+}));
+
+/** Warnings, withdrawals, suspensions and reinstatements sent to this partner. */
+router.get('/compliance/updates', withAnyVendor, asyncHandler(async (req, res) => {
+  const { vendorComplianceUpdates } = await import('../compliance/compliance.service.js');
+  sendSuccess(res, { data: await vendorComplianceUpdates(req.user.id, { limit: 30 }) });
+}));
+
+/** The rules a partner is held to, so the policy is never a surprise. */
+router.get('/compliance/policy', withAnyVendor, asyncHandler(async (_req, res) => {
+  const { getPolicyView } = await import('../compliance/compliance.service.js');
+  const policy = await getPolicyView();
+  sendSuccess(res, {
+    data: {
+      threshold: policy.threshold,
+      windowDays: policy.windowDays,
+      sla: policy.sla,
+      rules: policy.rules.filter((r) => r.enabled).map(({ type, label, description, points, severity }) => ({
+        type, label, description, points, severity,
+      })),
+    },
+  });
+}));
+
 /**
  * Add a business line to an existing account.
  *

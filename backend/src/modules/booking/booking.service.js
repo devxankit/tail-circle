@@ -1,11 +1,14 @@
 import { ApiError } from '../../utils/ApiError.js';
-import { refundPayment } from '../../services/razorpay.service.js';
 import { notify } from '../../services/notify.js';
+import { createWithUniqueRef } from '../../utils/uniqueRef.js';
 import {
   registerPurposeHandler,
   createOrder as createPaymentOrder,
 } from '../payment/payment.service.js';
 import { Payment } from '../payment/payment.model.js';
+import { issueRefund } from '../payment/refund.service.js';
+import { recordViolation, getPolicy } from '../compliance/compliance.service.js';
+import { alertVendor, resolveVendorAlert } from '../../services/vendorAlert.js';
 import { Provider } from '../provider/provider.model.js';
 import { ServiceOffering } from '../provider/serviceOffering.model.js';
 import { Doctor, modeForVisitType } from '../provider/doctor.model.js';
@@ -38,7 +41,7 @@ function sanitiseClientMeta(meta) {
 }
 import { Address } from '../address/address.model.js';
 import { SlotBooking } from './slot.model.js';
-import { Booking, CANCELLABLE_BOOKING_STATUSES } from './booking.model.js';
+import { Booking, CANCELLABLE_BOOKING_STATUSES, canTransition } from './booking.model.js';
 
 const toPaise = (rupees) => Math.round(rupees * 100);
 
@@ -793,17 +796,24 @@ export async function createBooking(user, payload) {
   const paymentMethod = isFree ? 'free' : payload.paymentMethod;
   const autoConfirm = paymentMethod !== 'razorpay' || isInstant;
 
-  const booking = await Booking.create({
-    ...draft,
-    paymentMethod,
-    status: autoConfirm ? 'confirmed' : 'pending_payment',
-    timeline: [
-      {
-        status: autoConfirm ? 'confirmed' : 'pending_payment',
-        note: autoConfirm ? 'Booking created' : 'Awaiting payment',
-      },
-    ],
-  });
+  const booking = await createWithUniqueRef(
+    Booking,
+    {
+      ...draft,
+      paymentMethod,
+      status: autoConfirm ? 'confirmed' : 'pending_payment',
+      timeline: [
+        {
+          status: autoConfirm ? 'confirmed' : 'pending_payment',
+          note: autoConfirm ? 'Booking created' : 'Awaiting payment',
+          by: 'customer',
+          byId: user?.id || null,
+          byName: user?.name || '',
+        },
+      ],
+    },
+    'bookingNo'
+  );
 
   if (autoConfirm) {
     await notifyBookingConfirmed(booking);
@@ -824,37 +834,61 @@ export async function createBooking(user, payload) {
  * Resolves the vendor per vertical: events pay the organizer, doctor
  * consultations pay the clinic that owns the vet.
  */
+/**
+ * Which partner account earns a booking, which business line it belongs to,
+ * and how to label it on their ledger.
+ *
+ * Split out of `recordBookingLedger` because cancellation, acceptance and
+ * Admin overrides all need to reach the same vendor. It previously existed
+ * only inside the ledger path, which is why nothing outside settlement could
+ * notify the partner that their booking had changed.
+ */
+export async function resolveBookingVendor(booking) {
+  if (booking.type === 'event' && booking.eventId) {
+    const event = await Event.findById(booking.eventId).select('vendorId');
+    return {
+      vendorId: event?.vendorId || null,
+      vendorType: 'events',
+      label: `Event booking ${booking.bookingNo}`,
+    };
+  }
+  if (booking.type === 'doctor' && booking.doctorId) {
+    // Consultation revenue belongs to the clinic that owns the vet.
+    const doctor = await Doctor.findById(booking.doctorId).select('clinicVendorId name');
+    const kind = MODE_LABEL[booking.consult?.mode] || 'Consultation';
+    return {
+      vendorId: doctor?.clinicVendorId || null,
+      vendorType: 'clinic',
+      label: `${kind} ${booking.bookingNo}${doctor?.name ? ` — ${doctor.name}` : ''}`,
+    };
+  }
+  if ((booking.type === 'grooming' || booking.type === 'daycare') && booking.providerId) {
+    const provider = await Provider.findById(booking.providerId).select('vendorUserId name');
+    const kind = booking.type === 'grooming' ? 'Grooming' : 'Daycare';
+    return {
+      vendorId: provider?.vendorUserId || null,
+      vendorType: booking.type,
+      label: `${kind} booking ${booking.bookingNo}${provider?.name ? ` — ${provider.name}` : ''}`,
+    };
+  }
+  return { vendorId: null, vendorType: null, label: '' };
+}
+
+/** Just the earning account, for notifications. */
+export async function resolveBookingVendorId(booking) {
+  const { vendorId } = await resolveBookingVendor(booking);
+  return vendorId;
+}
+
 async function recordBookingLedger(booking) {
   if (!booking.amounts?.total) return;
   try {
     const { postLedgerEntry, commissionFor } = await import('../vendor/vendor.service.js');
 
-    let vendorId = null;
-    let label = '';
     // Which of the vendor's business lines earned this booking. One account can
     // run grooming AND daycare at different commission rates, so settling both
     // at "the vendor's rate" would silently pay one of them wrong.
-    let vendorType = null;
-
-    if (booking.type === 'event' && booking.eventId) {
-      const event = await Event.findById(booking.eventId).select('vendorId');
-      vendorId = event?.vendorId || null;
-      vendorType = 'events';
-      label = `Event booking ${booking.bookingNo}`;
-    } else if (booking.type === 'doctor' && booking.doctorId) {
-      // Consultation revenue belongs to the clinic that owns the vet.
-      const doctor = await Doctor.findById(booking.doctorId).select('clinicVendorId name');
-      vendorId = doctor?.clinicVendorId || null;
-      vendorType = 'clinic';
-      const kind = MODE_LABEL[booking.consult?.mode] || 'Consultation';
-      label = `${kind} ${booking.bookingNo}${doctor?.name ? ` — ${doctor.name}` : ''}`;
-    } else if ((booking.type === 'grooming' || booking.type === 'daycare') && booking.providerId) {
-      const provider = await Provider.findById(booking.providerId).select('vendorUserId name');
-      vendorId = provider?.vendorUserId || null;
-      vendorType = booking.type;
-      const kind = booking.type === 'grooming' ? 'Grooming' : 'Daycare';
-      label = `${kind} booking ${booking.bookingNo}${provider?.name ? ` — ${provider.name}` : ''}`;
-    }
+    const { vendorId, vendorType, label } = await resolveBookingVendor(booking);
 
     if (!vendorId) return;
     const commissionRate = await commissionFor(vendorId, vendorType);
@@ -882,19 +916,30 @@ async function notifyBookingConfirmed(booking) {
     data: { bookingId: String(booking._id), type: booking.type || '' },
   }).catch(() => {});
 
-  // Also tell the vet whose calendar just filled up — the dashboard's
-  // notification bell was previously always empty because nothing here ever
-  // notified the vendor side of a new booking.
+  /*
+   * The partner side rings rather than just filing a notification.
+   *
+   * Each vertical already had a `notify()` here, added because the partner
+   * dashboards' notification bells were permanently empty. But a bell badge
+   * still relies on the partner happening to look: a booking made for this
+   * afternoon needs them to know NOW. `alertVendor` fires the same durable
+   * notification AND rings the open panel until it is acknowledged.
+   */
+  const when = `${booking.schedule?.startDate || 'soon'}${booking.schedule?.time ? ` at ${booking.schedule.time}` : ''}`;
+  const pet = booking.petSnapshot?.name;
+
   if (booking.type === 'doctor' && booking.doctorId) {
     const doctor = await Doctor.findById(booking.doctorId).select('userId name');
     if (doctor?.userId) {
-      await notify(doctor.userId, {
+      await alertVendor(doctor.userId, {
+        kind: 'booking_confirmed',
         title: 'New Appointment',
-        body: `${booking.petSnapshot?.name ? `${booking.petSnapshot.name}'s` : 'A'} appointment was just booked for ${booking.schedule?.startDate || 'soon'}${booking.schedule?.time ? ` at ${booking.schedule.time}` : ''}.`,
-        type: 'booking',
+        body: `${pet ? `${pet}'s` : 'An'} appointment was just booked for ${when}.`,
         link: '/vendor/doctor/consultations?view=appointments_list',
+        refId: booking._id,
+        refLabel: booking.bookingNo,
         data: { bookingId: String(booking._id), type: 'doctor' },
-      }).catch(() => {});
+      });
     }
   }
 
@@ -907,39 +952,38 @@ async function notifyBookingConfirmed(booking) {
   if (booking.type === 'event' && booking.eventId) {
     const event = await Event.findById(booking.eventId).select('vendorId title');
     if (event?.vendorId) {
-      const pet = booking.petSnapshot?.name;
       const parts = [`${pet ? `${pet} is` : 'Someone is'} coming to ${event.title}.`];
       if (booking.meta?.withTrainer) {
         parts.push('Handler support booked and paid for — please arrange a trainer.');
       } else if (booking.meta?.reactivePet) {
         parts.push('This pet is marked reactive and no handler was booked.');
       }
-      await notify(event.vendorId, {
+      await alertVendor(event.vendorId, {
+        kind: 'booking_confirmed',
         title: booking.meta?.withTrainer ? 'New Booking — Handler Requested' : 'New Event Booking',
         body: parts.join(' '),
-        type: 'booking',
         link: '/vendor/events-organizer/bookings',
+        refId: booking._id,
+        refLabel: booking.bookingNo,
         data: { bookingId: String(booking._id), type: 'event' },
-      }).catch(() => {});
+      });
     }
   }
 
-  // Same for the salon / centre whose calendar just filled up — without this
-  // the only way a grooming vendor learned about an appointment was by
-  // refreshing their bookings tab.
   if ((booking.type === 'grooming' || booking.type === 'daycare') && booking.providerId) {
     const provider = await Provider.findById(booking.providerId).select('vendorUserId');
     if (provider?.vendorUserId) {
-      const when = `${booking.schedule?.startDate || 'soon'}${booking.schedule?.time ? ` at ${booking.schedule.time}` : ''}`;
-      await notify(provider.vendorUserId, {
+      await alertVendor(provider.vendorUserId, {
+        kind: 'booking_confirmed',
         title: booking.type === 'grooming' ? 'New Grooming Appointment' : 'New Daycare Booking',
-        body: `${booking.petSnapshot?.name ? `${booking.petSnapshot.name}'s` : 'A'} ${
+        body: `${pet ? `${pet}'s` : 'An'} ${
           booking.visitType === 'home' ? 'home visit' : 'appointment'
         } was just booked for ${when}.`,
-        type: 'booking',
         link: `/vendor/${booking.type === 'grooming' ? 'grooming' : 'daycare'}-provider?view=bookings`,
+        refId: booking._id,
+        refLabel: booking.bookingNo,
         data: { bookingId: String(booking._id), type: booking.type },
-      }).catch(() => {});
+      });
     }
   }
 }
@@ -949,32 +993,137 @@ registerPurposeHandler('booking', {
     const booking = await Booking.findOne({
       _id: payload.bookingId,
       userId: user.id,
-      status: 'pending_payment',
+      // `payment_failed` is retryable — a declined card is the commonest reason
+      // a customer comes back, and refusing the retry would strand the booking.
+      status: { $in: ['pending_payment', 'payment_failed'] },
     });
     if (!booking) throw ApiError.badRequest('Booking not found or already paid');
     return { amountPaise: booking.amounts.total, refId: booking.id };
   },
   onPaid: async (payment) => {
+    /*
+     * Where a paid booking lands depends on whether the partner has opted
+     * into manually accepting work. Opt-in, and defaulting to off, so every
+     * existing partner keeps auto-confirming exactly as before — this adds the
+     * accept/reject capability the ecosystem was missing without silently
+     * parking live bookings in a state no current panel renders.
+     */
+    const pending = await Booking.findById(payment.refId);
+    if (!pending || !['pending_payment', 'payment_failed'].includes(pending.status)) return;
+
+    const needsAccept = await bookingNeedsAcceptance(pending);
+    const nextStatus = needsAccept ? 'awaiting_vendor' : 'confirmed';
+
     const res = await Booking.findOneAndUpdate(
-      { _id: payment.refId, status: 'pending_payment' },
+      { _id: payment.refId, status: { $in: ['pending_payment', 'payment_failed'] } },
       {
-        $set: { status: 'confirmed', paymentId: payment.id },
-        $push: { timeline: { status: 'confirmed', note: 'Payment received' } },
+        $set: {
+          status: nextStatus,
+          paymentId: payment.id,
+          ...(needsAccept ? { vendorRespondBy: new Date(Date.now() + VENDOR_RESPONSE_WINDOW_MS) } : {}),
+        },
+        $push: {
+          timeline: {
+            status: nextStatus,
+            note: needsAccept ? 'Payment received - awaiting partner acceptance' : 'Payment received',
+            by: 'system',
+          },
+        },
       },
       { new: true }
     );
-    if (res) {
-      await notifyBookingConfirmed(res);
-      await recordBookingLedger(res);
-    }
+    if (!res) return;
+
+    /*
+     * The ledger is posted on payment, not on acceptance. That is deliberate:
+     * the money is genuinely held, and a later rejection posts a reversal
+     * through the refund path rather than leaving a gap in the audit trail.
+     */
+    await recordBookingLedger(res);
+    if (needsAccept) await notifyBookingAwaitingVendor(res);
+    else await notifyBookingConfirmed(res);
   },
   onFailed: async (payment) => {
+    /*
+     * `payment_failed` rather than another `pending_payment` timeline note.
+     * Admin could not previously separate "customer never paid" from "the
+     * customer's payment was declined" — different problems with different
+     * follow-ups, and the second is a conversion leak worth seeing.
+     */
     await Booking.updateOne(
       { _id: payment.refId, status: 'pending_payment' },
-      { $push: { timeline: { status: 'pending_payment', note: 'Payment failed — retry available' } } }
+      {
+        $set: { status: 'payment_failed' },
+        $push: {
+          timeline: {
+            status: 'payment_failed',
+            note: `Payment failed${payment.failureReason ? `: ${payment.failureReason}` : ''} - retry available`,
+            by: 'system',
+          },
+        },
+      }
     );
   },
 });
+
+/** How long a partner has to answer a booking request before it auto-declines. */
+export const VENDOR_RESPONSE_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+/**
+ * Whether this booking's partner has opted into manually accepting work.
+ * Off unless explicitly configured, so nothing changes for existing partners.
+ */
+async function bookingNeedsAcceptance(booking) {
+  try {
+    if (booking.type === 'grooming' || booking.type === 'daycare') {
+      const provider = await Provider.findById(booking.providerId).select('details');
+      return provider?.details?.requiresAcceptance === true;
+    }
+    if (booking.type === 'doctor') {
+      const doctor = await Doctor.findById(booking.doctorId).select('policies');
+      return doctor?.policies?.requiresAcceptance === true;
+    }
+    return false; // events and memorials are sold against published capacity
+  } catch {
+    return false;
+  }
+}
+
+async function notifyBookingAwaitingVendor(booking) {
+  await notify(booking.userId, {
+    title: 'Booking requested',
+    body: `Your ${booking.type || 'booking'} request has been sent to the partner for confirmation.`,
+    type: 'booking',
+    link: '/app/profile/bookings',
+    data: { bookingId: String(booking._id), type: booking.type || '' },
+  }).catch(() => {});
+
+  const vendorId = await resolveBookingVendorId(booking);
+  if (vendorId) {
+    /*
+     * Rings the partner panel rather than adding a silent row. They have a hard
+     * deadline here — miss it and the booking auto-declines, the customer is
+     * refunded and the partner takes a compliance hit — so the alert has to be
+     * impossible to overlook.
+     */
+    await alertVendor(vendorId, {
+      kind: 'booking_request',
+      title: 'New booking request',
+      body: `${serviceLabel(booking)} · ${booking.schedule?.startDate || 'date TBC'} ${booking.schedule?.time || ''} — respond within 2 hours or it is auto-declined.`,
+      link: '/vendor/bookings',
+      refId: booking._id,
+      refLabel: booking.bookingNo,
+      expiresAt: booking.vendorRespondBy,
+      data: { bookingId: String(booking._id), action: 'respond' },
+    });
+  }
+}
+
+/** Human label for a booking, for alert copy. */
+function serviceLabel(booking) {
+  const map = { grooming: 'Grooming', daycare: 'Day care', doctor: 'Consultation', event: 'Event', memorial: 'Memorial' };
+  return map[booking.type] || 'Booking';
+}
 
 export async function listBookings(userId, type) {
   const filter = { userId };
@@ -996,49 +1145,399 @@ export async function getBooking(userId, bookingId) {
   return booking;
 }
 
-/** Cancel within policy; paid bookings auto-refund and capacity is released. */
-export async function cancelBooking(userId, bookingId) {
-  const booking = await Booking.findOne({ _id: bookingId, userId });
+/**
+ * Cancel within policy; paid bookings auto-refund and capacity is released.
+ *
+ * Shared by the customer's own cancel, a partner dropping out, and an Admin
+ * override, because all three must leave identical state behind — the previous
+ * customer-only path was the only one that existed, so a vendor cancellation
+ * had nowhere to be recorded and Admin could not cancel at all.
+ */
+export async function cancelBooking(userId, bookingId, options = {}) {
+  const query = userId ? { _id: bookingId, userId } : { _id: bookingId };
+  const booking = await Booking.findOne(query);
   if (!booking) throw ApiError.notFound('Booking not found');
-  if (!CANCELLABLE_BOOKING_STATUSES.includes(booking.status)) {
+  if (!CANCELLABLE_BOOKING_STATUSES.includes(booking.status) && !options.force) {
     throw ApiError.badRequest('This booking can no longer be cancelled');
   }
+  return performCancellation(booking, {
+    by: 'customer',
+    reason: 'Cancelled by customer',
+    ...options,
+  });
+}
 
-  const wasConfirmed = booking.status === 'confirmed';
+/* ── Partner acceptance ──────────────────────────────────────────── */
 
-  // Doctor bookings follow the vet's own free-cancellation window. Cancelling
-  // inside it still releases the slot, but forfeits the refund.
-  let refundable = true;
-  if (booking.type === 'doctor' && booking.doctorId && booking.schedule?.startAt) {
+/**
+ * Partner accepts a booking that was waiting on them.
+ *
+ * Only reachable from `awaiting_vendor`; bookings on auto-confirm verticals
+ * never enter that state and are already `confirmed`.
+ */
+export async function vendorAcceptBooking(vendorUserId, bookingId, { note = '', actor = null } = {}) {
+  const booking = await loadVendorBooking(vendorUserId, bookingId);
+  if (booking.status !== 'awaiting_vendor') {
+    throw ApiError.badRequest(`Booking is ${booking.status} and is not awaiting a response`);
+  }
+
+  booking.status = 'confirmed';
+  booking.vendorRespondedAt = new Date();
+  booking.vendorResponseNote = note || null;
+  pushTimeline(booking, 'confirmed', note || 'Accepted by partner', 'vendor', actor);
+  await booking.save();
+
+  // Silence the ring on their other tabs and devices.
+  resolveVendorAlert(vendorUserId, 'booking_request', booking._id);
+
+  await notify(booking.userId, {
+    title: 'Booking confirmed',
+    body: `The partner has accepted your ${booking.type || 'booking'}.`,
+    type: 'booking',
+    link: '/app/profile/bookings',
+    data: { bookingId: String(booking._id), type: booking.type || '' },
+  }).catch(() => {});
+
+  return booking;
+}
+
+/**
+ * Partner declines. The customer is refunded in full, always — they are being
+ * turned away through no fault of their own — and capacity goes back so the
+ * slot can be sold again.
+ */
+export async function vendorRejectBooking(vendorUserId, bookingId, { reason = '', actor = null } = {}) {
+  const booking = await loadVendorBooking(vendorUserId, bookingId);
+  if (booking.status !== 'awaiting_vendor') {
+    throw ApiError.badRequest(`Booking is ${booking.status} and is not awaiting a response`);
+  }
+  if (!reason.trim()) throw ApiError.badRequest('A reason is required when declining a booking');
+
+  await releaseCapacity(booking);
+
+  resolveVendorAlert(vendorUserId, 'booking_request', booking._id);
+
+  booking.status = 'rejected';
+  booking.vendorRespondedAt = new Date();
+  booking.vendorResponseNote = reason;
+  booking.cancelledBy = 'vendor';
+  booking.cancellationReason = reason;
+  booking.cancelledAt = new Date();
+  pushTimeline(booking, 'rejected', reason, 'vendor', actor);
+  await booking.save();
+
+  await refundBooking(booking, {
+    reason: `Declined by partner: ${reason}`,
+    initiatedBy: 'vendor',
+    actor,
+  });
+
+  await notify(booking.userId, {
+    title: 'Booking declined',
+    body: `The partner could not take your ${booking.type || 'booking'}. A full refund is on its way.`,
+    type: 'booking',
+    link: '/app/profile/bookings',
+    data: { bookingId: String(booking._id), type: booking.type || '' },
+  }).catch(() => {});
+
+  /*
+   * Declining is scored lightly — a partner who is genuinely full should say so
+   * rather than accept work they cannot do. It is the PATTERN that matters, and
+   * the rolling window is what catches a partner declining everything while
+   * still appearing available to customers.
+   */
+  await recordViolation({
+    vendorId: vendorUserId,
+    vendorType: (await resolveBookingVendor(booking)).vendorType,
+    type: 'vendor_rejected_booking',
+    refType: 'booking',
+    refId: booking._id,
+    refLabel: `Booking ${booking.bookingNo}`,
+    reason: 'Declined a booking request',
+    detail: reason,
+    customerImpact: 'Customer had to be refunded and find another partner.',
+    source: 'auto',
+    actor,
+  });
+
+  return booking;
+}
+
+/**
+ * Bookings the partner never answered.
+ *
+ * The client's "vendor doesn't respond" case had no representation at all:
+ * a request simply sat there. These surface in Admin's action queue so an
+ * operator can reassign or refund before the customer turns up to nothing.
+ */
+export async function listUnansweredBookings({ limit = 100 } = {}) {
+  return Booking.find({
+    status: 'awaiting_vendor',
+    vendorRespondBy: { $ne: null, $lt: new Date() },
+  })
+    .populate('userId', 'name phone')
+    .sort({ vendorRespondBy: 1 })
+    .limit(limit);
+}
+
+/**
+ * Auto-decline requests the partner let expire, refunding the customer.
+ *
+ * Run from a scheduler. Without it an unanswered booking holds the customer's
+ * money indefinitely while holding capacity nobody will service.
+ */
+export async function expireUnansweredBookings() {
+  const stale = await listUnansweredBookings({ limit: 200 });
+  const results = [];
+  for (const booking of stale) {
+    try {
+      await releaseCapacity(booking);
+      booking.status = 'rejected';
+      booking.cancelledBy = 'system';
+      booking.cancellationReason = 'Partner did not respond in time';
+      const expiredOwner = await resolveBookingVendorId(booking);
+      if (expiredOwner) resolveVendorAlert(expiredOwner, 'booking_request', booking._id);
+      booking.cancelledAt = new Date();
+      pushTimeline(booking, 'rejected', 'Auto-declined - partner did not respond in time', 'system');
+      await booking.save();
+      await refundBooking(booking, {
+        reason: 'Partner did not respond in time',
+        initiatedBy: 'system',
+      });
+      await notify(booking.userId, {
+        title: 'Booking could not be confirmed',
+        body: 'The partner did not respond in time. Your payment is being refunded in full.',
+        type: 'booking',
+        link: '/app/profile/bookings',
+        data: { bookingId: String(booking._id) },
+      }).catch(() => {});
+      results.push({ bookingNo: booking.bookingNo, ok: true });
+    } catch (err) {
+      results.push({ bookingNo: booking.bookingNo, ok: false, error: err.message });
+    }
+  }
+  return results;
+}
+
+/** Load a booking and assert this partner account actually earns it. */
+async function loadVendorBooking(vendorUserId, bookingId) {
+  const booking = await Booking.findById(bookingId);
+  if (!booking) throw ApiError.notFound('Booking not found');
+  const { vendorId } = await resolveBookingVendor(booking);
+  if (!vendorId || String(vendorId) !== String(vendorUserId)) {
+    throw ApiError.forbidden('This booking belongs to another partner');
+  }
+  return booking;
+}
+
+/* ── Disputes ────────────────────────────────────────────────────── */
+
+/**
+ * Customer contests a completed service, or a partner contests a chargeback.
+ *
+ * A dispute freezes nothing automatically — Admin rules on it — but it moves
+ * the booking into a state that the payout screen can exclude, so the platform
+ * is not settling money it may have to hand back.
+ */
+export async function raiseDispute(booking, { raisedBy, reason, actor = null }) {
+  if (!canTransition(booking.status, 'disputed')) {
+    throw ApiError.badRequest(`A ${booking.status} booking cannot be disputed`);
+  }
+  if (!reason?.trim()) throw ApiError.badRequest('A reason is required to raise a dispute');
+
+  booking.status = 'disputed';
+  booking.dispute = { raisedBy, reason: reason.trim(), raisedAt: new Date(), resolvedAt: null, resolution: null };
+  pushTimeline(booking, 'disputed', `Dispute raised by ${raisedBy}: ${reason.trim()}`, raisedBy, actor);
+  await booking.save();
+  return booking;
+}
+
+/**
+ * The one cancellation path.
+ *
+ * Ordering matters and was wrong before: capacity was released, then the
+ * gateway was called, and a refund failure threw — leaving the slot given away
+ * while the booking still read `confirmed`. Now the booking is closed and the
+ * slot released first (the customer IS cancelling, regardless of what the
+ * gateway does), and the refund is a recorded, retryable step that cannot
+ * unwind the cancellation.
+ */
+export async function performCancellation(
+  booking,
+  { by = 'customer', actor = null, reason = '', refund = true, refundAmountPaise = null, force = false } = {}
+) {
+  // Policy window: doctor bookings follow the vet's own free-cancellation
+  // rule. Cancelling inside it still releases the slot but forfeits the refund.
+  let refundable = refund;
+  let policyNote = '';
+  if (refundable && by === 'customer' && booking.type === 'doctor' && booking.doctorId && booking.schedule?.startAt) {
     const doctor = await Doctor.findById(booking.doctorId).select('policies name');
     const hours = doctor?.policies?.cancellationHours ?? 4;
     const hoursToStart = (new Date(booking.schedule.startAt) - Date.now()) / 3_600_000;
     if (hoursToStart < hours) {
       refundable = false;
-      booking.timeline.push({
-        status: 'cancelled',
-        note: `Cancelled inside the ${hours}h free-cancellation window — not refundable`,
-      });
+      policyNote = `Cancelled inside the ${hours}h free-cancellation window - not refundable`;
     }
+  }
+
+  /*
+   * A partner cancelling or Admin cancelling on their behalf ALWAYS refunds in
+   * full. The customer did nothing wrong and must never absorb a cancellation
+   * fee for a failure on the supply side.
+   */
+  if (by === 'vendor') {
+    refundable = true;
+    refundAmountPaise = null;
   }
 
   await releaseCapacity(booking);
 
-  if (refundable && wasConfirmed && booking.paymentMethod === 'razorpay' && booking.paymentId) {
-    const payment = await Payment.findById(booking.paymentId);
-    if (payment?.status === 'paid' && payment.razorpayPaymentId) {
-      await refundPayment(payment.razorpayPaymentId);
-      payment.status = 'refunded';
-      payment.refundedAmount = payment.amount;
-      await payment.save();
-      booking.timeline.push({ status: 'refunded', note: 'Refund initiated to source' });
-    }
+  booking.status = 'cancelled';
+  booking.cancelledBy = by;
+  booking.cancellationReason = reason || policyNote || `Cancelled by ${by}`;
+  booking.cancelledAt = new Date();
+  pushTimeline(booking, 'cancelled', booking.cancellationReason, by, actor);
+  if (policyNote) pushTimeline(booking, 'cancelled', policyNote, 'system');
+  await booking.save();
+
+  if (refundable && booking.paymentMethod === 'razorpay' && booking.paymentId) {
+    await refundBooking(booking, {
+      amountPaise: refundAmountPaise,
+      reason: reason || policyNote || `Booking cancelled by ${by}`,
+      initiatedBy: by === 'customer' ? 'customer' : by,
+      actor,
+    });
   }
 
-  booking.status = 'cancelled';
-  booking.timeline.push({ status: 'cancelled', note: 'Cancelled by customer' });
-  await booking.save();
+  await notifyBookingCancelled(booking, by);
+
+  /*
+   * A partner cancelling confirmed work is a service failure, and is scored as
+   * one. Last-minute cancellations are weighted harder because the customer has
+   * usually already rearranged their day around it and has no time to rebook.
+   *
+   * Scored after the refund, never before — compliance bookkeeping must not be
+   * able to stop a customer getting their money back.
+   */
+  if (by === 'vendor') await scoreVendorCancellation(booking, reason, actor);
+
   return booking;
+}
+
+/** Record the compliance cost of a partner-side cancellation. */
+async function scoreVendorCancellation(booking, reason, actor) {
+  const { vendorId, vendorType } = await resolveBookingVendor(booking);
+  if (!vendorId) return;
+
+  const policy = await getPolicy().catch(() => null);
+  const lastMinuteHours = policy?.sla?.lastMinuteCancelHours ?? 24;
+  const startsAt = booking.schedule?.startAt
+    ? new Date(booking.schedule.startAt)
+    : booking.schedule?.startDate
+      ? new Date(`${booking.schedule.startDate}T00:00:00Z`)
+      : null;
+  const hoursToStart = startsAt ? (startsAt - Date.now()) / 3_600_000 : null;
+  const isLastMinute = hoursToStart !== null && hoursToStart < lastMinuteHours && hoursToStart > -24;
+
+  await recordViolation({
+    vendorId,
+    vendorType,
+    type: isLastMinute ? 'vendor_cancelled_late' : 'vendor_cancelled_booking',
+    refType: 'booking',
+    refId: booking._id,
+    refLabel: `Booking ${booking.bookingNo}`,
+    reason: isLastMinute
+      ? `Cancelled a confirmed booking less than ${lastMinuteHours}h before the service`
+      : 'Cancelled a confirmed booking',
+    detail: reason || '',
+    customerImpact: isLastMinute
+      ? 'Customer lost their slot at short notice with no time to rebook.'
+      : 'Customer lost their booking and had to be refunded.',
+    source: actor ? 'admin' : 'auto',
+    actor,
+  });
+}
+
+/**
+ * Push money back for a booking and keep the booking's own refund columns in
+ * step with the Refund register. Safe to call on a booking with nothing to
+ * refund — it simply does nothing.
+ */
+export async function refundBooking(booking, { amountPaise = null, reason, initiatedBy = 'system', actor = null }) {
+  if (!booking.paymentId) return null;
+  const payment = await Payment.findById(booking.paymentId);
+  if (!payment || (payment.status !== 'paid' && payment.status !== 'partially_refunded')) return null;
+
+  const refund = await issueRefund({
+    payment,
+    amountPaise,
+    reason,
+    initiatedBy,
+    actor,
+    refType: 'booking',
+    refId: booking._id,
+    label: `Booking ${booking.bookingNo}`,
+  });
+
+  if (refund.status === 'processed') {
+    const totalRefunded = (booking.refundedAmount || 0) + refund.amount;
+    booking.refundedAmount = totalRefunded;
+    booking.refundStatus = totalRefunded >= (booking.amounts?.total || 0) ? 'full' : 'partial';
+    pushTimeline(
+      booking,
+      'refunded',
+      `Refund ${refund.refundNo} of ${Math.round(refund.amount / 100).toLocaleString('en-IN')} initiated to source`,
+      initiatedBy,
+      actor
+    );
+  } else {
+    booking.refundStatus = 'failed';
+    pushTimeline(
+      booking,
+      booking.status,
+      `Refund ${refund.refundNo} FAILED: ${refund.failureReason || 'gateway error'} - queued for Admin retry`,
+      'system'
+    );
+  }
+  await booking.save();
+  return refund;
+}
+
+/** Append a timeline entry that records who caused it, not just what changed. */
+export function pushTimeline(booking, status, note, by = 'system', actor = null) {
+  booking.timeline.push({
+    status,
+    at: new Date(),
+    note: note || '',
+    by,
+    byId: actor?.id || actor?._id || null,
+    byName: actor?.name || actor?.email || '',
+  });
+}
+
+async function notifyBookingCancelled(booking, by) {
+  const label = booking.type || 'booking';
+  await notify(booking.userId, {
+    title: by === 'vendor' ? 'Booking cancelled by partner' : 'Booking cancelled',
+    body:
+      by === 'vendor'
+        ? `Your ${label} booking was cancelled by the partner. A full refund is on its way.`
+        : `Your ${label} booking has been cancelled.`,
+    type: 'booking',
+    link: '/app/profile/bookings',
+    data: { bookingId: String(booking._id), type: label },
+  }).catch(() => {});
+
+  const vendorId = await resolveBookingVendorId(booking);
+  if (vendorId && by !== 'vendor') {
+    await notify(vendorId, {
+      title: 'Booking cancelled',
+      body: `Booking ${booking.bookingNo} was cancelled by the ${by}.`,
+      type: 'booking',
+      link: '/vendor/bookings',
+      data: { bookingId: String(booking._id) },
+    }).catch(() => {});
+  }
 }
 
 /**

@@ -7,6 +7,7 @@ import { initFirebase } from './config/firebase.js';
 import { ensureDefaultPlans } from './modules/subscription/subscription.service.js';
 import { initSocket, getIO } from './sockets/index.js';
 import { applyDueCommissionSchedules } from './modules/admin/admin.finance.service.js';
+import { runComplianceSweeps } from './modules/compliance/compliance.sweeps.js';
 import { logger } from './utils/logger.js';
 
 async function start() {
@@ -55,6 +56,36 @@ async function start() {
     runDueCommissionSchedules();
     const scheduleTimer = setInterval(runDueCommissionSchedules, 60_000);
     scheduleTimer.unref();
+
+    /*
+     * Partner SLA enforcement.
+     *
+     * Three things nobody was watching: booking requests left unanswered,
+     * paid bookings that sail past their service date untouched, and paid
+     * orders that never ship. Each one is a customer who paid and got nothing,
+     * and each was previously discovered only when that customer complained.
+     *
+     * Polled on the same pattern as the commission sweep above, for the same
+     * reasons — a restart cannot lose work, and the sweeps are idempotent
+     * (unique on vendor+type+reference), so several instances running this loop
+     * record each violation exactly once. Five minutes rather than one: these
+     * measure in hours and days, and the sweep touches more rows.
+     */
+    const runComplianceSweep = () =>
+      runComplianceSweeps()
+        .then((out) => {
+          const flagged =
+            (out.undeliveredServices?.flagged || 0) +
+            (out.stalledOrders?.flagged || 0) +
+            (out.unansweredBookings?.violations || 0);
+          if (flagged) logger.warn(`Compliance sweep flagged ${flagged} SLA breach(es)`);
+        })
+        .catch((err) => logger.warn(`Compliance sweep failed: ${err.message}`));
+
+    // Delayed first run so a cold boot finishes wiring up before it scans.
+    setTimeout(runComplianceSweep, 30_000).unref();
+    const complianceTimer = setInterval(runComplianceSweep, 5 * 60_000);
+    complianceTimer.unref();
 
     let shuttingDown = false;
     const shutdown = async (signal) => {

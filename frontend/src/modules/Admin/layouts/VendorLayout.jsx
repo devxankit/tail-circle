@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
-import { Menu, X, Bell, LogOut, LayoutDashboard, Store, ClipboardList, ShieldAlert, Heart, Calendar, HelpCircle, FileText, User, Search, Video, Users, Syringe, Clock, Activity, CreditCard, Award, Settings } from 'lucide-react';
+import { VendorComplianceBanner } from '../components/VendorComplianceBanner';
+import { Menu, X, Bell, LogOut, LayoutDashboard, Store, ClipboardList, ShieldAlert, Heart, Calendar, HelpCircle, FileText, User, Search, Video, Users, Syringe, Clock, Activity, CreditCard, Award, Settings , ShieldCheck} from 'lucide-react';
 import { cn } from '../../../modules/user/utils/cn';
 import { BusinessSwitcher } from '../vendor/BusinessSwitcher';
 import { getActiveVendorProfile, vendorLogout } from '../../../services/vendor';
@@ -64,6 +65,7 @@ export function VendorLayout() {
             { label: 'Availability Calendar', path: '/vendor/doctor/consultations', search: '?view=availability', icon: Calendar },
             { label: 'Lab Reports', path: '/vendor/doctor/consultations', search: '?view=lab_reports', icon: FileText },
             { label: 'Billing & Payments', path: '/vendor/payouts', icon: CreditCard },
+            { label: 'Service Standing', path: '/vendor/compliance', icon: ShieldCheck },
           ]
         },
         {
@@ -81,6 +83,7 @@ export function VendorLayout() {
             { label: 'Profile & Fees', path: '/vendor/doctor/consultations', search: '?view=vet_profile', icon: User },
             { label: 'Certifications', path: '/vendor/doctor/consultations', search: '?view=vet_profile', icon: Award },
             { label: 'Earnings & Payouts', path: '/vendor/payouts', icon: CreditCard },
+            { label: 'Service Standing', path: '/vendor/compliance', icon: ShieldCheck },
             { label: 'Settings', path: '/vendor/settings', icon: Settings },
           ]
         }
@@ -108,6 +111,7 @@ export function VendorLayout() {
           items: [
             { label: 'Salon Profile', path: base, search: '?view=profile', icon: User },
             { label: 'Earnings & Payouts', path: '/vendor/payouts', icon: CreditCard },
+            { label: 'Service Standing', path: '/vendor/compliance', icon: ShieldCheck },
             { label: 'Client Support', path: '/vendor/support', icon: HelpCircle },
             { label: 'Settings', path: '/vendor/settings', icon: Settings },
           ],
@@ -134,6 +138,7 @@ export function VendorLayout() {
           title: 'ACCOUNT',
           items: [
             { label: 'Earnings & Payouts', path: '/vendor/payouts', icon: CreditCard },
+            { label: 'Service Standing', path: '/vendor/compliance', icon: ShieldCheck },
             { label: 'Client Support', path: '/vendor/support', icon: HelpCircle },
             { label: 'Settings', path: '/vendor/settings', icon: Settings },
           ],
@@ -159,6 +164,7 @@ export function VendorLayout() {
           items: [
             { label: 'Centre Profile', path: base, search: '?view=profile', icon: User },
             { label: 'Earnings & Payouts', path: '/vendor/payouts', icon: CreditCard },
+            { label: 'Service Standing', path: '/vendor/compliance', icon: ShieldCheck },
             { label: 'Client Support', path: '/vendor/support', icon: HelpCircle },
             { label: 'Settings', path: '/vendor/settings', icon: Settings },
           ],
@@ -426,8 +432,13 @@ export function VendorLayout() {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-4 sm:p-6 overflow-y-auto" style={{ background: '#F8FAFC' }}>
-          <Outlet />
+        <main className="flex-1 overflow-y-auto" style={{ background: '#F8FAFC' }}>
+          {/* Above the page, not inside it: a partner one strike from
+              suspension must see this whichever screen they opened. */}
+          <VendorComplianceBanner />
+          <div className="p-4 sm:p-6">
+            <Outlet />
+          </div>
         </main>
       </div>
 

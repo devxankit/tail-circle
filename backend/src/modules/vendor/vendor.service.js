@@ -203,6 +203,101 @@ export async function postLedgerEntry({ vendorId, refType, refId, label, gross, 
   }
 }
 
+/**
+ * Claw back vendor earnings when a customer is refunded.
+ *
+ * Posts a NEGATIVE `reversal` entry against every earning row for the
+ * reference, pro-rated to the share of the payment being refunded. A full
+ * refund reverses the whole earning; a ₹500 refund on a ₹2000 booking reverses
+ * a quarter of it, commission included — the platform gives back its cut of
+ * money it no longer holds.
+ *
+ * Reversing rather than deleting or flagging the earning row is deliberate:
+ *   - an already-settled earning cannot be un-paid, so the clawback has to
+ *     land as an unsettled negative that nets off the vendor's NEXT payout;
+ *   - the vendor's earnings list must still show the sale and the reversal,
+ *     not a row that silently vanished.
+ *
+ * Idempotent per (vendor, refund) at the index level, so retrying a reversal
+ * that failed after a successful gateway refund cannot double-debit.
+ *
+ * Returns the reversal rows created. Never throws for "nothing to reverse" —
+ * a refund on an unfulfilled booking has no earning to claw back.
+ */
+export async function reverseLedgerForRefund({
+  refType,
+  refId,
+  refundId = null,
+  refundedPaise,
+  paymentAmountPaise,
+  label = '',
+}) {
+  if (!refId || !refundedPaise) return [];
+
+  const earnings = await VendorLedgerEntry.find({
+    refType,
+    refId,
+    kind: 'earning',
+  });
+  if (!earnings.length) return [];
+
+  /*
+   * Fraction of the customer's payment being handed back. Falls back to the
+   * summed gross when the payment total is unknown, and is clamped to 1 so a
+   * mis-stated amount can never reverse more than the vendor ever earned.
+   */
+  const basis =
+    Math.round(Number(paymentAmountPaise) || 0) ||
+    earnings.reduce((sum, e) => sum + (e.gross || 0), 0);
+  const share = basis > 0 ? Math.min(1, refundedPaise / basis) : 1;
+
+  const created = [];
+  for (const earning of earnings) {
+    // Never reverse more than what is still standing against this earning.
+    const alreadyReversed = await sumReversedFor(earning._id);
+    const wantGross = Math.round(earning.gross * share);
+    const gross = Math.min(wantGross, Math.max(0, earning.gross - alreadyReversed));
+    if (gross <= 0) continue;
+
+    // Reverse at the rate the earning was BILLED at, not today's rate — a
+    // commission change between sale and refund must not reprice the reversal.
+    const rate = earning.commissionRate ?? (earning.gross ? earning.commission / earning.gross : 0);
+    const commission = Math.round(gross * rate);
+
+    try {
+      const row = await VendorLedgerEntry.create({
+        vendorId: earning.vendorId,
+        refType: earning.refType,
+        refId: earning.refId,
+        vendorType: earning.vendorType,
+        label: label || `Refund reversal — ${earning.label || refType}`,
+        gross: -gross,
+        commission: -commission,
+        net: -(gross - commission),
+        commissionRate: earning.commissionRate,
+        kind: 'reversal',
+        reversalOf: earning._id,
+        refundId,
+        status: 'unsettled',
+      });
+      created.push(row);
+    } catch (err) {
+      if (err.code === 11000) continue; // this refund already reversed this vendor
+      throw err;
+    }
+  }
+  return created;
+}
+
+/** Paise already reversed against one earning row (positive number). */
+async function sumReversedFor(earningId) {
+  const [agg] = await VendorLedgerEntry.aggregate([
+    { $match: { reversalOf: new mongoose.Types.ObjectId(String(earningId)) } },
+    { $group: { _id: null, total: { $sum: '$gross' } } },
+  ]);
+  return Math.abs(agg?.total || 0);
+}
+
 export async function listLedger(vendorId, { limit = 100 } = {}) {
   return VendorLedgerEntry.find({ vendorId }).sort({ createdAt: -1 }).limit(limit);
 }
@@ -227,6 +322,22 @@ export async function requestPayout(vendorId) {
   const gross = entries.reduce((s, e) => s + e.gross, 0);
   const commission = entries.reduce((s, e) => s + e.commission, 0);
   const net = entries.reduce((s, e) => s + e.net, 0);
+
+  /*
+   * Refund clawbacks post as negative entries, so a vendor whose refunds
+   * outweigh their new earnings has a non-positive balance. Settling that
+   * would mint a zero or negative payout AND mark the negative rows settled,
+   * writing the debt off in the vendor's favour. Leave everything unsettled so
+   * the deficit carries into the next period.
+   */
+  if (net <= 0) {
+    throw ApiError.badRequest(
+      net === 0
+        ? 'Nothing payable — earnings are fully offset by refunds'
+        : `Refunds exceed earnings by ₹${Math.abs(Math.round(net / 100)).toLocaleString('en-IN')}. This balance carries forward.`
+    );
+  }
+
   const { tax, payable, rate } = splitPayout(net, await taxRate());
 
   const payout = await Payout.create({

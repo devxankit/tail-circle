@@ -43,8 +43,16 @@ export async function fetchActionItems(params = {}) {
   return data;
 }
 
-export async function resolveActionItemApi(id, { action = 'approve', note = '' } = {}) {
-  const { data } = await api.post(`/admin/action-items/${id}/resolve`, { action, note });
+/*
+ * Resolving an item performs the real operation behind it server-side —
+ * approving a partner, retrying a refund, resolving a ticket. `force` waves a
+ * partner through with incomplete KYC and is recorded as a forced approval.
+ *
+ * A rejection here means nothing happened, so callers must not remove the card
+ * optimistically.
+ */
+export async function resolveActionItemApi(id, { action = 'approve', note = '', force = false } = {}) {
+  const { data } = await api.post(`/admin/action-items/${id}/resolve`, { action, note, force });
   return data;
 }
 
@@ -199,12 +207,86 @@ export async function updateAdminSetting(key, value) {
 }
 
 /* ── Operations ───────────────────────────────────────────── */
-export const fetchAdminOrders = async () => (await api.get('/admin/orders')).data;
-export const fetchAdminBookings = async () => (await api.get('/admin/bookings')).data;
+
+/*
+ * Bookings and orders are paginated server-side now, so these return
+ * `{ rows, total, page, pages }`. The list callers only ever wanted the rows,
+ * so the plain fetchers keep returning an array and the `*Page` variants expose
+ * the envelope for screens that add paging controls.
+ */
+export const fetchAdminOrdersPage = async (params = {}) => (await api.get('/admin/orders', { params })).data;
+export const fetchAdminBookingsPage = async (params = {}) => (await api.get('/admin/bookings', { params })).data;
+/*
+ * `limit: 200` keeps the existing screens filling client-side the way they did
+ * before paging existed (they used to receive up to 300 unfiltered rows). The
+ * Reports view aggregates over whatever it is given, so it is capped at the
+ * same 200 until those totals move server-side.
+ */
+export const fetchAdminOrders = async (params = {}) =>
+  (await fetchAdminOrdersPage({ limit: 200, ...params })).rows ?? [];
+export const fetchAdminBookings = async (params = {}) =>
+  (await fetchAdminBookingsPage({ limit: 200, ...params })).rows ?? [];
+
 export const fetchAdminAppointments = async () => (await api.get('/admin/appointments')).data;
 export const fetchAdminDeliveries = async () => (await api.get('/admin/deliveries')).data;
 export const fetchAdminReturns = async () => (await api.get('/admin/returns')).data;
-export const resolveAdminReturn = async (id, action) => (await api.post(`/admin/returns/${id}/resolve`, { action })).data;
+export const resolveAdminReturn = async (id, action, body = {}) =>
+  (await api.post(`/admin/returns/${id}/resolve`, { action, ...body })).data;
+
+/* ── Booking & order control ──────────────────────────────── */
+export const fetchAdminBooking = async (id) => (await api.get(`/admin/bookings/${id}`)).data;
+export const cancelAdminBooking = async (id, body) => (await api.post(`/admin/bookings/${id}/cancel`, body)).data;
+export const refundAdminBooking = async (id, body) => (await api.post(`/admin/bookings/${id}/refund`, body)).data;
+export const setAdminBookingStatus = async (id, body) => (await api.patch(`/admin/bookings/${id}/status`, body)).data;
+
+export const fetchAdminOrder = async (id) => (await api.get(`/admin/orders/${id}`)).data;
+export const cancelAdminOrder = async (id, body) => (await api.post(`/admin/orders/${id}/cancel`, body)).data;
+export const refundAdminOrder = async (id, body) => (await api.post(`/admin/orders/${id}/refund`, body)).data;
+export const setAdminOrderStatus = async (id, body) => (await api.patch(`/admin/orders/${id}/status`, body)).data;
+
+/* ── Refund register ──────────────────────────────────────── */
+export const fetchAdminRefunds = async (params = {}) => (await api.get('/admin/refunds', { params })).data;
+export const fetchAdminRefundTotals = async () => (await api.get('/admin/refunds/totals')).data;
+export const retryAdminRefund = async (id) => (await api.post(`/admin/refunds/${id}/retry`)).data;
+export const reverseAdminRefundLedger = async (id) => (await api.post(`/admin/refunds/${id}/reverse-ledger`)).data;
+
+/* ── Dashboard charts (server-aggregated) ─────────────────── */
+/*
+ * `range` is '7d' | '1m' | '3m' and drives the revenue comparison only; the
+ * weekly bars and donut are fixed windows by definition.
+ */
+export const fetchDashboardCharts = async (range = '1m') =>
+  (await api.get('/admin/dashboard/charts', { params: { range } })).data;
+
+/* ── Business reporting (server-aggregated) ───────────────── */
+export const fetchBusinessReport = async (params = {}) => (await api.get('/admin/reports/business', { params })).data;
+export const fetchRevenueByVendor = async (params = {}) => (await api.get('/admin/reports/by-vendor', { params })).data;
+export const fetchRevenueTrend = async (params = {}) => (await api.get('/admin/reports/trend', { params })).data;
+export const fetchRevenueByLocation = async (params = {}) => (await api.get('/admin/reports/by-location', { params })).data;
+
+/* ── Partner compliance ───────────────────────────────────── */
+export const fetchComplianceSummary = async () => (await api.get('/admin/compliance/summary')).data;
+export const fetchComplianceVendors = async (params = {}) =>
+  (await api.get('/admin/compliance/vendors', { params })).data;
+export const fetchComplianceViolations = async (params = {}) =>
+  (await api.get('/admin/compliance/violations', { params })).data;
+export const addComplianceViolation = async (body) => (await api.post('/admin/compliance/violations', body)).data;
+export const forgiveComplianceViolation = async (id, note) =>
+  (await api.post(`/admin/compliance/violations/${id}/forgive`, { note })).data;
+export const upholdComplianceViolation = async (id, note) =>
+  (await api.post(`/admin/compliance/violations/${id}/uphold`, { note })).data;
+export const fetchCompliancePolicy = async () => (await api.get('/admin/compliance/policy')).data;
+export const updateCompliancePolicy = async (body) => (await api.put('/admin/compliance/policy', body)).data;
+export const suspendVendorLine = async (profileId, reason) =>
+  (await api.post(`/admin/compliance/vendors/${profileId}/suspend`, { reason })).data;
+export const reinstateVendorLine = async (profileId, reason, forgiveAll = false) =>
+  (await api.post(`/admin/compliance/vendors/${profileId}/reinstate`, { reason, forgiveAll })).data;
+export const runComplianceSweep = async () => (await api.post('/admin/compliance/sweep')).data;
+export const sweepUnansweredBookings = async () => (await api.post('/admin/bookings/sweep-unanswered')).data;
+
+/* ── Notification delivery health ─────────────────────────── */
+export const fetchNotificationHealth = async (hours = 24) =>
+  (await api.get('/admin/notification-health', { params: { hours } })).data;
 export const fetchAdminSupport = async () => (await api.get('/admin/support')).data;
 export const replyAdminSupport = async (id, message) => (await api.post(`/admin/support/${id}/reply`, { message })).data;
 

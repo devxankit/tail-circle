@@ -6,13 +6,13 @@ import {
   LayoutDashboard, HeartHandshake, CalendarDays, Users,
   Leaf, Gift, FileText, MessageSquare,
   Wallet, Settings, LogOut, Bell, Search, Menu, CheckCircle, AlertCircle,
-  Package, ImageIcon, Heart, Star
-} from 'lucide-react';
+  Package, ImageIcon, Heart, Star, ShieldCheck} from 'lucide-react';
 import { cn } from '../../user/utils/cn';
 import { CreateRequestModal } from './components/CreateRequestModal';
 import VerificationBanner from '../components/VerificationBanner';
 import { BusinessSwitcher } from '../vendor/BusinessSwitcher';
 import { VendorAvailabilityToggle } from '../vendor/VendorAvailabilityToggle';
+import { VendorComplianceBanner } from '../components/VendorComplianceBanner';
 
 export function MemorialProviderLayout() {
   const { profile, notifications, services, addons, addRequest } = useMemorialProvider();
@@ -54,6 +54,7 @@ export function MemorialProviderLayout() {
       items: [
         { name: 'Customer Tributes & Feedback', path: '/vendor/memorial-provider/feedback', icon: Star },
         { name: 'Finance Center', path: '/vendor/memorial-provider/finance', icon: Wallet },
+        { name: 'Service Standing', path: '/vendor/memorial-provider/compliance', icon: ShieldCheck },
         { name: 'Business Control Center', path: '/vendor/memorial-provider/settings', icon: Settings },
       ]
     }
@@ -266,6 +267,7 @@ export function MemorialProviderLayout() {
               approvalStatus={profile?.approvalStatus || 'pending'}
               kycPath="/vendor/memorial-provider/settings"
             />
+            <VendorComplianceBanner />
             <Outlet />
           </div>
         </div>

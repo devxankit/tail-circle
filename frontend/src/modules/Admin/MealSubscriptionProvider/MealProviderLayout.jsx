@@ -2,14 +2,14 @@ import { useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Utensils, FileText, CalendarCheck, ListChecks, Truck, Map,
-  MessageSquare, Wallet, Settings, LogOut, Bell, Menu
-} from 'lucide-react';
+  MessageSquare, Wallet, Settings, LogOut, Bell, Menu, ShieldCheck} from 'lucide-react';
 import { cn } from '../../user/utils/cn';
 import { vendorLogout, updateVendorProfile } from '../../../services/vendor';
 import { BusinessSwitcher } from '../vendor/BusinessSwitcher';
 import { useMealProvider } from './context/MealProviderContext';
 import VerificationBanner from '../components/VerificationBanner';
 import { VendorAvailabilityToggle } from '../vendor/VendorAvailabilityToggle';
+import { VendorComplianceBanner } from '../components/VendorComplianceBanner';
 
 export function MealProviderLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -40,6 +40,7 @@ export function MealProviderLayout() {
       items: [
         { path: '/vendor/meal-provider/feedback', label: 'Customer Feedback', icon: MessageSquare },
         { path: '/vendor/meal-provider/finance', label: 'Finance Center', icon: Wallet },
+        { path: '/vendor/meal-provider/compliance', label: 'Service Standing', icon: ShieldCheck },
         { path: '/vendor/meal-provider/settings', label: 'Business Control Center', icon: Settings },
       ]
     }
@@ -173,6 +174,7 @@ export function MealProviderLayout() {
             approvalStatus={profile?.approvalStatus || 'pending'}
             kycPath="/vendor/meal-provider/settings"
           />
+          <VendorComplianceBanner />
           <Outlet />
         </main>
       </div>

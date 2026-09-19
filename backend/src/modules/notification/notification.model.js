@@ -22,12 +22,38 @@ const notificationSchema = new mongoose.Schema(
     data: { type: Object, default: {} }, // extra payload (ids etc.)
     read: { type: Boolean, default: false },
     pushedAt: { type: Date, default: null }, // when FCM push went out
+
+    /*
+     * Per-channel delivery outcome.
+     *
+     * A failed push used to be a `logger.warn` and nothing else: nobody could
+     * answer "did the customer actually get told their booking was cancelled?",
+     * which is the question that matters when someone turns up to a service
+     * that is not happening. Each channel records whether it was attempted, how
+     * it went, and why it failed, so Admin can see delivery health and retry.
+     */
+    delivery: {
+      socket: {
+        status: { type: String, enum: ['pending', 'sent', 'failed', 'skipped'], default: 'pending' },
+        error: { type: String, default: null },
+        at: { type: Date, default: null },
+      },
+      push: {
+        status: { type: String, enum: ['pending', 'sent', 'failed', 'skipped'], default: 'pending' },
+        error: { type: String, default: null },
+        at: { type: Date, default: null },
+        devices: { type: Number, default: 0 },
+      },
+    },
+
     seedKey: { type: String }, // idempotent seeding natural key (seeder only)
   },
   { timestamps: true }
 );
 
 notificationSchema.index({ userId: 1, read: 1, createdAt: -1 });
+/* Delivery-health queries: recent failures across all users. */
+notificationSchema.index({ 'delivery.push.status': 1, createdAt: -1 });
 notificationSchema.index(
   { seedKey: 1 },
   { unique: true, partialFilterExpression: { seedKey: { $type: 'string' } } }

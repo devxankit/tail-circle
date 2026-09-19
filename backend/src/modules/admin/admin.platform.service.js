@@ -169,7 +169,14 @@ const serPrompt = (p) => ({
   updatedAt: p.updatedAt,
 });
 
-export async function listPetPrompts({ temperament, mood, search } = {}) {
+/*
+ * `limit` is destructured here rather than read off an undeclared `params`.
+ *
+ * The body referenced `params.limit` while the signature only ever destructured
+ * the filters, so every call threw `ReferenceError: params is not defined` —
+ * the Pet Prompts admin screen could never load a single row.
+ */
+export async function listPetPrompts({ temperament, mood, search, limit: rawLimit } = {}) {
   const filter = {};
   if (temperament && temperament !== 'All' && temperament !== 'Any') {
     filter.temperament = temperament;
@@ -182,7 +189,7 @@ export async function listPetPrompts({ temperament, mood, search } = {}) {
     filter.$or = [{ question: r }, { answerTemplate: r }, { category: r }];
   }
 
-  const limit = Math.min(Number(params.limit) || 2000, 2000);
+  const limit = Math.min(Number(rawLimit) || 2000, 2000);
   const rows = await PetPrompt.find(filter).sort({ createdAt: -1 }).limit(limit);
   return rows.map(serPrompt);
 }

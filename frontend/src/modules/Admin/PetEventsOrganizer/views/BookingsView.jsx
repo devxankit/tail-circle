@@ -6,6 +6,7 @@ import {
   ChevronRight, Calendar, User, IndianRupee, QrCode, ShieldCheck, AlertTriangle
 } from 'lucide-react';
 import { cn } from '../../../user/utils/cn';
+import { PendingBookingRequests } from '../../components/PendingBookingRequests';
 
 export function BookingsView() {
   const { bookings, events, checkInBooking, scanTicket } = usePetEvents();
@@ -87,6 +88,7 @@ export function BookingsView() {
       
       {/* Main Content */}
       <div className={cn("flex-1 transition-all duration-300", selectedBooking ? "mr-[400px]" : "")}>
+        <PendingBookingRequests />
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-3xl border border-slate-100 shadow-sm mb-6">
           <div>
             <h2 className="text-2xl font-black text-slate-900 tracking-tight">Booking Management</h2>

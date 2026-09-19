@@ -47,126 +47,276 @@ export async function listAuditLogs(limit = 100) {
 }
 
 /* ── Admin Action Items Center ───────────────────────────────────── */
-const DEFAULT_ACTION_ITEMS = [
-  {
-    seedKey: 'act_101',
+
+/*
+ * The founder's "what needs me today" queue.
+ *
+ * This used to seed six hardcoded rows into MongoDB on first read - invented
+ * vendors, invented refund requests, invented customer names, one of them
+ * pointing at a route that does not exist. On launch day the first thing the
+ * Admin Panel would have shown was fabricated work. The seeding is gone; every
+ * item below is derived from something that actually happened.
+ *
+ * Derived items are upserted on a stable `sourceKey` so resolving one sticks,
+ * and are withdrawn automatically when the underlying condition clears - an
+ * approved vendor should not linger in the queue because nobody ticked it off.
+ */
+
+const PRIORITY_ORDER = { Urgent: 0, High: 1, Medium: 2, Normal: 3 };
+
+/**
+ * Rebuild the derived queue from live data.
+ *
+ * Each collector returns rows keyed by `sourceKey`. Anything pending whose key
+ * is no longer produced is withdrawn, so the queue can only ever show work that
+ * is still outstanding.
+ */
+export async function syncActionItems() {
+  const collected = [
+    ...(await collectPendingVendors()),
+    ...(await collectFailedRefunds()),
+    ...(await collectUnreversedRefunds()),
+    ...(await collectUnansweredBookings()),
+    ...(await collectReturnRequests()),
+    ...(await collectOpenSupport()),
+    ...(await collectReportedContent()),
+  ];
+
+  for (const item of collected) {
+    /*
+     * `status` is set ONLY on insert.
+     *
+     * This used to `$set: { ...item, status: 'pending' }` on every sync, and
+     * `listActionItems` syncs on every read — so an item an admin had just
+     * approved was flipped straight back to pending and reappeared on the
+     * dashboard the moment the page refreshed. Approving anything looked like
+     * it did nothing.
+     *
+     * Display fields still refresh (a vendor's document count can change while
+     * the item sits in the queue); the workflow state does not.
+     */
+    const { sourceKey, ...display } = item;
+    await AdminActionItem.updateOne(
+      { sourceKey },
+      {
+        $set: display,
+        $setOnInsert: { sourceKey, status: 'pending', createdAt: new Date() },
+      },
+      { upsert: true }
+    );
+  }
+
+  /*
+   * Withdraw items whose cause is gone — whatever their state.
+   *
+   * Resolved rows are cleared too, not just pending ones: keeping them would
+   * mean a condition that recurs later (a vendor re-applying after rejection)
+   * could never raise a fresh item, because the old resolved row still owns the
+   * unique `sourceKey`.
+   */
+  const liveKeys = collected.map((i) => i.sourceKey);
+  await AdminActionItem.deleteMany({
+    sourceKey: { $exists: true, $nin: liveKeys },
+  });
+
+  return collected.length;
+}
+
+async function collectPendingVendors() {
+  const rows = await VendorProfile.find({ approvalStatus: 'pending' })
+    .populate('userId', 'name email phone')
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+  return rows.map((v) => ({
+    sourceKey: `vendor:${v._id}`,
     category: 'Vendor Approval',
-    type: 'Veterinarian Partner',
-    title: 'Dr. Happy Paws Vet Clinic Registration',
-    subtitle: 'Medical License & Clinic Verification Pending',
-    details: 'Submitted Practice License #VET-88219 and Clinic Registration Certificate for admin audit.',
-    priority: 'Urgent',
-    status: 'pending',
-    targetId: 'VND-101',
+    type: VENDOR_TYPE_LABEL[v.vendorType] || 'Partner',
+    title: v.businessName || v.userId?.name || 'Partner registration',
+    subtitle: `${VENDOR_TYPE_LABEL[v.vendorType] || 'Partner'} - awaiting verification`,
+    details: `${(v.documents || []).length} document(s) submitted. Applied ${new Date(v.createdAt).toLocaleDateString('en-IN')}.`,
+    priority: (v.documents || []).length ? 'High' : 'Medium',
+    targetId: String(v._id),
     navPath: '/admin/vendors/pending',
-    docName: 'Practice_License_2026.pdf',
-    applicant: 'Dr. Ramesh Sharma (Mumbai)',
-  },
-  {
-    seedKey: 'act_102',
-    category: 'Vendor Approval',
-    type: 'Fresh Meals Partner',
-    title: 'NutriPaw Organic Meals Co.',
-    subtitle: 'FSSAI Food Safety Cert Verification',
-    details: 'Applied for Fresh Pet Meal Subscription program. Commission rate requested: 10%.',
-    priority: 'High',
-    status: 'pending',
-    targetId: 'VND-102',
-    navPath: '/admin/vendors/pending',
-    docName: 'FSSAI_Food_Safety_Cert.pdf',
-    applicant: 'Ananya Roy (Bengaluru)',
-  },
-  {
-    seedKey: 'act_103',
+    docName: v.documents?.[0]?.name || '',
+    applicant: v.userId?.name || v.userId?.email || '',
+  }));
+}
+
+async function collectFailedRefunds() {
+  const { Refund } = await import('../payment/refund.model.js');
+  const rows = await Refund.find({ status: 'failed' })
+    .populate('userId', 'name')
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+  return rows.map((r) => ({
+    sourceKey: `refund_failed:${r._id}`,
     category: 'Refund Request',
-    type: 'Event Refund',
-    title: 'Refund Request #TXN-901',
-    subtitle: 'Customer: Rahul Kumar • Amount: ₹1,500',
-    details: 'Pet Event "Monsoon Dog Splash" was rescheduled. Client requested immediate full refund.',
+    type: 'Failed Refund',
+    title: `Refund ${r.refundNo} failed`,
+    subtitle: `${r.userId?.name || 'Customer'} - Rs ${Math.round(r.amount / 100).toLocaleString('en-IN')}`,
+    details: `${r.reason}. Gateway error: ${r.failureReason || 'unknown'}. ${r.attempts} attempt(s). The customer is still owed this money.`,
     priority: 'Urgent',
-    status: 'pending',
-    targetId: 'TXN-901',
-    navPath: '/admin/operations/refunds',
-    amount: '₹1,500',
-    applicant: 'Rahul Kumar',
-  },
-  {
-    seedKey: 'act_104',
-    category: 'Moderation',
-    type: 'Spam Feed Report',
-    title: 'Reported Feed Post #RPT-501',
-    subtitle: 'Reported by: Aisha Khan • Reason: Commercial Spam',
-    details: 'Content contains unauthorized external links and unauthorized promotional spam.',
-    priority: 'High',
-    status: 'pending',
-    targetId: 'RPT-501',
-    navPath: '/admin/platform/reports',
-    applicant: 'Reported User: Spammer_88',
-  },
-  {
-    seedKey: 'act_105',
+    targetId: String(r._id),
+    navPath: '/admin/finance/refunds',
+    amount: `Rs ${Math.round(r.amount / 100).toLocaleString('en-IN')}`,
+    applicant: r.userId?.name || '',
+  }));
+}
+
+/*
+ * Refunds that reached the customer but never clawed the vendor's earning
+ * back. Silent money leak: the platform pays out on a sale it refunded.
+ */
+async function collectUnreversedRefunds() {
+  const { Refund } = await import('../payment/refund.model.js');
+  const rows = await Refund.find({ status: 'processed', ledgerReversed: false })
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+  return rows.map((r) => ({
+    sourceKey: `refund_unreversed:${r._id}`,
+    category: 'Reconciliation',
+    type: 'Ledger Reversal Pending',
+    title: `Refund ${r.refundNo} not clawed back from partner`,
+    subtitle: `Rs ${Math.round(r.amount / 100).toLocaleString('en-IN')} refunded, partner still credited`,
+    details: r.ledgerReversalError || 'The vendor ledger was not reversed for this refund.',
+    priority: 'Urgent',
+    targetId: String(r._id),
+    navPath: '/admin/finance/refunds',
+    amount: `Rs ${Math.round(r.amount / 100).toLocaleString('en-IN')}`,
+  }));
+}
+
+async function collectUnansweredBookings() {
+  const rows = await Booking.find({
+    status: 'awaiting_vendor',
+    vendorRespondBy: { $ne: null, $lt: new Date() },
+  })
+    .populate('userId', 'name')
+    .sort({ vendorRespondBy: 1 })
+    .limit(50)
+    .lean();
+  return rows.map((b) => ({
+    sourceKey: `booking_unanswered:${b._id}`,
+    category: 'Operations',
+    type: 'Unanswered Booking',
+    title: `Booking ${b.bookingNo} unanswered by partner`,
+    subtitle: `${b.userId?.name || 'Customer'} - ${b.type} on ${b.schedule?.startDate || 'TBC'}`,
+    details: 'The partner did not respond inside their window. Reassign or refund before the customer turns up to nothing.',
+    priority: 'Urgent',
+    targetId: String(b._id),
+    navPath: '/admin/operations/bookings',
+    amount: `Rs ${Math.round((b.amounts?.total || 0) / 100).toLocaleString('en-IN')}`,
+    applicant: b.userId?.name || '',
+  }));
+}
+
+async function collectReturnRequests() {
+  const rows = await Order.find({ status: 'return_requested' })
+    .populate('userId', 'name')
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+  return rows.map((o) => ({
+    sourceKey: `return:${o._id}`,
     category: 'Refund Request',
     type: 'Order Return',
-    title: 'Refund Request #TXN-902',
-    subtitle: 'Customer: Priya Dev • Amount: ₹850',
-    details: 'Incorrect dog harness sizing delivered. Item returned and inspected by vendor.',
-    priority: 'Medium',
-    status: 'pending',
-    targetId: 'TXN-902',
-    navPath: '/admin/operations/refunds',
-    amount: '₹850',
-    applicant: 'Priya Dev',
-  },
-  {
-    seedKey: 'act_106',
-    category: 'Vendor Approval',
-    type: 'Memorial Service',
-    title: 'Rainbow Bridge Care Services',
-    subtitle: 'Last Ride Partner Registration',
-    details: 'Submitted tax registry and service menu for pet cremation & memorial plaques.',
-    priority: 'Medium',
-    status: 'pending',
-    targetId: 'VND-103',
-    navPath: '/admin/vendors/pending',
-    docName: 'GST_Registry_Cert.pdf',
-    applicant: 'Sanjay Dutt (Delhi)',
-  },
-  {
-    seedKey: 'act_107',
-    category: 'Moderation',
-    type: 'Review Comment',
-    title: 'Review Flag #RPT-502',
-    subtitle: 'Reported by: Rahul Kumar • Reason: Abusive Language',
-    details: 'Inappropriate language used in seller review comment on vendor page.',
-    priority: 'Normal',
-    status: 'pending',
-    targetId: 'RPT-502',
-    navPath: '/admin/platform/reports',
-    applicant: 'Reported User: AngryReviewer',
-  },
-];
+    title: `Return requested - ${o.orderNo}`,
+    subtitle: `${o.userId?.name || 'Customer'} - Rs ${Math.round((o.amounts?.total || 0) / 100).toLocaleString('en-IN')}`,
+    details: o.timeline?.slice(-1)[0]?.note || 'Return requested by customer.',
+    priority: 'High',
+    targetId: String(o._id),
+    navPath: '/admin/operations/returns',
+    amount: `Rs ${Math.round((o.amounts?.total || 0) / 100).toLocaleString('en-IN')}`,
+    applicant: o.userId?.name || '',
+  }));
+}
 
-export async function ensureActionItemsSeeded() {
-  const count = await AdminActionItem.countDocuments();
-  if (count === 0) {
-    for (const item of DEFAULT_ACTION_ITEMS) {
-      await AdminActionItem.updateOne({ seedKey: item.seedKey }, { $setOnInsert: item }, { upsert: true });
-    }
-  }
+async function collectOpenSupport() {
+  const { SupportTicket } = await import('../support/supportTicket.model.js');
+  const rows = await SupportTicket.find({ status: { $in: ['open', 'in_progress'] } })
+    .populate('userId', 'name role')
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+  return rows.map((t) => ({
+    sourceKey: `support:${t._id}`,
+    category: 'Support',
+    type: t.userId?.role === 'vendor' ? 'Partner Issue' : 'Customer Complaint',
+    title: t.subject || 'Support ticket',
+    subtitle: `${t.userId?.name || 'User'} - ${t.category || 'general'}`,
+    details: t.message || '',
+    priority: 'Medium',
+    targetId: String(t._id),
+    navPath: '/admin/operations/support',
+    applicant: t.userId?.name || '',
+  }));
+}
+
+/*
+ * Reports live in their own collection, so the count per post comes from an
+ * aggregation rather than an embedded array.
+ */
+async function collectReportedContent() {
+  const { Post, PostReport } = await import('../social/social.models.js');
+  const grouped = await PostReport.aggregate([
+    { $group: { _id: '$postId', count: { $sum: 1 }, reason: { $first: '$reason' } } },
+    { $sort: { count: -1 } },
+    { $limit: 50 },
+  ]);
+  if (!grouped.length) return [];
+
+  const posts = await Post.find({
+    _id: { $in: grouped.map((g) => g._id) },
+    deletedAt: null,
+    status: { $ne: 'hidden' },
+  })
+    .select('_id caption')
+    .lean();
+  const live = new Map(posts.map((post) => [String(post._id), post]));
+
+  return grouped
+    .filter((g) => live.has(String(g._id)))
+    .map((g) => ({
+      sourceKey: `post_report:${g._id}`,
+      category: 'Moderation',
+      type: 'Reported Post',
+      title: 'Reported community post',
+      subtitle: `${g.count} report(s)`,
+      details: g.reason || 'Reported by a community member.',
+      priority: g.count > 2 ? 'High' : 'Medium',
+      targetId: String(g._id),
+      navPath: '/admin/platform/reports',
+    }));
 }
 
 export async function listActionItems({ status = 'pending', category, priority } = {}) {
-  await ensureActionItemsSeeded();
+  /*
+   * Refreshed on read rather than on a schedule. The queue is small, it is
+   * opened a handful of times a day, and a stale action queue is worse than a
+   * slightly slower one - an operator acting on withdrawn work is exactly the
+   * failure this replaced.
+   */
+  await syncActionItems().catch(() => {});
   const filter = {};
   if (status && status !== 'All') filter.status = status;
   if (category && category !== 'All') filter.category = category;
   if (priority && priority !== 'All') filter.priority = priority;
 
-  const rows = await AdminActionItem.find(filter).sort({ priority: 1, createdAt: -1 });
+  const rows = await AdminActionItem.find(filter).sort({ createdAt: -1 }).lean();
+  // `priority` is a label, not a number - sorting on it put "High" before
+  // "Urgent" alphabetically and buried the things that actually mattered.
+  rows.sort(
+    (a, b) =>
+      (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9) ||
+      new Date(b.createdAt) - new Date(a.createdAt)
+  );
 
   return rows.map((r) => ({
     id: String(r._id),
-    seedKey: r.seedKey,
+    sourceKey: r.sourceKey,
     category: r.category,
     type: r.type,
     title: r.title,
@@ -183,76 +333,14 @@ export async function listActionItems({ status = 'pending', category, priority }
   }));
 }
 
-export async function resolveActionItem(actor, actionId, { action = 'approve', note = '' } = {}, ip = '') {
-  let item = null;
-
-  // 1. Try finding by MongoDB ObjectId
-  if (mongoose.isValidObjectId(actionId)) {
-    item = await AdminActionItem.findById(actionId);
-  }
-
-  // 2. Try matching seedKey, targetId, or normalized string ID (ACT-101 -> act_101)
-  if (!item) {
-    const normId = String(actionId).toLowerCase().replace('-', '_');
-    const numPart = String(actionId).replace(/\D/g, '');
-    item = await AdminActionItem.findOne({
-      $or: [
-        { seedKey: actionId },
-        { seedKey: normId },
-        { seedKey: numPart ? `act_${numPart}` : normId },
-        { targetId: actionId },
-        { targetId: actionId.toUpperCase() },
-      ],
-    });
-  }
-
-  // 3. Fallback: match seed in default list and insert into DB as resolved
-  if (!item) {
-    const normId = String(actionId).toLowerCase().replace('-', '_');
-    const numPart = String(actionId).replace(/\D/g, '');
-    const mock = DEFAULT_ACTION_ITEMS.find(
-      (m) =>
-        m.seedKey.toLowerCase() === normId ||
-        m.seedKey.toLowerCase() === actionId.toLowerCase() ||
-        (numPart && m.seedKey.endsWith(numPart)) ||
-        m.targetId.toLowerCase() === actionId.toLowerCase()
-    );
-    if (mock) {
-      item = await AdminActionItem.create({
-        ...mock,
-        status: action === 'approve' ? 'approved' : 'rejected',
-        resolvedBy: actor?.name || actor?.email || 'admin',
-        resolvedAt: new Date(),
-        note,
-      });
-    }
-  } else {
-    item.status = action === 'approve' ? 'approved' : 'rejected';
-    item.resolvedBy = actor?.name || actor?.email || 'admin';
-    item.resolvedAt = new Date();
-    if (note) item.note = note;
-    await item.save();
-  }
-
-  if (!item) throw ApiError.notFound(`Action item '${actionId}' not found`);
-
-  await writeAudit(actor, {
-    action: `action_item.${action}`,
-    targetType: item.category.toLowerCase().replace(/\s+/g, '_'),
-    targetId: String(item._id),
-    before: { status: 'pending' },
-    after: { status: item.status, note },
-    ip,
-  });
-
-  return {
-    id: String(item._id),
-    status: item.status,
-    message: `Action item '${item.title}' ${item.status} successfully`,
-  };
-}
-
-
+/*
+ * `resolveActionItem` moved to admin.actions.service.js.
+ *
+ * It lived here doing nothing but flipping a status flag, which is exactly why
+ * approving from the dashboard never changed anything. It now dispatches to the
+ * real operation behind each item, so it needs the ops/refund/social services
+ * that cannot be imported from this file without a cycle.
+ */
 
 /* ── Dashboard ────────────────────────────────────────────────────── */
 // Shared labels — this map covered only five of the eight vendor types, so

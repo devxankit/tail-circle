@@ -17,6 +17,12 @@ export const ORDER_STATUSES = [
 /** States a user may still cancel from (pre-shipment). */
 export const CANCELLABLE_STATUSES = ['pending_payment', 'placed', 'confirmed', 'packed'];
 
+/** Who ended the order — see the same field on Booking. */
+export const CANCELLED_BY = ['customer', 'vendor', 'admin', 'system'];
+
+/** How much of the customer's money has gone back. */
+export const REFUND_STATES = ['none', 'pending', 'partial', 'full', 'failed'];
+
 /**
  * Shop order. Item prices are RUPEE snapshots of what the user saw;
  * `amounts` are integer PAISE (what Razorpay is charged). Address is a
@@ -75,12 +81,29 @@ const orderSchema = new mongoose.Schema(
       default: 'pending_payment',
       index: true,
     },
+
+    /* ── Who ended it, and what happened to the money ──────────────── */
+    cancelledBy: { type: String, enum: CANCELLED_BY, default: null },
+    cancellationReason: { type: String, default: null },
+    cancelledAt: { type: Date, default: null },
+    /*
+     * Carried alongside `status` for the same reason as on Booking: an order
+     * can be `returned` and only partially refunded, and one field cannot hold
+     * both facts. `refundedAmount` is paise actually returned.
+     */
+    refundStatus: { type: String, enum: REFUND_STATES, default: 'none', index: true },
+    refundedAmount: { type: Number, default: 0 }, // paise
+
     timeline: [
       {
         _id: false,
         status: { type: String, required: true },
         at: { type: Date, default: Date.now },
         note: { type: String, default: '' },
+        /* Which surface caused the change — see the Booking timeline. */
+        by: { type: String, default: 'system' }, // customer | vendor | admin | system
+        byId: { type: mongoose.Schema.Types.ObjectId, default: null },
+        byName: { type: String, default: '' },
       },
     ],
   },
@@ -88,6 +111,9 @@ const orderSchema = new mongoose.Schema(
 );
 
 orderSchema.index({ userId: 1, createdAt: -1 });
+/* Admin ops lists filter by status and sort by recency. */
+orderSchema.index({ status: 1, createdAt: -1 });
+orderSchema.index({ vendorId: 1, status: 1, createdAt: -1 });
 
 orderSchema.pre('save', function assignOrderNo() {
   if (!this.orderNo) {

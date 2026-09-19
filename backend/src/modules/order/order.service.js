@@ -1,7 +1,6 @@
 import { ApiError } from '../../utils/ApiError.js';
 import { logger } from '../../utils/logger.js';
 import { invalidate } from '../../services/cache.service.js';
-import { refundPayment } from '../../services/razorpay.service.js';
 import {
   registerPurposeHandler,
   createOrder as createPaymentOrder,
@@ -9,11 +8,14 @@ import {
 import { notify } from '../../services/notify.js';
 import { postLedgerEntry, commissionFor } from '../vendor/vendor.service.js';
 import { Payment } from '../payment/payment.model.js';
+import { issueRefund } from '../payment/refund.service.js';
 import { Product } from '../shop/product.model.js';
 import { resolveBundleDiscounts } from '../shop/bundle.service.js';
 import { Address } from '../address/address.model.js';
 import { Cart } from '../cart/cart.model.js';
 import { Order, CANCELLABLE_STATUSES } from './order.model.js';
+import { createWithUniqueRef } from '../../utils/uniqueRef.js';
+import { alertVendor } from '../../services/vendorAlert.js';
 import { offlineVendorIds } from '../vendor/availability.service.js';
 
 // Mirrors the UI's summary math exactly: 5% tax, free delivery.
@@ -136,19 +138,25 @@ export async function checkout(user, { items: lines, addressId, paymentMethod })
   );
   const amounts = computeAmounts(items, bundleDiscount);
 
-  const order = await Order.create({
-    userId: user.id,
-    // Nothing ever set this, so every order was `vendorId: null` — the shop
-    // vendor portal queries orders by vendor, so sellers saw an empty order
-    // list forever and the commission ledger skipped every sale.
-    vendorId: singleVendorOf(items),
-    items,
-    amounts,
-    addressSnapshot: address.toObject(),
-    paymentMethod,
-    status: 'pending_payment',
-    timeline: [{ status: 'pending_payment', note: 'Order created' }],
-  });
+  const order = await createWithUniqueRef(
+    Order,
+    {
+      userId: user.id,
+      // Nothing ever set this, so every order was `vendorId: null` — the shop
+      // vendor portal queries orders by vendor, so sellers saw an empty order
+      // list forever and the commission ledger skipped every sale.
+      vendorId: singleVendorOf(items),
+      items,
+      amounts,
+      addressSnapshot: address.toObject(),
+      paymentMethod,
+      status: 'pending_payment',
+      timeline: [
+        { status: 'pending_payment', note: 'Order created', by: 'customer', byId: user.id, byName: user.name || '' },
+      ],
+    },
+    'orderNo'
+  );
 
   if (paymentMethod === 'cod') {
     if (!(await decrementStock(items))) {
@@ -242,6 +250,41 @@ async function notifyOrderPlaced(order) {
     link: '/app/profile/orders',
     data: { orderId: String(order._id), orderNo: order.orderNo },
   }).catch(() => {});
+
+  /*
+   * Tell the SELLER, which nothing here ever did.
+   *
+   * A paid order landed in the database and the only way a shop vendor found
+   * out was by refreshing their orders tab. That is the direct cause of the
+   * "order sat unshipped for days" failure the compliance sweeps now penalise
+   * partners for — so penalising them without ever telling them would be
+   * unfair as well as useless. Rings the panel, pushes to their phone.
+   *
+   * Alerted per seller: a basket split across two shops is two pieces of work.
+   */
+  const perVendor = new Map();
+  for (const item of order.items || []) {
+    if (!item.vendorId) continue; // platform stock, nobody to alert
+    const key = String(item.vendorId);
+    const bucket = perVendor.get(key) || { qty: 0, names: [] };
+    bucket.qty += item.qty || 1;
+    if (bucket.names.length < 2) bucket.names.push(item.name);
+    perVendor.set(key, bucket);
+  }
+
+  for (const [vendorId, bucket] of perVendor) {
+    const preview = bucket.names.join(', ');
+    const more = bucket.qty > bucket.names.length ? ` +${bucket.qty - bucket.names.length} more` : '';
+    await alertVendor(vendorId, {
+      kind: 'order_new',
+      title: 'New order',
+      body: `Order ${order.orderNo} — ${preview}${more}. Pack and dispatch to avoid an SLA breach.`,
+      link: '/vendor/shop/orders',
+      refId: order._id,
+      refLabel: order.orderNo,
+      data: { orderId: String(order._id), orderNo: order.orderNo },
+    });
+  }
 }
 
 /** Idempotent fulfilment — runs from verify AND webhook. */
@@ -303,33 +346,122 @@ export async function getOrder(userId, orderId) {
   return order;
 }
 
-/** Cancel pre-shipment; paid Razorpay orders are auto-refunded. */
-export async function cancelOrder(userId, orderId) {
-  const order = await Order.findOne({ _id: orderId, userId });
+/**
+ * Cancel pre-shipment; paid Razorpay orders are auto-refunded.
+ *
+ * Shared by the customer's cancel and an Admin override so both leave the same
+ * state. Ordering mirrors the booking path: the order is closed and stock
+ * restored first, then the refund runs as a recorded, retryable step — it
+ * previously threw on a gateway failure after stock had already moved.
+ */
+export async function cancelOrder(userId, orderId, options = {}) {
+  const query = userId ? { _id: orderId, userId } : { _id: orderId };
+  const order = await Order.findOne(query);
   if (!order) throw ApiError.notFound('Order not found');
-  if (!CANCELLABLE_STATUSES.includes(order.status)) {
+  if (!CANCELLABLE_STATUSES.includes(order.status) && !options.force) {
     throw ApiError.badRequest('This order can no longer be cancelled');
   }
+  return performOrderCancellation(order, {
+    by: 'customer',
+    reason: 'Cancelled by customer',
+    ...options,
+  });
+}
 
+export async function performOrderCancellation(
+  order,
+  { by = 'customer', actor = null, reason = '', refund = true, refundAmountPaise = null } = {}
+) {
   const wasCharged = order.status !== 'pending_payment';
 
   if (wasCharged) await restoreStock(order.items);
 
-  if (wasCharged && order.paymentMethod === 'razorpay' && order.paymentId) {
-    const payment = await Payment.findById(order.paymentId);
-    if (payment?.status === 'paid' && payment.razorpayPaymentId) {
-      await refundPayment(payment.razorpayPaymentId);
-      payment.status = 'refunded';
-      payment.refundedAmount = payment.amount;
-      await payment.save();
-      order.timeline.push({ status: 'refunded', note: 'Refund initiated to source' });
-    }
+  order.status = 'cancelled';
+  order.cancelledBy = by;
+  order.cancellationReason = reason || `Cancelled by ${by}`;
+  order.cancelledAt = new Date();
+  pushOrderTimeline(order, 'cancelled', order.cancellationReason, by, actor);
+  await order.save();
+
+  if (refund && wasCharged && order.paymentMethod === 'razorpay' && order.paymentId) {
+    await refundOrder(order, {
+      amountPaise: refundAmountPaise,
+      reason: reason || `Order cancelled by ${by}`,
+      initiatedBy: by,
+      actor,
+    });
   }
 
-  order.status = 'cancelled';
-  order.timeline.push({ status: 'cancelled', note: 'Cancelled by customer' });
-  await order.save();
+  await notify(order.userId, {
+    title: 'Order cancelled',
+    body:
+      by === 'customer'
+        ? `Order ${order.orderNo} has been cancelled.`
+        : `Order ${order.orderNo} was cancelled by the ${by}. Any payment is being refunded.`,
+    type: 'shop',
+    link: '/app/profile/orders',
+    data: { orderId: String(order._id) },
+  }).catch(() => {});
+
   return order;
+}
+
+/**
+ * Push money back for an order and keep its refund columns in step with the
+ * Refund register. Also reverses the seller's earning — a refunded order used
+ * to leave the vendor's ledger entry standing, so the platform paid out on a
+ * sale it had handed back.
+ */
+export async function refundOrder(order, { amountPaise = null, reason, initiatedBy = 'system', actor = null }) {
+  if (!order.paymentId) return null;
+  const payment = await Payment.findById(order.paymentId);
+  if (!payment || (payment.status !== 'paid' && payment.status !== 'partially_refunded')) return null;
+
+  const refund = await issueRefund({
+    payment,
+    amountPaise,
+    reason,
+    initiatedBy,
+    actor,
+    refType: 'order',
+    refId: order._id,
+    label: `Order ${order.orderNo}`,
+  });
+
+  if (refund.status === 'processed') {
+    const totalRefunded = (order.refundedAmount || 0) + refund.amount;
+    order.refundedAmount = totalRefunded;
+    order.refundStatus = totalRefunded >= (order.amounts?.total || 0) ? 'full' : 'partial';
+    pushOrderTimeline(
+      order,
+      'refunded',
+      `Refund ${refund.refundNo} of ${Math.round(refund.amount / 100).toLocaleString('en-IN')} initiated to source`,
+      initiatedBy,
+      actor
+    );
+  } else {
+    order.refundStatus = 'failed';
+    pushOrderTimeline(
+      order,
+      order.status,
+      `Refund ${refund.refundNo} FAILED: ${refund.failureReason || 'gateway error'} - queued for Admin retry`,
+      'system'
+    );
+  }
+  await order.save();
+  return refund;
+}
+
+/** Append a timeline entry that records who caused it. */
+export function pushOrderTimeline(order, status, note, by = 'system', actor = null) {
+  order.timeline.push({
+    status,
+    at: new Date(),
+    note: note || '',
+    by,
+    byId: actor?.id || actor?._id || null,
+    byName: actor?.name || actor?.email || '',
+  });
 }
 
 /** Request a return post-delivery (vendor processes it in Phase 9). */

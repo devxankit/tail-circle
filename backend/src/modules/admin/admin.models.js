@@ -87,7 +87,17 @@ const actionItemSchema = new mongoose.Schema(
     subtitle: { type: String, default: '' },
     details: { type: String, default: '' },
     priority: { type: String, enum: ['Urgent', 'High', 'Medium', 'Normal'], default: 'Medium' },
-    status: { type: String, enum: ['pending', 'approved', 'rejected', 'resolved'], default: 'pending' },
+    /*
+     * `processing` is a short-lived claim held while the underlying operation
+     * runs. Two admins clicking Approve at the same moment would otherwise both
+     * pass a plain `status === 'pending'` check — harmless for a vendor
+     * approval, but it would refund a customer twice on a failed-refund item.
+     */
+    status: {
+      type: String,
+      enum: ['pending', 'processing', 'approved', 'rejected', 'resolved'],
+      default: 'pending',
+    },
     targetId: { type: String, default: '' },
     navPath: { type: String, default: '' },
     docName: { type: String, default: '' },
@@ -96,11 +106,25 @@ const actionItemSchema = new mongoose.Schema(
     resolvedBy: { type: String, default: '' },
     resolvedAt: { type: Date, default: null },
     note: { type: String, default: '' },
-    seedKey: { type: String },
+    /*
+     * Stable natural key of the thing this item is about
+     * ("vendor:<id>", "refund_failed:<id>", …).
+     *
+     * Replaces `seedKey`, which existed only to make a list of invented demo
+     * rows idempotent. Every item is now derived from real data and upserted on
+     * this key, so a refresh updates the row in place instead of duplicating it,
+     * and an item whose cause has been resolved elsewhere is withdrawn.
+     */
+    sourceKey: { type: String },
+    seedKey: { type: String }, // legacy; retained so old rows still load
   },
   { timestamps: true }
 );
 actionItemSchema.index({ status: 1, createdAt: -1 });
+actionItemSchema.index(
+  { sourceKey: 1 },
+  { unique: true, partialFilterExpression: { sourceKey: { $type: 'string' } } }
+);
 
 export const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 export const Banner = mongoose.model('Banner', bannerSchema);

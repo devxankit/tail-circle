@@ -151,20 +151,53 @@ const vendorLedgerEntrySchema = new mongoose.Schema(
      * down on rounded amounts. Null on rows written before this field.
      */
     commissionRate: { type: Number, default: null },
+    /*
+     * Which direction the money moved.
+     *
+     * `earning` credits the vendor for a fulfilled sale. `reversal` claws it
+     * back when the customer is refunded, and carries NEGATIVE gross,
+     * commission and net so that summing a vendor's entries always yields
+     * their true payable. Before this existed a refunded booking left its
+     * earning row untouched: the vendor was paid for a sale the customer got
+     * their money back for, and the platform booked commission revenue that
+     * never existed.
+     */
+    kind: { type: String, enum: ['earning', 'reversal'], default: 'earning', index: true },
+    /** For reversals: the earning row being clawed back. */
+    reversalOf: { type: mongoose.Schema.Types.ObjectId, ref: 'VendorLedgerEntry', default: null },
+    /** For reversals: the Refund that triggered it, for reconciliation. */
+    refundId: { type: mongoose.Schema.Types.ObjectId, ref: 'Refund', default: null },
     status: { type: String, enum: ['unsettled', 'settled'], default: 'unsettled', index: true },
     settledPayoutId: { type: mongoose.Schema.Types.ObjectId, ref: 'Payout', default: null },
   },
   { timestamps: true }
 );
 /*
- * One entry per vendor per reference.
+ * One EARNING per vendor per reference.
  *
  * This was unique on (refType, refId) alone, which meant a single order could
  * only ever credit one seller — a basket mixing two shops silently dropped the
  * second one's earnings. Including `vendorId` keeps re-fulfilment (verify +
  * webhook) idempotent while letting each seller be paid for their own lines.
+ *
+ * Scoped to `kind: 'earning'` via a partial filter so reversals can coexist
+ * with the row they reverse — and so a sequence of partial refunds can each
+ * post their own reversal. Reversal idempotency is enforced per Refund
+ * (`refundId`) instead, below.
  */
-vendorLedgerEntrySchema.index({ vendorId: 1, refType: 1, refId: 1 }, { unique: true });
+vendorLedgerEntrySchema.index(
+  { vendorId: 1, refType: 1, refId: 1 },
+  { unique: true, partialFilterExpression: { kind: 'earning' } }
+);
+/*
+ * One reversal per Refund per vendor, so retrying a failed ledger reversal
+ * cannot double-debit the vendor. Partial-filtered because `refundId` is null
+ * on every earning row and nulls would otherwise collide.
+ */
+vendorLedgerEntrySchema.index(
+  { vendorId: 1, refundId: 1 },
+  { unique: true, partialFilterExpression: { refundId: { $type: 'objectId' } } }
+);
 vendorLedgerEntrySchema.index({ vendorId: 1, createdAt: -1 });
 
 export const VendorLedgerEntry = mongoose.model('VendorLedgerEntry', vendorLedgerEntrySchema);

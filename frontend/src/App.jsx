@@ -317,6 +317,15 @@ const UpdateAllergies = lazy(() => import('./modules/user/features/meals/screens
 const PauseSubscription = lazy(() => import('./modules/user/features/meals/screens/PauseSubscription').then(m => ({ default: m.PauseSubscription })));
 const MealSubscribeFlow = lazy(() => import('./modules/user/features/meals/MealSubscribeFlow').then(m => ({ default: m.MealSubscribeFlow })));
 const UserMealDashboard = lazy(() => import('./modules/user/features/meals/MealDashboard').then(m => ({ default: m.MealDashboard })));
+import { VendorAlertProvider } from './context/VendorAlertContext';
+
+/*
+ * One compliance page serves every partner panel. The API resolves which
+ * business line is being viewed from the `X-Vendor-Type` header the panel
+ * already sets, so there is nothing per-type to duplicate here.
+ */
+const VendorCompliancePage = lazy(() => import('./modules/Admin/components/VendorCompliancePage').then(m => ({ default: m.VendorCompliancePage || m.default })));
+
 const VendorLayout = lazy(() => import('./modules/Admin/layouts/VendorLayout').then(m => ({ default: m.VendorLayout || m.default })));
 const AdminLayout = lazy(() => import('./modules/Admin/layouts/AdminLayout').then(m => ({ default: m.AdminLayout || m.default })));
 const VendorAuth = lazy(() => import('./modules/Admin/auth/VendorAuth').then(m => ({ default: m.VendorAuth || m.default })));
@@ -393,6 +402,7 @@ const DoctorsClinics = lazy(() => import('./modules/Admin/admin/views/vendors/Do
 const MemorialProviders = lazy(() => import('./modules/Admin/admin/views/vendors/MemorialProviders').then(m => ({ default: m.MemorialProviders || m.default })));
 const VendorDocuments = lazy(() => import('./modules/Admin/admin/views/vendors/VendorDocuments').then(m => ({ default: m.VendorDocuments || m.default })));
 const VendorPerformance = lazy(() => import('./modules/Admin/admin/views/vendors/VendorPerformance').then(m => ({ default: m.VendorPerformance || m.default })));
+const VendorCompliance = lazy(() => import('./modules/Admin/admin/views/vendors/VendorCompliance').then(m => ({ default: m.VendorCompliance || m.default })));
 const Orders = lazy(() => import('./modules/Admin/admin/views/operations/Orders').then(m => ({ default: m.Orders || m.default })));
 const Bookings = lazy(() => import('./modules/Admin/admin/views/operations/Bookings').then(m => ({ default: m.Bookings || m.default })));
 const Appointments = lazy(() => import('./modules/Admin/admin/views/operations/Appointments').then(m => ({ default: m.Appointments || m.default })));
@@ -415,6 +425,7 @@ const Commission = lazy(() => import('./modules/Admin/admin/views/finance/Commis
 const AdminVendorPayouts = lazy(() => import('./modules/Admin/admin/views/finance/VendorPayouts').then(m => ({ default: m.VendorPayouts || m.default })));
 const AdminWallet = lazy(() => import('./modules/Admin/admin/views/finance/Wallet').then(m => ({ default: m.Wallet || m.default })));
 const TaxGSTReports = lazy(() => import('./modules/Admin/admin/views/finance/TaxGSTReports').then(m => ({ default: m.TaxGSTReports || m.default })));
+const AdminRefunds = lazy(() => import('./modules/Admin/admin/views/finance/Refunds').then(m => ({ default: m.Refunds || m.default })));
 const AdminNotifications = lazy(() => import('./modules/Admin/admin/views/platform/Notifications').then(m => ({ default: m.Notifications || m.default })));
 const AdminCommunity = lazy(() => import('./modules/Admin/admin/views/platform/Community').then(m => ({ default: m.Community || m.default })));
 const Reviews = lazy(() => import('./modules/Admin/admin/views/platform/Reviews').then(m => ({ default: m.Reviews || m.default })));
@@ -497,7 +508,15 @@ function ProtectedVendorRoute({ children, allow }) {
     }
     if (match) setActiveVendorType(match);
   }
-  return children;
+  /*
+   * Every authenticated vendor surface is wrapped here rather than at each
+   * `/vendor/*` route block. Partner panels are mounted from several separate
+   * top-level routes (shop, meals, events, memorial, the shared layout), so
+   * wrapping per block would guarantee one of them silently misses the ring —
+   * and the panel that misses it is the one whose partner gets suspended for
+   * not responding.
+   */
+  return <VendorAlertProvider>{children}</VendorAlertProvider>;
 }
 
 function App() {
@@ -657,6 +676,7 @@ function App() {
                   <Route path="vendors/memorial" element={<MemorialProviders />} />
                   <Route path="vendors/documents" element={<VendorDocuments />} />
                   <Route path="vendors/performance" element={<VendorPerformance />} />
+                  <Route path="vendors/compliance" element={<VendorCompliance />} />
 
                   {/* Operations */}
                   <Route path="operations/orders" element={<Orders />} />
@@ -683,6 +703,7 @@ function App() {
                   <Route path="finance/payments" element={<Payments />} />
                   <Route path="finance/commission" element={<Commission />} />
                   <Route path="finance/payouts" element={<AdminVendorPayouts />} />
+                  <Route path="finance/refunds" element={<AdminRefunds />} />
                   <Route path="finance/wallet" element={<AdminWallet />} />
                   <Route path="finance/tax" element={<TaxGSTReports />} />
 
@@ -741,6 +762,7 @@ function App() {
                   <Route path="meal/plans" element={<Navigate to="/vendor/meal-provider/dashboard" replace />} />
                   <Route path="event/packages" element={<Navigate to="/vendor/events-organizer" replace />} />
                   <Route path="memorial/requests" element={<Navigate to="/vendor/memorial-provider" replace />} />
+                  <Route path="compliance" element={<VendorCompliancePage />} />
                   <Route path="settings" element={<VendorSettings />} />
                   <Route path="payouts" element={<VendorPayouts />} />
                   <Route path="support" element={<VendorSupport />} />
@@ -755,6 +777,7 @@ function App() {
                   <Route path="returns" element={<ShopReturnsView />} />
                   <Route path="feedback" element={<ShopFeedbackView />} />
                   <Route path="finance" element={<ShopFinanceView />} />
+                  <Route path="compliance" element={<VendorCompliancePage />} />
                   <Route path="settings" element={<ShopSettingsView />} />
                   <Route path="*" element={<Navigate to="/vendor/shop-provider" replace />} />
                 </Route>
@@ -771,6 +794,7 @@ function App() {
                   <Route path="feedback" element={<CustomerFeedbackView />} />
 
                   <Route path="finance" element={<FinanceCenterView />} />
+                  <Route path="compliance" element={<VendorCompliancePage />} />
                   <Route path="settings" element={<BusinessControlCenterView />} />
 
                   {/* Redirects for removed legacy routes */}
@@ -797,6 +821,7 @@ function App() {
                   <Route path="requests" element={<CustomerRequestsView />} />
                   <Route path="feedback" element={<EventsFeedbackView />} />
                   <Route path="finance" element={<EventsFinanceView />} />
+                  <Route path="compliance" element={<VendorCompliancePage />} />
                   <Route path="settings" element={<EventsSettingsView />} />
                   <Route path="*" element={<Navigate to="/vendor/events-organizer" replace />} />
                 </Route>
@@ -812,6 +837,7 @@ function App() {
                   <Route path="proofs" element={<ServiceProofsView />} />
                   <Route path="support" element={<MemorialSupport />} />
                   <Route path="finance" element={<MemorialFinance />} />
+                  <Route path="compliance" element={<VendorCompliancePage />} />
                   <Route path="settings" element={<MemorialSettings />} />
                   <Route path="*" element={<Navigate to="/vendor/memorial-provider" replace />} />
                 </Route>

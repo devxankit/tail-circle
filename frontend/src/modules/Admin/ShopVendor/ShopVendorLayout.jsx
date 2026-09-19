@@ -7,14 +7,14 @@ import { BusinessSwitcher } from '../vendor/BusinessSwitcher';
 import {
   LayoutDashboard, ShoppingBag, ShoppingCart,
   Package, RefreshCcw, Star, Wallet, Settings,
-  LogOut, Bell, Menu, CheckCircle, Store, Image as ImageIcon
-} from 'lucide-react';
+  LogOut, Bell, Menu, CheckCircle, Store, Image as ImageIcon, ShieldCheck} from 'lucide-react';
 import { cn } from '../../user/utils/cn';
 
 import { updateVendorProfile } from '../../../services/vendor';
 
 import VerificationBanner from '../components/VerificationBanner';
 import { VendorAvailabilityToggle } from '../vendor/VendorAvailabilityToggle';
+import { VendorComplianceBanner } from '../components/VendorComplianceBanner';
 
 export function ShopVendorLayout() {
   const { profile, setProfile, notifications, setNotifications } = useShopVendor();
@@ -93,6 +93,7 @@ export function ShopVendorLayout() {
       items: [
         { name: 'Customer Feedback', path: '/vendor/shop-provider/feedback', icon: Star },
         { name: 'Finance Center', path: '/vendor/shop-provider/finance', icon: Wallet },
+        { name: 'Service Standing', path: '/vendor/shop-provider/compliance', icon: ShieldCheck },
         { name: 'Business Control Center', path: '/vendor/shop-provider/settings', icon: Settings },
       ]
     }
@@ -384,6 +385,7 @@ export function ShopVendorLayout() {
                 approvalStatus={profile?.approvalStatus || 'pending'}
                 kycPath="/vendor/shop-provider/settings"
               />
+              <VendorComplianceBanner />
               <Outlet />
             </div>
           </div>

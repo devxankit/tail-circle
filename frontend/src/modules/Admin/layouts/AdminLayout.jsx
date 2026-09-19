@@ -34,6 +34,7 @@ const navigationGroups = [
       { label: 'Last Ride Partners', path: '/admin/vendors/memorial' },
       { label: 'Vendor Documents', path: '/admin/vendors/documents' },
       { label: 'Vendor Performance', path: '/admin/vendors/performance' },
+      { label: 'Compliance & Violations', path: '/admin/vendors/compliance' },
     ]
   },
   {
@@ -72,6 +73,7 @@ const navigationGroups = [
       { label: 'Payments', path: '/admin/finance/payments' },
       { label: 'Commission', path: '/admin/finance/commission' },
       { label: 'Vendor Payouts', path: '/admin/finance/payouts' },
+      { label: 'Refunds', path: '/admin/finance/refunds' },
       { label: 'Wallet', path: '/admin/finance/wallet' },
       { label: 'Tax / GST Reports', path: '/admin/finance/tax' },
     ]
