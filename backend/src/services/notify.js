@@ -67,6 +67,78 @@ function markChannel(id, channel, { status, error = null, devices = 0 }) {
 }
 
 /**
+ * Re-send notifications whose push failed.
+ *
+ * Failures were visible but never retried, which meant a customer whose phone
+ * was briefly unreachable simply never found out their booking was cancelled.
+ * FCM failures are overwhelmingly transient — a dropped connection, a token
+ * refresh mid-flight — so one retry recovers most of them.
+ *
+ * Only `failed` is retried. `skipped` means the user has no registered device,
+ * which retrying cannot fix, and `sent` is already delivered.
+ *
+ * Attempts are capped so a permanently broken token cannot be retried forever
+ * on every sweep.
+ */
+export async function retryFailedPushes({ hours = 24, limit = 100, maxAttempts = 3 } = {}) {
+  const since = new Date(Date.now() - hours * 3600_000);
+  const rows = await Notification.find({
+    createdAt: { $gte: since },
+    'delivery.push.status': 'failed',
+    'delivery.push.attempts': { $lt: maxAttempts },
+  })
+    .sort({ createdAt: -1 })
+    .limit(limit);
+
+  let recovered = 0;
+  for (const doc of rows) {
+    try {
+      const res = await sendToUser(doc.userId, {
+        title: doc.title,
+        body: doc.body,
+        data: { type: doc.type, link: doc.link || '', ...toStringMap(doc.data || {}) },
+      });
+      const sent = res?.sent || 0;
+      if (sent > 0) {
+        recovered += 1;
+        await Notification.updateOne(
+          { _id: doc._id },
+          {
+            $set: {
+              pushedAt: new Date(),
+              'delivery.push.status': 'sent',
+              'delivery.push.error': null,
+              'delivery.push.at': new Date(),
+              'delivery.push.devices': sent,
+            },
+            $inc: { 'delivery.push.attempts': 1 },
+          }
+        );
+      } else {
+        await Notification.updateOne(
+          { _id: doc._id },
+          {
+            $inc: { 'delivery.push.attempts': 1 },
+            $set: { 'delivery.push.at': new Date() },
+          }
+        );
+      }
+    } catch (err) {
+      await Notification.updateOne(
+        { _id: doc._id },
+        {
+          $inc: { 'delivery.push.attempts': 1 },
+          $set: { 'delivery.push.error': err.message, 'delivery.push.at': new Date() },
+        }
+      ).catch(() => {});
+    }
+  }
+
+  if (recovered) logger.info(`Notification retry recovered ${recovered}/${rows.length} failed push(es)`);
+  return { attempted: rows.length, recovered };
+}
+
+/**
  * Notification delivery health for the Admin platform screen: how many went
  * out, how many failed, and the most recent failures with their reasons.
  */

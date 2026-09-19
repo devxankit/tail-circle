@@ -46,6 +46,33 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
 });
 
 /**
+ * Attach `req.user` when a valid token is present, and carry on when it is not.
+ *
+ * For endpoints a logged-OUT visitor must still reach, where knowing who they
+ * are changes the result but is not required — activity tracking is the first:
+ * a guest browsing the app produces events that matter, and they sign in
+ * partway through the same visit.
+ *
+ * Never throws. A malformed, expired or revoked token is treated exactly like
+ * no token at all, because the alternative is breaking an anonymous request
+ * over a credential it never needed.
+ */
+export const optionalAuth = asyncHandler(async (req, _res, next) => {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return next();
+
+  try {
+    const payload = jwt.verify(token, env.jwt.accessSecret);
+    const user = await User.findById(payload.sub);
+    if (user && !user.isBlocked) req.user = user;
+  } catch {
+    /* Anonymous is a valid outcome here. */
+  }
+  return next();
+});
+
+/**
  * Restrict a route to specific roles. Use after `authenticate`.
  * Usage: router.get('/', authenticate, authorize('admin'), handler)
  */

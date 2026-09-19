@@ -19,7 +19,7 @@ import {
   Info,
   Sparkles,
   Trash2
-} from 'lucide-react';
+, Shield} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../../../services/api';
 import { getStoredUser, fetchMe, logout } from '../../../../services/auth';
@@ -356,6 +356,11 @@ export function Profile() {
         {/* App Settings */}
         <h3 className="text-xs font-bold text-text-secondary uppercase mb-2 pl-2">App</h3>
         <div className="bg-white rounded-[24px] border border-border-light mb-6 overflow-hidden shadow-sm">
+          <button onClick={() => navigate('/app/profile/privacy')} className="w-full flex items-center p-4 hover:bg-bg-secondary transition-colors border-b border-border-light/50">
+            <Shield size={20} className="text-text-secondary mr-3" />
+            <span className="flex-1 text-left text-sm font-semibold text-text-primary">Privacy &amp; Cookies</span>
+            <ChevronRight size={20} className="text-text-disabled" />
+          </button>
           <button onClick={() => navigate('/app/notifications')} className="w-full flex items-center p-4 hover:bg-bg-secondary transition-colors border-b border-border-light/50">
             <Bell size={20} className="text-text-secondary mr-3" />
             <span className="flex-1 text-left text-sm font-semibold text-text-primary">Notifications</span>

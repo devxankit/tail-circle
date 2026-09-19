@@ -9,6 +9,7 @@ import { api } from '../../../../../services/api';
 import { DaycareFilters } from '../components/DaycareFilters';
 import { useDaycareStore } from '../../../../../store/useDaycareStore';
 import { useVoiceSearch } from '../../../../../hooks/useVoiceSearch';
+import { useTrackSearch } from '../../../../../hooks/useTrackSearch';
 
 const formatDateDisplay = (dateStr) => {
   if (!dateStr) return '';
@@ -303,6 +304,9 @@ export function DaycareListing() {
       center.facilities.some(f => f.toLowerCase().includes(query))
     );
   });
+
+  // Reports what customers searched for, and how many results they got.
+  useTrackSearch(searchQuery, filteredDaycares.length);
 
   return (
     <div className="flex flex-col h-full bg-[#FAF7F2] overflow-y-auto hide-scrollbar animate-in slide-in-from-right duration-300 relative pb-24">

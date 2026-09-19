@@ -306,6 +306,7 @@ const MyOrders = lazy(() => import('./modules/user/features/profile/screens/MyOr
 const SavedItems = lazy(() => import('./modules/user/features/profile/screens/SavedItems').then(m => ({ default: m.SavedItems })));
 const MyPosts = lazy(() => import('./modules/user/features/profile/screens/MyPosts').then(m => ({ default: m.MyPosts })));
 const AddressBook = lazy(() => import('./modules/user/features/profile/screens/AddressBook').then(m => ({ default: m.AddressBook })));
+const PrivacySettings = lazy(() => import('./modules/user/features/profile/screens/PrivacySettings').then(m => ({ default: m.PrivacySettings || m.default })));
 const AddAddress = lazy(() => import('./modules/user/features/profile/screens/AddAddress').then(m => ({ default: m.AddAddress })));
 const HelpSupport = lazy(() => import('./modules/user/features/profile/screens/HelpSupport').then(m => ({ default: m.HelpSupport })));
 const EditProfile = lazy(() => import('./modules/user/features/profile/screens/EditProfile').then(m => ({ default: m.EditProfile })));
@@ -318,6 +319,8 @@ const PauseSubscription = lazy(() => import('./modules/user/features/meals/scree
 const MealSubscribeFlow = lazy(() => import('./modules/user/features/meals/MealSubscribeFlow').then(m => ({ default: m.MealSubscribeFlow })));
 const UserMealDashboard = lazy(() => import('./modules/user/features/meals/MealDashboard').then(m => ({ default: m.MealDashboard })));
 import { VendorAlertProvider } from './context/VendorAlertContext';
+import { CookieConsent } from './components/common/CookieConsent';
+import { useActivityTracking } from './hooks/useActivityTracking';
 
 /*
  * One compliance page serves every partner panel. The API resolves which
@@ -409,6 +412,8 @@ const Appointments = lazy(() => import('./modules/Admin/admin/views/operations/A
 const Deliveries = lazy(() => import('./modules/Admin/admin/views/operations/Deliveries').then(m => ({ default: m.Deliveries || m.default })));
 const Returns = lazy(() => import('./modules/Admin/admin/views/operations/Returns').then(m => ({ default: m.Returns || m.default })));
 const Support = lazy(() => import('./modules/Admin/admin/views/operations/Support').then(m => ({ default: m.Support || m.default })));
+const Disputes = lazy(() => import('./modules/Admin/admin/views/operations/Disputes').then(m => ({ default: m.Disputes || m.default })));
+const OpsQueues = lazy(() => import('./modules/Admin/admin/views/operations/OpsQueues').then(m => ({ default: m.OpsQueues || m.default })));
 const Products = lazy(() => import('./modules/Admin/admin/views/services/Products').then(m => ({ default: m.Products || m.default })));
 const ProductCategories = lazy(() => import('./modules/Admin/admin/views/services/ProductCategories').then(m => ({ default: m.ProductCategories || m.default })));
 const MealPlans = lazy(() => import('./modules/Admin/admin/views/services/MealPlans').then(m => ({ default: m.MealPlans || m.default })));
@@ -426,14 +431,15 @@ const AdminVendorPayouts = lazy(() => import('./modules/Admin/admin/views/financ
 const AdminWallet = lazy(() => import('./modules/Admin/admin/views/finance/Wallet').then(m => ({ default: m.Wallet || m.default })));
 const TaxGSTReports = lazy(() => import('./modules/Admin/admin/views/finance/TaxGSTReports').then(m => ({ default: m.TaxGSTReports || m.default })));
 const AdminRefunds = lazy(() => import('./modules/Admin/admin/views/finance/Refunds').then(m => ({ default: m.Refunds || m.default })));
+const Reconciliation = lazy(() => import('./modules/Admin/admin/views/finance/Reconciliation').then(m => ({ default: m.Reconciliation || m.default })));
 const AdminNotifications = lazy(() => import('./modules/Admin/admin/views/platform/Notifications').then(m => ({ default: m.Notifications || m.default })));
 const AdminCommunity = lazy(() => import('./modules/Admin/admin/views/platform/Community').then(m => ({ default: m.Community || m.default })));
 const Reviews = lazy(() => import('./modules/Admin/admin/views/platform/Reviews').then(m => ({ default: m.Reviews || m.default })));
 const BannersContent = lazy(() => import('./modules/Admin/admin/views/platform/BannersContent').then(m => ({ default: m.BannersContent || m.default })));
 const HomeServiceImages = lazy(() => import('./modules/Admin/admin/views/platform/HomeServiceImages').then(m => ({ default: m.HomeServiceImages || m.default })));
-const HomeServiceImages = lazy(() => import('./modules/Admin/admin/views/platform/HomeServiceImages').then(m => ({ default: m.HomeServiceImages || m.default })));
 const PetPromptsAdminView = lazy(() => import('./modules/Admin/admin/views/platform/PetPromptsAdminView').then(m => ({ default: m.PetPromptsAdminView || m.default })));
 const Reports = lazy(() => import('./modules/Admin/admin/views/platform/Reports').then(m => ({ default: m.Reports || m.default })));
+const CustomerBehaviour = lazy(() => import('./modules/Admin/admin/views/platform/CustomerBehaviour').then(m => ({ default: m.CustomerBehaviour || m.default })));
 const Security = lazy(() => import('./modules/Admin/admin/views/platform/Security').then(m => ({ default: m.Security || m.default })));
 const Staff = lazy(() => import('./modules/Admin/admin/views/platform/Staff').then(m => ({ default: m.Staff || m.default })));
 const AdminSettings = lazy(() => import('./modules/Admin/admin/views/platform/Settings').then(m => ({ default: m.AdminSettings || m.Settings || m.default })));
@@ -520,11 +526,24 @@ function ProtectedVendorRoute({ children, allow }) {
   return <VendorAlertProvider>{children}</VendorAlertProvider>;
 }
 
+/**
+ * Screen tracking lives in its own component because the hook needs
+ * `useLocation`, which is only available INSIDE the router. Renders nothing.
+ */
+function ActivityTracker() {
+  useActivityTracking();
+  return null;
+}
+
 function App() {
   return (
     <BrowserRouter>
       <MobileWrapper>
         <ErrorBoundary>
+          {/* Tracks route changes; silent until the visitor accepts cookies. */}
+          <ActivityTracker />
+          {/* Shown on first arrival only, and only until a choice is made. */}
+          <CookieConsent />
           {/* Wraps the router so an in-progress consultation survives navigation. */}
           <CallProvider>
             {/* Inner boundary: a page that throws is contained here, so the call
@@ -643,6 +662,8 @@ function App() {
                   <Route path="/app/profile/bookings" element={<BookingHistory />} />
                   <Route path="/app/profile/bookings/:id" element={<BookingDetail />} />
                   <Route path="/app/profile/orders" element={<MyOrders />} />
+                  {/* Reached from the cookie banner's "change your mind in Settings". */}
+                  <Route path="/app/profile/privacy" element={<PrivacySettings />} />
                   <Route path="/app/profile/address" element={<AddressBook />} />
                   <Route path="/app/profile/address/add" element={<AddAddress />} />
                   <Route path="/app/profile/saved" element={<SavedItems />} />
@@ -666,8 +687,6 @@ function App() {
                   <Route path="users" element={<Users />} />
                   {/* Pet management moved into User Management; keep old links working. */}
                   <Route path="pets" element={<Navigate to="/admin/users" replace />} />
-                  {/* Pet management moved into User Management; keep old links working. */}
-                  <Route path="pets" element={<Navigate to="/admin/users" replace />} />
 
                   {/* Vendors */}
                   <Route path="vendors" element={<AllVendors />} />
@@ -688,6 +707,8 @@ function App() {
                   <Route path="operations/deliveries" element={<Deliveries />} />
                   <Route path="operations/refunds" element={<Returns />} />
                   <Route path="operations/support" element={<Support />} />
+                  <Route path="operations/disputes" element={<Disputes />} />
+                  <Route path="operations/queues" element={<OpsQueues />} />
 
                   {/* Services */}
                   <Route path="services/products" element={<Products />} />
@@ -707,6 +728,7 @@ function App() {
                   <Route path="finance/commission" element={<Commission />} />
                   <Route path="finance/payouts" element={<AdminVendorPayouts />} />
                   <Route path="finance/refunds" element={<AdminRefunds />} />
+                  <Route path="finance/reconciliation" element={<Reconciliation />} />
                   <Route path="finance/wallet" element={<AdminWallet />} />
                   <Route path="finance/tax" element={<TaxGSTReports />} />
 
@@ -716,9 +738,9 @@ function App() {
                   <Route path="platform/reviews" element={<Reviews />} />
                   <Route path="platform/content" element={<BannersContent />} />
                   <Route path="platform/service-images" element={<HomeServiceImages />} />
-                  <Route path="platform/service-images" element={<HomeServiceImages />} />
                   <Route path="platform/prompts" element={<PetPromptsAdminView />} />
                   <Route path="platform/reports" element={<Reports />} />
+                  <Route path="platform/behaviour" element={<CustomerBehaviour />} />
                   <Route path="platform/security" element={<Security />} />
                   <Route path="platform/staff" element={<Staff />} />
                   <Route path="platform/settings" element={<AdminSettings />} />

@@ -43,6 +43,8 @@ const notificationSchema = new mongoose.Schema(
         error: { type: String, default: null },
         at: { type: Date, default: null },
         devices: { type: Number, default: 0 },
+        /* Retry counter, so a permanently dead token is not retried forever. */
+        attempts: { type: Number, default: 0 },
       },
     },
 

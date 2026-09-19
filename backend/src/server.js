@@ -8,6 +8,7 @@ import { ensureDefaultPlans } from './modules/subscription/subscription.service.
 import { initSocket, getIO } from './sockets/index.js';
 import { applyDueCommissionSchedules } from './modules/admin/admin.finance.service.js';
 import { runComplianceSweeps } from './modules/compliance/compliance.sweeps.js';
+import { retryFailedPushes } from './services/notify.js';
 import { logger } from './utils/logger.js';
 
 async function start() {
@@ -86,6 +87,28 @@ async function start() {
     setTimeout(runComplianceSweep, 30_000).unref();
     const complianceTimer = setInterval(runComplianceSweep, 5 * 60_000);
     complianceTimer.unref();
+
+    /*
+     * Retry notifications whose push failed.
+     *
+     * FCM failures are overwhelmingly transient - a dropped connection, a token
+     * refreshing mid-send - so one retry recovers most of them. Without this a
+     * customer whose phone was briefly unreachable simply never learned their
+     * booking was cancelled.
+     *
+     * Every fifteen minutes, and capped per notification inside the function so
+     * a permanently dead token is not retried forever.
+     */
+    const runPushRetry = () =>
+      retryFailedPushes({ hours: 24, limit: 100 })
+        .then(({ attempted, recovered }) => {
+          if (attempted) logger.info(`Push retry: recovered ${recovered}/${attempted}`);
+        })
+        .catch((err) => logger.warn(`Push retry sweep failed: ${err.message}`));
+
+    setTimeout(runPushRetry, 60_000).unref();
+    const pushRetryTimer = setInterval(runPushRetry, 15 * 60_000);
+    pushRetryTimer.unref();
 
     let shuttingDown = false;
     const shutdown = async (signal) => {

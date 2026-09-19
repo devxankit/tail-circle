@@ -89,17 +89,6 @@ const vendorProfileSchema = new mongoose.Schema(
      * of its vendors.
      */
     commissionRate: { type: Number, default: null, min: 0, max: 1 },
-    /*
-     * Per-vendor commission override, as a fraction (0.1 === 10%).
-     *
-     * `null` means "inherit", which is the normal state: the rate then comes
-     * from the category default and finally the global default, resolved in
-     * commission.service.js. It defaulted to 0.15 before, which made every
-     * profile look deliberately customised and left no way to express
-     * inheritance -- changing the grooming category rate could not reach any
-     * of its vendors.
-     */
-    commissionRate: { type: Number, default: null, min: 0, max: 1 },
     rating: { type: Number, default: 0 },
 
     policies: {
@@ -222,9 +211,16 @@ const payoutSchema = new mongoose.Schema(
     tax: { type: Number, default: 0 },
     /* The tax fraction withheld, snapshotted so a settled payout stays explainable. */
     taxRate: { type: Number, default: null },
-    /* The tax fraction withheld, snapshotted so a settled payout stays explainable. */
-    taxRate: { type: Number, default: null },
     netAmount: { type: Number, default: 0 },
+    /*
+     * Earnings withheld from this payout because their booking is disputed.
+     *
+     * Recorded on the payout rather than left implicit, so a partner asking
+     * "why is this less than I expected?" has an answer on the document itself
+     * instead of a silent shortfall.
+     */
+    heldCount: { type: Number, default: 0 },
+    heldAmount: { type: Number, default: 0 }, // paise
     status: { type: String, enum: ['pending', 'processing', 'paid'], default: 'pending', index: true },
     utr: { type: String, default: null },
     lineItemIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'VendorLedgerEntry' }],

@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getGroomingShops } from '../../../../services/groomingApi';
 import { fetchPublicBanners } from '../../../../services/admin';
 import { useVoiceSearch } from '../../../../hooks/useVoiceSearch';
+import { useTrackSearch } from '../../../../hooks/useTrackSearch';
 
 /* USP strip shown under the hero banner. Mirrors the Daycare listing's
    TOP_BADGES so both services read as one Tail Circle ecosystem. */
@@ -77,6 +78,9 @@ export function GroomingList() {
       shop.location?.toLowerCase().includes(q)
     );
   });
+
+  // Reports what customers searched for, and how many results they got.
+  useTrackSearch(searchQuery, filteredShops.length);
 
   return (
     <div className="flex flex-col h-full bg-[#FAF7F2] absolute inset-0 z-50 animate-in slide-in-from-right text-text-primary overflow-y-auto pb-24 hide-scrollbar">

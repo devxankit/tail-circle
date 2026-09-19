@@ -11,6 +11,7 @@ import {
   setAdminUserBlocked,
 } from '../../../../../services/admin';
 import { Avatar } from '../../components/Avatar';
+import { CustomerActivityPanel } from '../../components/CustomerActivityPanel';
 
 /** "3 days ago" for the last-active readouts; null when the user never signed in. */
 const relativeTime = (value) => {
@@ -535,6 +536,14 @@ export function Users() {
                     Pets registered
                   </p>
                   {renderPetsPanel(user)}
+
+                  {/* What this customer actually does in the app. Shows an
+                      explicit "declined tracking" state rather than an empty
+                      list, which would read as inactivity. */}
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mt-4 mb-2">
+                    Activity
+                  </p>
+                  <CustomerActivityPanel userId={user.id} />
                 </div>
               )}
 
@@ -629,6 +638,12 @@ export function Users() {
                         Pets registered to {user.name}
                       </p>
                       {renderPetsPanel(user)}
+
+                      {/* Desktop table layout - same panel as the card view. */}
+                      <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider mt-4 mb-2">
+                        Activity
+                      </p>
+                      <CustomerActivityPanel userId={user.id} />
                     </td>
                   </tr>
                 )}

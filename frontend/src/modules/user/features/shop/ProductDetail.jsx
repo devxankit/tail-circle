@@ -9,6 +9,7 @@ import {
 } from '../../../../services/shop';
 import { api } from '../../../../services/api';
 import { ProductImage } from './ProductImage';
+import { useTrackItemView } from '../../../../hooks/useTrackItemView';
 
 export function ProductDetail() {
   const navigate = useNavigate();
@@ -22,6 +23,9 @@ export function ProductDetail() {
 
   // Product from the API (by legacy id or ObjectId)
   const [product, setProduct] = useState(null);
+
+  // Records what the customer looked at, and for how long.
+  useTrackItemView({ refType: 'product', refId: id, refName: product?.name, category: product?.category });
   const [selectedVariant, setSelectedVariant] = useState('');
   const [selectedPackSize, setSelectedPackSize] = useState(null);
 

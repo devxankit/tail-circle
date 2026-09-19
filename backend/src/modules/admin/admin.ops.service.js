@@ -260,7 +260,6 @@ export async function listAppointments() {
     .sort({ createdAt: -1 })
     .limit(300);
   const commissions = await commissionByRef(appts.map((b) => b._id));
-  const commissions = await commissionByRef(appts.map((b) => b._id));
   return appts.map((b) => {
     const fee = rupees(b.amounts?.total);
     return {
@@ -280,7 +279,6 @@ export async function listAppointments() {
       issue: b.meta?.issue || b.meta?.symptoms || '—',
       prescription: '—',
       fee: fee.toLocaleString('en-IN'),
-      commission: commissionCell(commissions, b._id),
       commission: commissionCell(commissions, b._id),
       emergencySurcharge: 0,
       status: b.meta?.clinicStatus || titleCase(b.status),
@@ -398,7 +396,7 @@ export async function resolveReturn(actor, orderId, action, ip, { amountPaise = 
       type: 'shop',
       link: '/app/profile/orders',
       data: { orderId: String(order._id) },
-    }).catch(() => { });
+    }).catch(() => {});
     return { id: order.orderNo || String(order._id), status: order.status };
   }
 
@@ -542,16 +540,16 @@ export async function getBookingDetail(bookingId) {
     },
     payment: payment
       ? {
-        id: String(payment._id),
-        status: payment.status,
-        method: payment.method || '—',
-        amount: rupees(payment.amount),
-        refundedAmount: rupees(payment.refundedAmount),
-        refundable: rupees((payment.amount || 0) - (payment.refundedAmount || 0)),
-        razorpayPaymentId: payment.razorpayPaymentId || '—',
-        webhookVerifiedAt: payment.webhookVerifiedAt,
-        failureReason: payment.failureReason,
-      }
+          id: String(payment._id),
+          status: payment.status,
+          method: payment.method || '—',
+          amount: rupees(payment.amount),
+          refundedAmount: rupees(payment.refundedAmount),
+          refundable: rupees((payment.amount || 0) - (payment.refundedAmount || 0)),
+          razorpayPaymentId: payment.razorpayPaymentId || '—',
+          webhookVerifiedAt: payment.webhookVerifiedAt,
+          failureReason: payment.failureReason,
+        }
       : null,
     refundStatus: booking.refundStatus,
     refundedAmount: rupees(booking.refundedAmount),
@@ -724,7 +722,7 @@ export async function adminSetBookingStatus(actor, bookingId, { status, reason, 
     type: 'booking',
     link: '/app/profile/bookings',
     data: { bookingId: String(booking._id) },
-  }).catch(() => { });
+  }).catch(() => {});
 
   return getBookingDetail(bookingId);
 }
@@ -768,14 +766,14 @@ export async function getOrderDetail(orderId) {
     paymentMethod: order.paymentMethod,
     payment: payment
       ? {
-        id: String(payment._id),
-        status: payment.status,
-        method: payment.method || '—',
-        amount: rupees(payment.amount),
-        refundedAmount: rupees(payment.refundedAmount),
-        refundable: rupees((payment.amount || 0) - (payment.refundedAmount || 0)),
-        razorpayPaymentId: payment.razorpayPaymentId || '—',
-      }
+          id: String(payment._id),
+          status: payment.status,
+          method: payment.method || '—',
+          amount: rupees(payment.amount),
+          refundedAmount: rupees(payment.refundedAmount),
+          refundable: rupees((payment.amount || 0) - (payment.refundedAmount || 0)),
+          razorpayPaymentId: payment.razorpayPaymentId || '—',
+        }
       : null,
     refundStatus: order.refundStatus,
     refundedAmount: rupees(order.refundedAmount),
@@ -897,7 +895,7 @@ export async function adminSetOrderStatus(actor, orderId, { status, reason }, ip
     type: 'shop',
     link: '/app/profile/orders',
     data: { orderId: String(order._id) },
-  }).catch(() => { });
+  }).catch(() => {});
 
   return getOrderDetail(orderId);
 }

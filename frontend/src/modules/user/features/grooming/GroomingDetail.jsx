@@ -3,6 +3,7 @@ import { ArrowLeft, Star, MapPin, Scissors, Info, ShowerHead, Flower2, Droplets,
 import { useParams, useNavigate } from 'react-router-dom';
 import { getGroomingShopById, getGroomingSlots } from '../../../../services/groomingApi';
 import { useGroomingStore } from '../../../../store/useGroomingStore';
+import { useTrackItemView } from '../../../../hooks/useTrackItemView';
 
 const ALL_SERVICES = [
   'Bath', 'Shampoo', 'Blow Dry', 'Brush', 'Nail Trim', 'Ear Clean', 
@@ -183,6 +184,9 @@ export function GroomingDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [shop, setShop] = useState(null);
+
+  // Records what the customer looked at, and for how long.
+  useTrackItemView({ refType: 'provider', refId: id, refName: shop?.name, category: 'grooming' });
   const [loading, setLoading] = useState(true);
 
   const [selectedPackage, setSelectedPackage] = useState(null);
