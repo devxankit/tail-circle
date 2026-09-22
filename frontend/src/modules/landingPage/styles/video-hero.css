@@ -14,6 +14,9 @@
 }
 
 /* ── Section Root ────────────────────────────────────────────────────────── */
+.tc-ref-root section.tc-hero-section,
+.tc-ref-root .tc-hero-section,
+section.tc-hero-section,
 .tc-hero-section {
   position: relative;
   width: 100%;
@@ -22,68 +25,42 @@
   color: var(--tc-text-dark);
   box-sizing: border-box;
   overflow: hidden;
-  margin: 0;
-  padding: 0;
-}
-
-/* Background Soft Ambient Blobs */
-.tc-hero-ambient-blob-mint {
-  position: absolute;
-  top: -120px;
-  right: -80px;
-  width: 620px;
-  height: 620px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(8, 127, 120, 0.08) 0%, rgba(255, 255, 255, 0) 70%);
-  pointer-events: none;
-  z-index: 0;
-}
-
-.tc-hero-ambient-blob-coral {
-  position: absolute;
-  bottom: -80px;
-  left: -80px;
-  width: 540px;
-  height: 540px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(244, 91, 75, 0.06) 0%, rgba(255, 255, 255, 0) 70%);
-  pointer-events: none;
-  z-index: 0;
+  margin: 0 !important;
+  margin-top: 0 !important;
+  padding: 0 !important;
+  padding-top: 0 !important;
 }
 
 /* ── Top Header / Navbar ─────────────────────────────────────────────────── */
-/* ── Top Header / Navbar (Premium Floating Glass Capsule) ───────────────── */
+/* ── Top Header / Navbar (Full-Width Top Docked Frosted Glass) ───────────── */
 .tc-hero-header {
-  width: calc(100% - 32px);
-  max-width: 1180px;
-  margin: 16px auto 0;
-  padding: 8px 14px 8px 12px;
+  width: 100%;
+  margin: 0 !important;
+  padding: 0 !important;
+  position: sticky;
+  top: 0 !important;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1.5px solid rgba(8, 127, 120, 0.14);
+  box-shadow: 0 4px 20px rgba(8, 127, 120, 0.08), 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
+}
+
+.tc-hero-header-inner {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 10px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   box-sizing: border-box;
-  position: sticky;
-  top: 12px;
-  z-index: 100;
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border: 1.5px solid rgba(8, 127, 120, 0.16);
-  border-radius: 9999px;
-  box-shadow: 
-    0 12px 36px -6px rgba(8, 127, 120, 0.12),
-    0 4px 16px rgba(0, 0, 0, 0.03),
-    inset 0 1px 1px rgba(255, 255, 255, 0.95);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.tc-hero-header:hover {
-  border-color: rgba(8, 127, 120, 0.28);
-  box-shadow: 
-    0 16px 42px -6px rgba(8, 127, 120, 0.16),
-    0 6px 20px rgba(0, 0, 0, 0.04),
-    inset 0 1px 1px rgba(255, 255, 255, 1);
 }
 
 .tc-hero-brand {
@@ -437,42 +414,8 @@
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 13.5px;
   color: var(--tc-text-muted);
-  margin-top: 4px;
+  margin-top: 2px;
   user-select: none;
-}
-
-.tc-hero-avatar-stack {
-  display: flex;
-  align-items: center;
-  margin-right: 4px;
-}
-
-.tc-avatar-mini {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  border: 2px solid #FFFFFF;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-  background-size: cover;
-  background-position: center;
-  flex-shrink: 0;
-}
-
-.tc-avatar-dog {
-  background-image: url('/assets/images/avatar-dog.jpg');
-  z-index: 3;
-}
-
-.tc-avatar-cat {
-  background-image: url('/assets/images/avatar-cat.jpg');
-  margin-left: -8px;
-  z-index: 2;
-}
-
-.tc-avatar-pup {
-  background-image: url('/assets/images/avatar-puppy.jpg');
-  margin-left: -8px;
-  z-index: 1;
 }
 
 .tc-trust-stars-wrap {
@@ -502,130 +445,6 @@
 .tc-trust-text strong {
   color: var(--tc-teal);
   font-weight: 750;
-}
-
-/* ── Quick Value Badges ─────────────────────────────────────────────────── */
-.tc-hero-quick-features {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 18px;
-  flex-wrap: wrap;
-}
-
-.tc-quick-feat {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid rgba(8, 127, 120, 0.14);
-  box-shadow: 0 3px 10px rgba(8, 127, 120, 0.05);
-  border-radius: 9999px;
-  padding: 6px 14px;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
-  font-size: 12.5px;
-  font-weight: 700;
-  color: #2D3D3A;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
-  user-select: none;
-}
-
-.tc-quick-feat:hover {
-  transform: translateY(-2px);
-  border-color: rgba(8, 127, 120, 0.28);
-  box-shadow: 0 5px 14px rgba(8, 127, 120, 0.1);
-  background: #FFFFFF;
-}
-
-.tc-qf-icon {
-  font-size: 13px;
-  line-height: 1;
-}
-
-/* ── Floating Showcase Badges ───────────────────────────────────────────── */
-.tc-floating-badge {
-  position: absolute;
-  z-index: 15;
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1.5px solid rgba(255, 255, 255, 0.95);
-  box-shadow: 0 12px 28px -4px rgba(8, 127, 120, 0.18), 0 4px 12px rgba(0, 0, 0, 0.05);
-  border-radius: 9999px;
-  padding: 7px 15px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  user-select: none;
-  pointer-events: none;
-  animation: tcFloatBadge 4s ease-in-out infinite alternate;
-}
-
-.tc-floating-badge-top {
-  top: 18px;
-  left: -20px;
-}
-
-.tc-floating-badge-bottom {
-  bottom: 30px;
-  right: -24px;
-  animation-delay: -2s;
-  border-radius: 18px;
-  padding: 8px 14px;
-}
-
-@keyframes tcFloatBadge {
-  0% { transform: translateY(0px); }
-  100% { transform: translateY(-7px); }
-}
-
-.tc-fb-pulse-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #10B981;
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25);
-  animation: tcPulseGreen 2s infinite;
-}
-
-@keyframes tcPulseGreen {
-  0%, 100% { transform: scale(1); box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25); }
-  50% { transform: scale(1.15); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.15); }
-}
-
-.tc-fb-text {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  font-size: 12px;
-  font-weight: 800;
-  color: #07847E;
-  letter-spacing: 0.02em;
-}
-
-.tc-fb-emoji {
-  font-size: 18px;
-  line-height: 1;
-}
-
-.tc-fb-content {
-  display: flex;
-  flex-direction: column;
-  text-align: left;
-}
-
-.tc-fb-strong {
-  font-family: 'Outfit', sans-serif;
-  font-size: 12.5px;
-  font-weight: 850;
-  color: #151817;
-  line-height: 1.1;
-}
-
-.tc-fb-sub {
-  font-family: 'Inter', sans-serif;
-  font-size: 10.5px;
-  font-weight: 600;
-  color: #FF5B4D;
-  line-height: 1.15;
 }
 
 /* ── Dedicated Video Showcase Box ("Ek Badiya Box") ───────────────────────── */
@@ -759,32 +578,59 @@
 
 /* ── Responsive Optimization ─────────────────────────────────────────────── */
 
-@media (max-width: 480px) {
-  .tc-hero-header {
-    width: calc(100% - 20px);
-    margin: 8px auto 0;
-    padding: 6px 10px;
-    top: 8px;
+@media (max-width: 768px) {
+  .tc-hero-header-inner {
+    padding: 8px 16px;
+    gap: 12px;
   }
 
   .tc-hero-brand-mark {
-    width: 36px;
-    height: 36px;
-    flex: 0 0 36px;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
   }
 
   .tc-hero-brand-title {
-    font-size: 18.5px;
+    font-size: 19px;
   }
 
   .tc-hero-brand-sub {
-    font-size: 8.5px;
+    font-size: 9px;
   }
 
   .tc-hero-get-app-btn {
-    height: 36px;
-    padding: 0 14px;
-    font-size: 12.5px;
+    height: 38px;
+    padding: 0 16px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 480px) {
+  .tc-hero-header-inner {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .tc-hero-brand-mark {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+  }
+
+  .tc-hero-brand-title {
+    font-size: 17.5px;
+  }
+
+  .tc-hero-brand-sub {
+    font-size: 8px;
+    gap: 3px;
+  }
+
+  .tc-hero-get-app-btn {
+    height: 35px;
+    padding: 0 13px;
+    font-size: 12px;
+    gap: 5px;
   }
 
   .tc-hero-content-wrapper {
@@ -902,10 +748,6 @@
     justify-content: flex-start;
   }
 
-  .tc-hero-quick-features {
-    justify-content: flex-start;
-  }
-
   .tc-hero-showcase-wrapper {
     width: 100%;
     position: relative;
@@ -932,7 +774,7 @@
   }
 
   .tc-hero-video-box {
-    max-width: 345px;
+    max-width: 380px;
     width: 100%;
     margin: 0 auto;
     position: relative;
@@ -944,11 +786,11 @@
 /* ── Large Desktop Screens (1280px and up) ───────────────────────────────── */
 @media (min-width: 1280px) {
   .tc-hero-content-wrapper {
-    gap: 60px;
-    padding: 32px 32px 60px;
+    gap: 68px;
+    padding: 36px 32px 64px;
   }
 
   .tc-hero-video-box {
-    max-width: 360px;
+    max-width: 400px;
   }
 }

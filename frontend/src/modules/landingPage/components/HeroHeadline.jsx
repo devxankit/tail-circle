@@ -80,11 +80,6 @@ export function HeroHeadline({ onCtaClick }) {
 
       {/* ── Social Proof Trust Row (Desktop / Laptop) ────────────────── */}
       <div className="tc-hero-trust-row" aria-label="Rating and pet parent trust">
-        <div className="tc-hero-avatar-stack" aria-hidden="true">
-          <div className="tc-avatar-mini tc-avatar-dog" />
-          <div className="tc-avatar-mini tc-avatar-cat" />
-          <div className="tc-avatar-mini tc-avatar-pup" />
-        </div>
         <div className="tc-trust-stars-wrap" aria-hidden="true">
           <span className="tc-trust-star">★</span>
           <span className="tc-trust-star">★</span>
@@ -95,22 +90,6 @@ export function HeroHeadline({ onCtaClick }) {
         <span className="tc-trust-rating">4.9/5</span>
         <span className="tc-trust-divider" aria-hidden="true">•</span>
         <span className="tc-trust-text">Loved by <strong>10,000+</strong> pet parents</span>
-      </div>
-
-      {/* ── Quick Value Badges ─────────────────────────────────────────── */}
-      <div className="tc-hero-quick-features" aria-label="Key app benefits">
-        <div className="tc-quick-feat">
-          <span className="tc-qf-icon">⚡</span>
-          <span>Instant Booking</span>
-        </div>
-        <div className="tc-quick-feat">
-          <span className="tc-qf-icon">🛡️</span>
-          <span>Verified Care</span>
-        </div>
-        <div className="tc-quick-feat">
-          <span className="tc-qf-icon">❤️</span>
-          <span>Free Forever</span>
-        </div>
       </div>
     </div>
   );

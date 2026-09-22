@@ -58,10 +58,6 @@ export function VideoHeroOrbit({ onServiceClick, onCtaClick }) {
 
   return (
     <section className="tc-hero-section" aria-label="Tail Circle Hero Section">
-      {/* ── Ambient Background Lighting Glows ─────────────────────────── */}
-      <div className="tc-hero-ambient-blob-mint" aria-hidden="true" />
-      <div className="tc-hero-ambient-blob-coral" aria-hidden="true" />
-
       {/* ── Top Navigation Header ──────────────────────────────────────── */}
       <HeroHeader onCtaClick={onCtaClick} />
 
@@ -72,12 +68,6 @@ export function VideoHeroOrbit({ onServiceClick, onCtaClick }) {
 
         {/* ── Dedicated Video Showcase Box ("Ek badiya box ke andar") ───── */}
         <div className="tc-hero-showcase-wrapper">
-          {/* Floating Live Indicator Badge */}
-          <div className="tc-floating-badge tc-floating-badge-top" aria-hidden="true">
-            <span className="tc-fb-pulse-dot" />
-            <span className="tc-fb-text">10 Services Connected</span>
-          </div>
-
           <div className="tc-hero-video-box">
             {/* The Video Element Inside the Card Frame */}
             <video
@@ -101,15 +91,6 @@ export function VideoHeroOrbit({ onServiceClick, onCtaClick }) {
               isPlaying={isPlaying}
               onTogglePlay={handleTogglePlay}
             />
-          </div>
-
-          {/* Floating Social Proof Badge */}
-          <div className="tc-floating-badge tc-floating-badge-bottom" aria-hidden="true">
-            <span className="tc-fb-emoji">🐾</span>
-            <div className="tc-fb-content">
-              <span className="tc-fb-strong">Match Found!</span>
-              <span className="tc-fb-sub">98% Compatibility</span>
-            </div>
           </div>
 
           {/* 4 Carousel Dots Below Video Box */}

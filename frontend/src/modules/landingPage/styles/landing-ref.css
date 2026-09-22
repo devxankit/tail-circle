@@ -284,7 +284,7 @@
 }
 
 /* ── Services Section ────────────────────────────────────────────────────── */
-.tc-ref-root section {
+.tc-ref-root section:not(.tc-hero-section) {
   margin-top: 48px;
 }
 
@@ -666,7 +666,7 @@
     display: none;
   }
 
-  .tc-ref-root section {
+  .tc-ref-root section:not(.tc-hero-section) {
     margin-top: 38px;
   }
 
