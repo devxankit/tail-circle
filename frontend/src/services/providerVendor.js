@@ -90,3 +90,67 @@ export async function updateProviderBookingStatus(vertical, id, status, note) {
   const { data } = await api.patch(`${base(vertical)}/bookings/${id}/status`, { status, note });
   return data;
 }
+
+/**
+ * Accept a booking request that is waiting on this partner.
+ *
+ * Only reachable from `awaiting_vendor`. Partners on auto-confirm never see
+ * these — their bookings arrive already confirmed.
+ */
+export async function acceptProviderBooking(vertical, id, note = '') {
+  const { data } = await api.post(`${base(vertical)}/bookings/${id}/accept`, { note });
+  return data;
+}
+
+/** Decline a request. The customer is refunded in full, automatically. */
+export async function rejectProviderBooking(vertical, id, reason) {
+  const { data } = await api.post(`${base(vertical)}/bookings/${id}/reject`, { reason });
+  return data;
+}
+
+/* ── Booking requests awaiting this partner ───────────────── */
+
+/*
+ * Vertical-agnostic: the API resolves ownership per vertical, so one set of
+ * calls serves every panel. The `provider*` variants above address bookings
+ * under the grooming/daycare base paths.
+ */
+export async function fetchPendingBookingRequests() {
+  const { data } = await api.get('/vendor/bookings/pending');
+  return data;
+}
+
+export async function acceptBookingRequest(id, note = '') {
+  const { data } = await api.post(`/vendor/bookings/${id}/accept`, { note });
+  return data;
+}
+
+export async function rejectBookingRequest(id, reason) {
+  const { data } = await api.post(`/vendor/bookings/${id}/reject`, { reason });
+  return data;
+}
+
+/* ── Compliance standing ──────────────────────────────────── */
+
+/** This partner's service-failure record and how close they are to review. */
+export async function fetchVendorCompliance() {
+  const { data } = await api.get('/vendor/compliance');
+  return data;
+}
+
+export async function acknowledgeVendorCompliance() {
+  const { data } = await api.post('/vendor/compliance/acknowledge');
+  return data;
+}
+
+/** Warnings, withdrawals, suspensions and reinstatements sent to this partner. */
+export async function fetchVendorComplianceUpdates() {
+  const { data } = await api.get('/vendor/compliance/updates');
+  return data;
+}
+
+/** The rules they are held to, so the policy is never a surprise. */
+export async function fetchVendorCompliancePolicy() {
+  const { data } = await api.get('/vendor/compliance/policy');
+  return data;
+}

@@ -1,10 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { X, SlidersHorizontal, ChevronDown, Check } from 'lucide-react';
 import { cn } from '../../utils/cn';
+import { fetchBreeds } from '../../../../services/pets';
 
-const breedsByPetType = {
-  Dog: ['Any', 'Labrador', 'Golden Retriever', 'German Shepherd', 'Beagle', 'Pug', 'Siberian Husky', 'Shih Tzu', 'Rottweiler', 'Doberman', 'Indie'],
-  Cat: ['Any', 'Persian', 'Siamese', 'Maine Coon', 'British Shorthair', 'Bengal', 'Domestic'],
+/*
+ * Dog and cat breeds come from `GET /breeds`, the same catalog Add Pet and
+ * onboarding use. These lists are the offline fallback only — a hand-kept copy
+ * is how this filter drifted out of sync with the catalog in the first place,
+ * offering 11 dog breeds against a catalog of 62 and silently filtering the
+ * deck by names no pet could be stored under.
+ *
+ * The species below have no catalog entries, so their lists stay static.
+ */
+const fallbackBreedsByPetType = {
+  Dog: ['Any', 'Labrador Retriever', 'Golden Retriever', 'German Shepherd', 'Beagle', 'Pug', 'Siberian Husky', 'Shih Tzu', 'Rottweiler', 'Doberman Pinscher', 'Indie / Indian Pariah'],
+  Cat: ['Any', 'Persian', 'Siamese', 'Maine Coon', 'British Shorthair', 'Bengal', 'Indian Domestic / Indie Cat'],
   Bird: ['Any', 'Cockatiel', 'Parrot', 'Finch', 'Other'],
   Rabbit: ['Any', 'Angora', 'Lop', 'Other'],
   Fish: ['Any', 'Goldfish', 'Betta', 'Other'],
@@ -22,7 +32,15 @@ const filterOptions = {
   vaccinationStatus: ['Any', 'Vaccinated', 'Partially Vaccinated', 'Not Vaccinated'],
   neutered: ['Any', 'Yes', 'No'],
   activityLevel: ['Any', 'Low', 'Medium', 'High'],
-  temperament: ['Friendly', 'Playful', 'Calm', 'Active', 'Protective', 'Social', 'Shy'],
+  // Temperament is the only thing compatibility is scored on now, so these
+  // have to be the engine's own values — a chip it does not recognise filters
+  // the deck down to pets that can never match.
+  temperament: [
+    'Friendly', 'Calm', 'Gentle', 'Playful', 'Energetic', 'Curious',
+    'Confident', 'Shy', 'Easy-going', 'Affectionate', 'Independent',
+    'Sensitive', 'Cautious', 'Adaptable', 'Excitable', 'Reserved',
+    'Aggressive',
+  ],
   compatibility: ['Good With Dogs', 'Good With Cats', 'Good With Kids', 'Good With Families'],
   purpose: ['Any', 'Friendship', 'Playdate', 'Breeding', 'Adoption', 'Training Partner', 'Walking Partner'],
   availability: ['Any', 'Available Today', 'Available This Week', 'Available Anytime']
@@ -30,13 +48,37 @@ const filterOptions = {
 
 export function MatchesFilterModal({ isOpen, onClose, currentFilters, onApply }) {
   const [localFilters, setLocalFilters] = useState(currentFilters);
+  const [breedsByPetType, setBreedsByPetType] = useState(fallbackBreedsByPetType);
 
-  // Sync local filters when modal opens
+  // Reload the draft from the applied filters each time the sheet opens, so a
+  // cancelled edit is discarded. The open/closed state is owned by the parent,
+  // which makes this a sync from outside rather than derivable state.
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLocalFilters(currentFilters);
     }
   }, [isOpen, currentFilters]);
+
+  // Live breed catalog, fetched once the modal is first opened. Failure leaves
+  // the fallback lists in place rather than emptying the dropdown.
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    let cancelled = false;
+
+    Promise.all([fetchBreeds('dog'), fetchBreeds('cat')])
+      .then(([dogs, cats]) => {
+        if (cancelled || !dogs?.length || !cats?.length) return;
+        setBreedsByPetType((prev) => ({
+          ...prev,
+          Dog: ['Any', ...dogs.map((b) => b.name)],
+          Cat: ['Any', ...cats.map((b) => b.name)],
+        }));
+      })
+      .catch(() => { /* keep the fallback lists */ });
+
+    return () => { cancelled = true; };
+  }, [isOpen]);
 
   const handleApply = () => {
     onApply(localFilters);
@@ -164,9 +206,17 @@ export function MatchesFilterModal({ isOpen, onClose, currentFilters, onApply })
                     onChange={(e) => setFilter('breed', e.target.value)}
                     className="w-full appearance-none bg-white border border-border-light rounded-xl px-4 py-3 text-text-primary font-medium focus:outline-none focus:border-primary-main focus:ring-1 focus:ring-primary-main"
                   >
-                    {breedsByPetType[localFilters.type]?.map(breed => (
-                      <option key={breed} value={breed}>{breed}</option>
-                    ))}
+                    {(() => {
+                      const opts = breedsByPetType[localFilters.type] || ['Any'];
+                      // A breed saved under an older catalog must stay
+                      // selectable, or the select renders blank and the next
+                      // Apply silently rewrites the filter.
+                      const chosen = localFilters.breed;
+                      const all = chosen && !opts.includes(chosen) ? [...opts, chosen] : opts;
+                      return all.map(breed => (
+                        <option key={breed} value={breed}>{breed}</option>
+                      ));
+                    })()}
                   </select>
                   <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-text-disabled pointer-events-none" size={18} />
                 </div>

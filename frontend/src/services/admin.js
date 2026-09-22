@@ -43,8 +43,16 @@ export async function fetchActionItems(params = {}) {
   return data;
 }
 
-export async function resolveActionItemApi(id, { action = 'approve', note = '' } = {}) {
-  const { data } = await api.post(`/admin/action-items/${id}/resolve`, { action, note });
+/*
+ * Resolving an item performs the real operation behind it server-side —
+ * approving a partner, retrying a refund, resolving a ticket. `force` waves a
+ * partner through with incomplete KYC and is recorded as a forced approval.
+ *
+ * A rejection here means nothing happened, so callers must not remove the card
+ * optimistically.
+ */
+export async function resolveActionItemApi(id, { action = 'approve', note = '', force = false } = {}) {
+  const { data } = await api.post(`/admin/action-items/${id}/resolve`, { action, note, force });
   return data;
 }
 
@@ -54,8 +62,17 @@ export async function fetchAdminUsers(search) {
   const { data } = await api.get('/admin/users', { params: search ? { search } : {} });
   return data;
 }
+export async function fetchAdminUserStats() {
+  const { data } = await api.get('/admin/users/stats');
+  return data;
+}
 export async function setAdminUserBlocked(id, blocked) {
   const { data } = await api.patch(`/admin/users/${id}/block`, { blocked });
+  return data;
+}
+/** Pets belonging to one user — loaded on demand by the expandable row. */
+export async function fetchAdminUserPets(id) {
+  const { data } = await api.get(`/admin/users/${id}/pets`);
   return data;
 }
 export async function fetchAdminPets(search) {
@@ -139,8 +156,16 @@ export async function suspendVendorApi(id) {
 }
 
 /* ── Banners & settings ───────────────────────────────────── */
-export async function fetchAdminBanners() {
-  const { data } = await api.get('/admin/banners');
+/**
+ * Banner rows for the admin screens.
+ *
+ * `slots` narrows the response to the rails a screen actually edits. Worth
+ * passing: images can be stored as inlined data URLs, so the unfiltered list
+ * runs to several megabytes and takes long enough to look like a hung screen.
+ */
+export async function fetchAdminBanners(slots) {
+  const slot = Array.isArray(slots) ? slots.join(',') : slots;
+  const { data } = await api.get('/admin/banners', { params: slot ? { slot } : {} });
   return data;
 }
 export async function createBannerApi(body) {
@@ -154,6 +179,24 @@ export async function updateBannerApi(id, patch) {
 export async function deleteBannerApi(id) {
   await api.delete(`/admin/banners/${id}`);
 }
+
+/**
+ * Upload artwork for an admin-managed banner or Home service tile.
+ *
+ * Goes through the shared Cloudinary endpoint rather than inlining the file as
+ * a base64 data URL: tile artwork is read on every Home render, and a handful
+ * of inlined images bloats both the Banner documents and the public
+ * `GET /banners` payload. Falls back to a data URL only when the server has no
+ * Cloudinary credentials configured, which is what the endpoint returns.
+ */
+export async function uploadAdminImage(file, folder = 'admin-banners') {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('folder', folder);
+  const { data } = await api.post('/uploads/image', form);
+  return data?.url || data?.secure_url || '';
+}
+
 export async function fetchAdminSettings() {
   const { data } = await api.get('/admin/settings');
   return data;
@@ -164,12 +207,136 @@ export async function updateAdminSetting(key, value) {
 }
 
 /* ── Operations ───────────────────────────────────────────── */
-export const fetchAdminOrders = async () => (await api.get('/admin/orders')).data;
-export const fetchAdminBookings = async () => (await api.get('/admin/bookings')).data;
+
+/*
+ * Bookings and orders are paginated server-side now, so these return
+ * `{ rows, total, page, pages }`. The list callers only ever wanted the rows,
+ * so the plain fetchers keep returning an array and the `*Page` variants expose
+ * the envelope for screens that add paging controls.
+ */
+export const fetchAdminOrdersPage = async (params = {}) => (await api.get('/admin/orders', { params })).data;
+export const fetchAdminBookingsPage = async (params = {}) => (await api.get('/admin/bookings', { params })).data;
+/*
+ * `limit: 200` keeps the existing screens filling client-side the way they did
+ * before paging existed (they used to receive up to 300 unfiltered rows). The
+ * Reports view aggregates over whatever it is given, so it is capped at the
+ * same 200 until those totals move server-side.
+ */
+export const fetchAdminOrders = async (params = {}) =>
+  (await fetchAdminOrdersPage({ limit: 200, ...params })).rows ?? [];
+export const fetchAdminBookings = async (params = {}) =>
+  (await fetchAdminBookingsPage({ limit: 200, ...params })).rows ?? [];
+
 export const fetchAdminAppointments = async () => (await api.get('/admin/appointments')).data;
 export const fetchAdminDeliveries = async () => (await api.get('/admin/deliveries')).data;
 export const fetchAdminReturns = async () => (await api.get('/admin/returns')).data;
-export const resolveAdminReturn = async (id, action) => (await api.post(`/admin/returns/${id}/resolve`, { action })).data;
+export const resolveAdminReturn = async (id, action, body = {}) =>
+  (await api.post(`/admin/returns/${id}/resolve`, { action, ...body })).data;
+
+/* ── Booking & order control ──────────────────────────────── */
+export const fetchAdminBooking = async (id) => (await api.get(`/admin/bookings/${id}`)).data;
+export const cancelAdminBooking = async (id, body) => (await api.post(`/admin/bookings/${id}/cancel`, body)).data;
+export const refundAdminBooking = async (id, body) => (await api.post(`/admin/bookings/${id}/refund`, body)).data;
+export const setAdminBookingStatus = async (id, body) => (await api.patch(`/admin/bookings/${id}/status`, body)).data;
+
+export const fetchAdminOrder = async (id) => (await api.get(`/admin/orders/${id}`)).data;
+export const cancelAdminOrder = async (id, body) => (await api.post(`/admin/orders/${id}/cancel`, body)).data;
+export const refundAdminOrder = async (id, body) => (await api.post(`/admin/orders/${id}/refund`, body)).data;
+export const setAdminOrderStatus = async (id, body) => (await api.patch(`/admin/orders/${id}/status`, body)).data;
+
+/* ── Refund register ──────────────────────────────────────── */
+export const fetchAdminRefunds = async (params = {}) => (await api.get('/admin/refunds', { params })).data;
+export const fetchAdminRefundTotals = async () => (await api.get('/admin/refunds/totals')).data;
+export const retryAdminRefund = async (id) => (await api.post(`/admin/refunds/${id}/retry`)).data;
+export const reverseAdminRefundLedger = async (id) => (await api.post(`/admin/refunds/${id}/reverse-ledger`)).data;
+
+/* ── Dashboard charts (server-aggregated) ─────────────────── */
+/*
+ * `range` is '7d' | '1m' | '3m' and drives the revenue comparison only; the
+ * weekly bars and donut are fixed windows by definition.
+ */
+export const fetchDashboardCharts = async (range = '1m') =>
+  (await api.get('/admin/dashboard/charts', { params: { range } })).data;
+
+/* ── Business reporting (server-aggregated) ───────────────── */
+export const fetchBusinessReport = async (params = {}) => (await api.get('/admin/reports/business', { params })).data;
+export const fetchRevenueByVendor = async (params = {}) => (await api.get('/admin/reports/by-vendor', { params })).data;
+export const fetchRevenueTrend = async (params = {}) => (await api.get('/admin/reports/trend', { params })).data;
+export const fetchRevenueByLocation = async (params = {}) => (await api.get('/admin/reports/by-location', { params })).data;
+
+/* ── Disputes ─────────────────────────────────────────────── */
+/*
+ * A disputed booking holds the partner's earning back from payout, so these
+ * cost the partner money while they sit unresolved.
+ */
+export const fetchDisputeSummary = async () => (await api.get('/admin/disputes/summary')).data;
+export const fetchDisputes = async (params = {}) => (await api.get('/admin/disputes', { params })).data;
+export const fetchDisputeOutcomes = async () => (await api.get('/admin/disputes/outcomes')).data;
+export const raiseDisputeApi = async (id, body) => (await api.post(`/admin/disputes/${id}/raise`, body)).data;
+export const resolveDisputeApi = async (id, body) => (await api.post(`/admin/disputes/${id}/resolve`, body)).data;
+
+/* ── Operational queues ───────────────────────────────────── */
+export const fetchEmergencyQueue = async (params = {}) => (await api.get('/admin/queues/emergencies', { params })).data;
+export const fetchResponseTimes = async (params = {}) => (await api.get('/admin/queues/response-times', { params })).data;
+export const fetchLowStock = async (params = {}) => (await api.get('/admin/queues/low-stock', { params })).data;
+export const fetchDuplicateBookings = async (params = {}) => (await api.get('/admin/queues/duplicate-bookings', { params })).data;
+export const fetchOrphanedBookings = async (params = {}) => (await api.get('/admin/queues/orphaned-bookings', { params })).data;
+
+/* ── Reconciliation & partner settings ────────────────────── */
+export const fetchReconciliation = async (params = {}) => (await api.get('/admin/reconciliation', { params })).data;
+export const fetchAcceptanceMode = async (profileId) => (await api.get(`/admin/vendors/${profileId}/acceptance`)).data;
+export const setAcceptanceModeApi = async (profileId, requiresAcceptance) =>
+  (await api.put(`/admin/vendors/${profileId}/acceptance`, { requiresAcceptance })).data;
+export const retryFailedNotifications = async (hours = 24) =>
+  (await api.post('/admin/notifications/retry-failed', undefined, { params: { hours } })).data;
+
+/* ── Customer behaviour & activity ────────────────────────── */
+/*
+ * These describe only customers who granted analytics consent. The summary
+ * returns the opt-in rate so the screen can say what share of traffic the
+ * numbers actually cover.
+ */
+export const fetchBehaviourSummary = async (params = {}) =>
+  (await api.get('/admin/behaviour/summary', { params })).data;
+export const fetchTopSearches = async (params = {}) =>
+  (await api.get('/admin/behaviour/searches', { params })).data;
+export const fetchTopViewed = async (params = {}) =>
+  (await api.get('/admin/behaviour/viewed', { params })).data;
+export const fetchScreenEngagement = async (params = {}) =>
+  (await api.get('/admin/behaviour/screens', { params })).data;
+export const fetchConversionFunnel = async (params = {}) =>
+  (await api.get('/admin/behaviour/funnel', { params })).data;
+export const fetchBrowsingLocations = async (params = {}) =>
+  (await api.get('/admin/behaviour/locations', { params })).data;
+export const fetchAbandonedInterest = async (params = {}) =>
+  (await api.get('/admin/behaviour/abandoned', { params })).data;
+/** One customer's journey, grouped by visit. */
+export const fetchCustomerActivity = async (id, params = {}) =>
+  (await api.get(`/admin/users/${id}/activity`, { params })).data;
+
+/* ── Partner compliance ───────────────────────────────────── */
+export const fetchComplianceSummary = async () => (await api.get('/admin/compliance/summary')).data;
+export const fetchComplianceVendors = async (params = {}) =>
+  (await api.get('/admin/compliance/vendors', { params })).data;
+export const fetchComplianceViolations = async (params = {}) =>
+  (await api.get('/admin/compliance/violations', { params })).data;
+export const addComplianceViolation = async (body) => (await api.post('/admin/compliance/violations', body)).data;
+export const forgiveComplianceViolation = async (id, note) =>
+  (await api.post(`/admin/compliance/violations/${id}/forgive`, { note })).data;
+export const upholdComplianceViolation = async (id, note) =>
+  (await api.post(`/admin/compliance/violations/${id}/uphold`, { note })).data;
+export const fetchCompliancePolicy = async () => (await api.get('/admin/compliance/policy')).data;
+export const updateCompliancePolicy = async (body) => (await api.put('/admin/compliance/policy', body)).data;
+export const suspendVendorLine = async (profileId, reason) =>
+  (await api.post(`/admin/compliance/vendors/${profileId}/suspend`, { reason })).data;
+export const reinstateVendorLine = async (profileId, reason, forgiveAll = false) =>
+  (await api.post(`/admin/compliance/vendors/${profileId}/reinstate`, { reason, forgiveAll })).data;
+export const runComplianceSweep = async () => (await api.post('/admin/compliance/sweep')).data;
+export const sweepUnansweredBookings = async () => (await api.post('/admin/bookings/sweep-unanswered')).data;
+
+/* ── Notification delivery health ─────────────────────────── */
+export const fetchNotificationHealth = async (hours = 24) =>
+  (await api.get('/admin/notification-health', { params: { hours } })).data;
 export const fetchAdminSupport = async () => (await api.get('/admin/support')).data;
 export const replyAdminSupport = async (id, message) => (await api.post(`/admin/support/${id}/reply`, { message })).data;
 
@@ -213,6 +380,35 @@ export const fetchAdminTransactions = async (params = {}) => (await api.get('/ad
 export const fetchAdminPaymentsOverview = async () => (await api.get('/admin/payments-overview')).data;
 export const fetchAdminCommission = async () => (await api.get('/admin/commission')).data;
 export const setAdminCommission = async (key, value) => (await api.put(`/admin/commission/${key}`, { value })).data;
+
+/*
+ * Commission structure: global default, per-category defaults, and per-vendor
+ * overrides. These take a PERCENTAGE (20 for 20%); the server converts it to
+ * the stored fraction. Never post a fraction here -- the two setters are not
+ * interchangeable with `setAdminCommission` above, which takes a fraction.
+ */
+export const fetchCommissionMatrix = async () => (await api.get('/admin/commission/matrix')).data;
+export const setCategoryCommission = async (vendorType, percent, allowZero = false) =>
+  (await api.put(`/admin/commission/category/${vendorType}`, { percent, allowZero })).data;
+/**
+ * `percent: null` clears the override so the vendor inherits its category.
+ * `allowZero` is the explicit opt-in for a genuinely free rate, which the
+ * server otherwise refuses along with anything outside the configured limits.
+ */
+export const setVendorCommission = async (profileId, percent, allowZero = false) =>
+  (await api.put(`/admin/commission/vendor/${profileId}`, { percent, allowZero })).data;
+
+/** The limits every commission write is checked against. */
+export const setCommissionBounds = async (minPercent, maxPercent) =>
+  (await api.put('/admin/commission/bounds', { minPercent, maxPercent })).data;
+/** Payout tax withheld from vendor earnings, as a percentage. */
+export const setTaxPercent = async (percent) => (await api.put('/admin/commission/tax', { percent })).data;
+
+/* Rate changes dated into the future. The server applies them on the minute. */
+export const scheduleCommissionChange = async (body) =>
+  (await api.post('/admin/commission/schedules', body)).data;
+export const cancelCommissionSchedule = async (id) =>
+  (await api.delete(`/admin/commission/schedules/${id}`)).data;
 export const fetchAdminPayouts = async (params = {}) => (await api.get('/admin/payouts', { params })).data;
 export const payAdminPayout = async (id, utr) => (await api.post(`/admin/payouts/${id}/pay`, { utr })).data;
 export const fetchAdminWalletOverview = async () => (await api.get('/admin/wallet-overview')).data;
@@ -235,8 +431,39 @@ export const removeAdminStaff = async (id) => api.delete(`/admin/staff/${id}`);
 /* ── Meal-ops super-admin portal ──────────────────────────── */
 export const fetchMealPortalData = async () => (await api.get('/admin/meal-portal')).data;
 
+/* ── Match subscriptions ──────────────────────────────────
+ *
+ * The plan catalog behind the swipe deck's like limits. The free plan's daily
+ * allowance is a field on one of these rows, which is why "how many free likes
+ * does a new user get" is answered here and not in a deploy.
+ */
+export const fetchMatchPlans = async () => (await api.get('/admin/match-plans')).data;
+export const createMatchPlan = async (body) => (await api.post('/admin/match-plans', body)).data;
+export const updateMatchPlan = async (id, body) => (await api.patch(`/admin/match-plans/${id}`, body)).data;
+export const deleteMatchPlan = async (id) => (await api.delete(`/admin/match-plans/${id}`)).data;
+export const setDefaultMatchPlan = async (id) => (await api.post(`/admin/match-plans/${id}/default`)).data;
+export const reorderMatchPlans = async (order) => (await api.patch('/admin/match-plans/reorder', { order })).data;
+
+export const fetchMatchSubscriptions = async (params = {}) =>
+  (await api.get('/admin/subscriptions', { params })).data;
+export const fetchMatchSubscriptionStats = async () => (await api.get('/admin/subscriptions/stats')).data;
+export const grantMatchSubscription = async (body) => (await api.post('/admin/subscriptions/grant', body)).data;
+export const extendMatchSubscription = async (id, days) =>
+  (await api.post(`/admin/subscriptions/${id}/extend`, { days })).data;
+export const revokeMatchSubscription = async (id, reason = '') =>
+  (await api.post(`/admin/subscriptions/${id}/revoke`, { reason })).data;
+
 /* ── Public banners (user-app Home) ───────────────────────── */
-export async function fetchPublicBanners() {
-  const { data } = await api.get('/banners');
+/** Public banner rows; `slots` narrows the response the same way. */
+export async function fetchPublicBanners(slots) {
+  const slot = Array.isArray(slots) ? slots.join(',') : slots;
+  const { data } = await api.get('/banners', { params: slot ? { slot } : {} });
   return data;
 }
+
+/* ── Pet Prompts & Fun Facts ────────────────────────────────── */
+export const fetchAdminPrompts = async (params = {}) => (await api.get('/admin/prompts', { params })).data;
+export const createAdminPrompt = async (body) => (await api.post('/admin/prompts', body)).data;
+export const updateAdminPrompt = async (id, body) => (await api.put(`/admin/prompts/${id}`, body)).data;
+export const deleteAdminPrompt = async (id) => (await api.delete(`/admin/prompts/${id}`)).data;
+

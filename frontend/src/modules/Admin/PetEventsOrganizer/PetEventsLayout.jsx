@@ -6,13 +6,13 @@ import { markAllNotificationsRead } from '../../../services/notifications';
 import {
   LayoutDashboard, CalendarDays, Ticket, CalendarClock,
   Package, Image as ImageIcon, MessageSquare, Star,
-  Wallet, Settings, LogOut, Bell, Search, Menu, X, CheckCircle, AlertCircle
-} from 'lucide-react';
+  Wallet, Settings, LogOut, Bell, Search, Menu, X, CheckCircle, AlertCircle, ShieldCheck} from 'lucide-react';
 import { cn } from '../../user/utils/cn';
 
 import VerificationBanner from '../components/VerificationBanner';
 import { BusinessSwitcher } from '../vendor/BusinessSwitcher';
 import { VendorAvailabilityToggle } from '../vendor/VendorAvailabilityToggle';
+import { VendorComplianceBanner } from '../components/VendorComplianceBanner';
 
 export function PetEventsLayout() {
   const { profile, notifications, markAllRead } = usePetEvents();
@@ -53,6 +53,7 @@ export function PetEventsLayout() {
       items: [
         { name: 'Customer Feedback', path: '/vendor/events-organizer/feedback', icon: Star },
         { name: 'Finance Center', path: '/vendor/events-organizer/finance', icon: Wallet },
+        { name: 'Service Standing', path: '/vendor/events-organizer/compliance', icon: ShieldCheck },
         { name: 'Business Control Center', path: '/vendor/events-organizer/settings', icon: Settings },
       ]
     }
@@ -265,6 +266,7 @@ export function PetEventsLayout() {
               approvalStatus={profile?.approvalStatus || 'pending'}
               kycPath="/vendor/events-organizer/settings"
             />
+            <VendorComplianceBanner />
             <Outlet />
           </div>
         </div>

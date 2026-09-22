@@ -6,6 +6,7 @@ import {
   Wallet, Clock, AlertCircle, FileText, CheckCircle,
   Search, MoreVertical, MapPin, Phone, UserPlus, ArrowRight
 } from 'lucide-react';
+import { PendingBookingRequests } from '../../components/PendingBookingRequests';
 
 export function DashboardOverview() {
   const { kpis, requests, team } = useMemorialProvider();
@@ -52,6 +53,7 @@ export function DashboardOverview() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-10">
+      <PendingBookingRequests />
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">

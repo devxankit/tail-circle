@@ -4,6 +4,14 @@ import { useNavigate } from 'react-router-dom';
 import { DashboardHeader } from './DashboardHeader';
 import { Card } from '../../components/ui/Card';
 import { fetchPublicBanners } from '../../../../services/admin';
+import {
+  SHIPPED_SERVICE_CARDS,
+  SHIPPED_MEET_MATCH,
+  HOME_SERVICES_SLOT,
+  HOME_FEATURE_SLOT,
+  serviceTilesFromBanners,
+  meetMatchFromBanners,
+} from '../../../../constants/homeServiceCards';
 import { useVoiceSearch } from '../../../../hooks/useVoiceSearch';
 
 // Cosmetic style presets, cycled by index over real API content — kept out
@@ -117,7 +125,7 @@ export function Home() {
   const [banners, setBanners] = useState(FALLBACK_BANNERS);
 
   useEffect(() => {
-    fetchPublicBanners()
+    fetchPublicBanners('Home Hero')
       .then((rows) => {
         const homeBanners = (rows || []).filter((b) => b.slot === 'Home Hero');
         if (homeBanners.length) {
@@ -209,7 +217,7 @@ export function Home() {
   // and cycles from OFFER_STYLES same as it always did.
   const [specialOffers, setSpecialOffers] = useState([]);
   useEffect(() => {
-    fetchPublicBanners()
+    fetchPublicBanners('Home Offers')
       .then((rows) => {
         const offers = (rows || []).filter((b) => b.slot === 'Home Offers');
         setSpecialOffers(
@@ -283,16 +291,27 @@ export function Home() {
     );
   }, []);
 
-  const categoryCards = [
-    { name: 'Grooming', tag: 'SPA', desc: 'Spa & salon', image: '/assets/quick_links/grooming.jpeg', bg: 'bg-[#599D9A]', path: '/app/services/grooming', imgClass: 'object-top' },
-    { name: 'Daycare', tag: 'STAY', desc: 'Safe & fun boarding', image: '/assets/quick_links/daycare_stay.png', bg: 'bg-[#F87B68]', path: '/app/services/daycare' },
-    { name: 'Shop', tag: 'SHOP', desc: 'Toys & Treats', image: '/assets/quick_links/shop_box.png', bg: 'bg-[#F87B68]', path: '/app/shop' },
-    { name: 'Find Vets', tag: 'VETS', desc: 'Book 60 sec', image: '/assets/quick_links/vet.jpeg', bg: 'bg-[#599D9A]', path: '/app/services/doctors', imgClass: 'object-top' },
-    { name: 'Events', tag: 'EVENTS', desc: 'Parties & shows', image: '/assets/quick_links/events_party.png', bg: 'bg-[#599D9A]', path: '/app/services/events' },
-    { name: 'Meals', tag: 'DIET', desc: 'Fresh & healthy diet', image: '/assets/quick_links/meals_fresh.png', bg: 'bg-[#F87B68]', path: '/app/meals' },
-    { name: 'Community', tag: 'SOCIAL', desc: 'Connect & share', image: '/assets/quick_links/community.jpeg', bg: 'bg-[#F87B68]', path: '/app/community', imgClass: 'object-top' },
-    { name: 'Adopt', tag: 'ADOPT', desc: 'Find a companion', image: '/assets/quick_links/adopt_pet.png', bg: 'bg-[#599D9A]', path: '/app/adopt' }
-  ];
+  /*
+   * Service tiles and the Meet & Match card above them are admin-managed --
+   * Banner rows in the "Home Services" and "Home Feature" slots, edited on the
+   * super-admin Home Service Images screen.
+   *
+   * The shipped artwork paints first and stands in whenever the API returns no
+   * service rows at all, so a failed request never leaves Home on an empty
+   * grid. Saved rows then replace that set wholesale rather than field by
+   * field: an operator who clears an image has to see it gone, which would not
+   * happen if the shipped picture quietly filled the gap behind it.
+   */
+  const [categoryCards, setCategoryCards] = useState(SHIPPED_SERVICE_CARDS);
+  const [meetMatch, setMeetMatch] = useState(SHIPPED_MEET_MATCH);
+  useEffect(() => {
+    fetchPublicBanners([HOME_SERVICES_SLOT, HOME_FEATURE_SLOT])
+      .then((rows) => {
+        setCategoryCards(serviceTilesFromBanners(rows));
+        setMeetMatch(meetMatchFromBanners(rows));
+      })
+      .catch(() => {});
+  }, []);
 
   const {
     isListening,
@@ -307,15 +326,17 @@ export function Home() {
     }
   });
 
+  // Keyed by the tile's stable Banner key, not its label: an operator renaming
+  // "Find Vets" in the admin panel must not silently unhook its search aliases.
   const searchKeywords = {
-    'Grooming': ['gr', 'grooming', 'spa', 'salon', 'haircut', 'bath', 'wash', 'trim'],
-    'Daycare': ['da', 'dc', 'daycare', 'stay', 'boarding', 'play', 'sit', 'hotel', 'hostel'],
-    'Shop': ['sh', 'shop', 'toys', 'treats', 'buy', 'store', 'food', 'pedigree', 'collar', 'chews', 'leash', 'shampoo'],
-    'Find Vets': ['ve', 'vets', 'doctor', 'doctors', 'clinic', 'health', 'sick', 'medical', 'dr', 'consultation', 'surgeon', 'hospital', 'checkup'],
-    'Events': ['ev', 'events', 'party', 'shows', 'meetup', 'gathering', 'celebration', 'ticket', 'pass'],
-    'Meals': ['me', 'meals', 'food', 'diet', 'fresh', 'nutrition', 'recipe', 'raw'],
-    'Community': ['co', 'com', 'community', 'social', 'connect', 'share', 'friends', 'playdate', 'posts', 'chat'],
-    'Adopt': ['ad', 'adopt', 'pet', 'companion', 'rescue', 'dog', 'puppy', 'cat', 'kitten']
+    home_service_grooming: ['gr', 'grooming', 'spa', 'salon', 'haircut', 'bath', 'wash', 'trim'],
+    home_service_daycare: ['da', 'dc', 'daycare', 'stay', 'boarding', 'play', 'sit', 'hotel', 'hostel'],
+    home_service_shop: ['sh', 'shop', 'toys', 'treats', 'buy', 'store', 'food', 'pedigree', 'collar', 'chews', 'leash', 'shampoo'],
+    home_service_vets: ['ve', 'vets', 'doctor', 'doctors', 'clinic', 'health', 'sick', 'medical', 'dr', 'consultation', 'surgeon', 'hospital', 'checkup'],
+    home_service_events: ['ev', 'events', 'party', 'shows', 'meetup', 'gathering', 'celebration', 'ticket', 'pass'],
+    home_service_meals: ['me', 'meals', 'food', 'diet', 'fresh', 'nutrition', 'recipe', 'raw'],
+    home_service_community: ['co', 'com', 'community', 'social', 'connect', 'share', 'friends', 'playdate', 'posts', 'chat'],
+    home_service_adopt: ['ad', 'adopt', 'pet', 'companion', 'rescue', 'dog', 'puppy', 'cat', 'kitten']
   };
 
   const searchResults = React.useMemo(() => {
@@ -323,10 +344,10 @@ export function Home() {
     const query = searchValue.toLowerCase().trim();
     return categoryCards.filter(cat => {
       if (cat.name.toLowerCase().includes(query) || cat.desc.toLowerCase().includes(query) || cat.tag.toLowerCase().includes(query)) return true;
-      const keywords = searchKeywords[cat.name] || [];
+      const keywords = searchKeywords[cat.key] || [];
       return keywords.some(kw => kw.includes(query) || query.includes(kw));
     });
-  }, [searchValue]);
+  }, [searchValue, categoryCards]);
 
   const handleSearchSubmit = (e) => {
     if (e) e.preventDefault();
@@ -513,16 +534,16 @@ export function Home() {
               <div className="absolute top-full left-0 right-0 mt-2 bg-white/95 backdrop-blur-xl rounded-[20px] shadow-[0_12px_40px_rgba(0,0,0,0.12)] border border-white/60 overflow-hidden z-50">
                 {searchResults.map((result, idx) => (
                   <div 
-                    key={idx}
+                    key={result.key || idx}
                     onMouseDown={(e) => {
                       e.preventDefault();
-                      navigate(result.path);
+                      if (result.path) navigate(result.path);
                       setSearchValue('');
                     }}
                     className="flex items-center gap-3.5 p-3.5 hover:bg-slate-50/80 cursor-pointer border-b border-slate-100 last:border-0 transition-colors"
                   >
-                    <div className="w-[42px] h-[42px] rounded-[14px] overflow-hidden shrink-0 shadow-[0_2px_8px_rgba(0,0,0,0.06)] border border-slate-100/50">
-                       <img src={result.image} alt={result.name} className="w-full h-full object-cover" />
+                    <div className="w-[42px] h-[42px] rounded-[14px] overflow-hidden shrink-0 shadow-[0_2px_8px_rgba(0,0,0,0.06)] border border-slate-100/50 bg-slate-100">
+                       {result.image && <img src={result.image} alt={result.name} className="w-full h-full object-cover" />}
                     </div>
                     <div className="flex-1 ml-0.5">
                       <h4 className="text-[14px] font-black text-[#2C5753] leading-none mb-1">{result.name}</h4>
@@ -558,14 +579,18 @@ export function Home() {
 
       {/* Meet & Match Category Banner */}
       <div className="px-4 mb-6 relative z-10">
-        <div className="w-full bg-white rounded-[24px] overflow-hidden shadow-sm border border-slate-100 flex flex-col cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" onClick={() => navigate('/app/matches')}>
+        <div className="w-full bg-white rounded-[24px] overflow-hidden shadow-sm border border-slate-100 flex flex-col cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" onClick={() => meetMatch.path && navigate(meetMatch.path)}>
           {/* Top Image Area */}
           <div className="w-full h-[180px] bg-[#FFFBF9] relative flex items-end justify-center overflow-hidden">
-            <img 
-              src="/assets/banners/pet_matches_love.png" 
-              alt="Meet & Match" 
-              className="w-full h-full object-cover object-[50%_25%]" 
-            />
+            {meetMatch.image ? (
+              <img
+                src={meetMatch.image}
+                alt={meetMatch.name}
+                className="w-full h-full object-cover object-[50%_25%]"
+              />
+            ) : (
+              <div className="w-full h-full bg-slate-100" />
+            )}
           </div>
           {/* Bottom Solid Banner Area */}
           <div className="w-full bg-[#F87B68] p-4 min-[380px]:p-4 flex items-center justify-between">
@@ -575,10 +600,10 @@ export function Home() {
                   <path d="M12 14c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z"/>
                   <circle cx="9" cy="8.5" r="1.5"/><circle cx="15" cy="8.5" r="1.5"/><circle cx="6" cy="12" r="1.5"/><circle cx="18" cy="12" r="1.5"/>
                 </svg>
-                <h3 className="text-[20px] font-black text-white leading-none tracking-tight" style={{ fontFamily: "'Outfit', sans-serif" }}>Meet & Match</h3>
+                <h3 className="text-[20px] font-black text-white leading-none tracking-tight" style={{ fontFamily: "'Outfit', sans-serif" }}>{meetMatch.name}</h3>
               </div>
               <p className="text-[12.5px] text-white/90 font-bold leading-snug">
-                Find playdates, friends & mates near you
+                {meetMatch.desc}
               </p>
             </div>
             <button 
@@ -594,25 +619,29 @@ export function Home() {
       {/* Categories Grid */}
       <div className="px-4 mb-8">
         <div className="grid grid-cols-2 gap-4">
-          {categoryCards.map((card, idx) => (
+          {categoryCards.map((card) => (
             <div
-              key={idx}
-              onClick={() => navigate(card.path)}
+              key={card.key}
+              onClick={() => card.path && navigate(card.path)}
               className="bg-white rounded-[24px] overflow-hidden flex flex-col cursor-pointer border border-slate-100/60 shadow-[0_6px_20px_rgba(0,0,0,0.02)] hover:shadow-[0_12px_30px_rgba(0,0,0,0.06)] hover:scale-[1.02] active:scale-95 transition-all duration-300"
             >
               {/* Card Image Area */}
               <div className="w-full aspect-[16/11] relative overflow-hidden bg-slate-50 flex items-center justify-center">
-                <img 
-                  src={card.image} 
-                  alt={card.name} 
-                  loading="eager"
-                  decoding="async"
-                  className={`w-full h-full object-cover ${card.imgClass || ''}`} 
-                />
+                {card.image && (
+                  <img
+                    src={card.image}
+                    alt={card.name}
+                    loading="eager"
+                    decoding="async"
+                    className={`w-full h-full object-cover ${card.imgClass || ''}`}
+                  />
+                )}
                 {/* Floating Tag Badge */}
-                <div className={`absolute top-2.5 left-2.5 ${card.bg} text-white text-[9px] font-black tracking-widest px-2.5 py-0.5 rounded-full uppercase`}>
-                  {card.tag}
-                </div>
+                {card.tag && (
+                  <div className={`absolute top-2.5 left-2.5 ${card.bg} text-white text-[9px] font-black tracking-widest px-2.5 py-0.5 rounded-full uppercase`}>
+                    {card.tag}
+                  </div>
+                )}
               </div>
               
               {/* Card Footer Block */}

@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { getDoctorSlots, toYMD } from '../../../../services/doctorsApi';
 import { useVoiceSearch } from '../../../../hooks/useVoiceSearch';
+import { useTrackSearch } from '../../../../hooks/useTrackSearch';
 
 // Helper to generate dates
 const generateDates = () => {
@@ -126,6 +127,9 @@ export function DoctorList() {
 
     return matchesSearch && matchesCategory;
   });
+
+  // Reports what customers searched for, and how many results they got.
+  useTrackSearch(searchQuery, filteredDoctors.length);
 
   const openBookingModal = (doc, type) => {
     setSelectedDoctor(doc);

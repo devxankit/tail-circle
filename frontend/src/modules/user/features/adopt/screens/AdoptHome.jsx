@@ -59,10 +59,10 @@ export function AdoptHome() {
         <div className="mb-4">
           {customBanner ? (
             <div className="w-full rounded-[26px] overflow-hidden shadow-sm border border-gray-100/50">
-              <img 
-                src={customBanner} 
-                alt="Adoption Promo Banner" 
-                className="w-full h-auto max-h-[180px] object-cover block" 
+              <img
+                src={customBanner}
+                alt="Adoption Promo Banner"
+                className="w-full h-auto block"
               />
             </div>
           ) : (

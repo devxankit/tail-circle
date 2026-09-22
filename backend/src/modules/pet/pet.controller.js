@@ -2,6 +2,7 @@ import { asyncHandler } from '../../utils/asyncHandler.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { Pet } from './pet.model.js';
+import { User } from '../user/user.model.js';
 import { PetVaccination } from './petVaccination.model.js';
 import { syncPetToMatchProfile } from '../social/matchEngine.service.js';
 import { isReactive, reactiveTraits } from '../social/behaviour.service.js';
@@ -44,7 +45,25 @@ export const createPet = asyncHandler(async (req, res) => {
   const count = await Pet.countDocuments({ ownerId: req.user.id, deletedAt: null });
   if (count >= MAX_PETS) throw ApiError.badRequest(`You can have up to ${MAX_PETS} pets`);
 
-  const pet = await Pet.create({ ...req.body, ownerId: req.user.id });
+  /*
+   * A pet lives where its owner lives unless told otherwise.
+   *
+   * Inherited at creation rather than resolved on read: the deck matches on
+   * `MatchProfile`, and a pet created with no location produced a profile with
+   * no location, which is what left every card guessing at distance. Copying it
+   * once, here, means a pet is placeable the moment it exists.
+   */
+  const body = { ...req.body };
+  if (body.location?.lat == null || body.location?.lng == null) {
+    const owner = await User.findById(req.user.id).select('location city state').lean();
+    if (owner?.location?.lat != null && owner?.location?.lng != null) {
+      body.location = { lat: owner.location.lat, lng: owner.location.lng };
+      if (!body.city && owner.city) body.city = owner.city;
+      if (!body.state && owner.state) body.state = owner.state;
+    }
+  }
+
+  const pet = await Pet.create({ ...body, ownerId: req.user.id });
   await syncPetToMatchProfile(pet).catch(() => {});
   sendSuccess(res, { statusCode: 201, message: 'Pet added', data: pet });
 });

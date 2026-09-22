@@ -17,6 +17,7 @@ import { VideoConsultationsListView } from './views/VideoConsultationsListView';
 import { AvailabilityCalendarView } from './views/AvailabilityCalendarView';
 import { VetProfileView } from './views/VetProfileView';
 import { NotificationsView } from './views/NotificationsView';
+import { PendingBookingRequests } from '../components/PendingBookingRequests';
 
 export function DoctorManagement() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -83,6 +84,13 @@ export function DoctorManagement() {
 
   return (
     <div className="space-y-6">
+      {/*
+        Above every view, not inside one. A clinic that turned on manual
+        acceptance has a two-hour window to answer, and a request buried on a
+        tab they are not currently looking at is one that auto-declines.
+      */}
+      <PendingBookingRequests />
+
       {/* The top tabs were removed here because navigation is now fully handled by the powerful Doctor Sidebar. */}
       
       {/* Render selected view */}

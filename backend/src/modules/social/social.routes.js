@@ -25,6 +25,7 @@ import {
 } from './chat.service.js';
 
 import { getMatchDeck, processSwipe, MATCH_ENGINE_CONFIG, updateEngineConfig, resetUserSwipes } from './matchEngine.service.js';
+import { getEntitlement } from '../subscription/subscription.service.js';
 
 /* ── matches ──────────────────────────────────────────── */
 
@@ -44,22 +45,12 @@ matchRouter.patch(
   authorize('admin', 'super_admin'),
   validate(
     z.object({
-      // Every weight below is a live input to the scorer. They are relative to
-      // one another, so they need not total 100.
-      weightTemperament: z.number().min(0).max(100).optional(),
-      weightProximity: z.number().min(0).max(100).optional(),
-      weightActivity: z.number().min(0).max(100).optional(),
-      weightMood: z.number().min(0).max(100).optional(),
-      weightAge: z.number().min(0).max(100).optional(),
-      weightBreed: z.number().min(0).max(100).optional(),
-      weightPurpose: z.number().min(0).max(100).optional(),
-      weightSize: z.number().min(0).max(100).optional(),
-      weightHealth: z.number().min(0).max(100).optional(),
+      // The factor weights are gone: compatibility is temperament and nothing
+      // else, so there is no longer a mix to retune. `.strict()` means a stale
+      // caller still sending `weightBreed` is told so rather than having it
+      // silently ignored.
       maxPoints: z.number().min(1).max(10).optional(),
-      defaultMaxDistanceKm: z.number().min(1).max(1000).optional(),
       crossSpeciesFactor: z.number().min(0).max(1).optional(),
-      priorStrength: z.number().min(0).max(1).optional(),
-      priorRatio: z.number().min(0).max(1).optional(),
       enableAutoReciprocity: z.boolean().optional(),
     }).strict()
   ),
@@ -74,8 +65,19 @@ matchRouter.get(
   '/deck',
   asyncHandler(async (req, res) => {
     const filters = req.query || {};
-    const deck = await getMatchDeck({ userId: req.user.id, filters });
-    sendSuccess(res, { data: deck });
+    /*
+     * The deck ships the like allowance with it.
+     *
+     * The swipe screen has to render its "7 likes left" pill on first paint,
+     * and fetching that separately meant the deck could appear a beat before
+     * the counter — long enough for a fast first tap to be spent against a
+     * quota the user could not yet see.
+     */
+    const [deck, entitlement] = await Promise.all([
+      getMatchDeck({ userId: req.user.id, filters }),
+      getEntitlement(req.user.id),
+    ]);
+    sendSuccess(res, { data: deck, meta: { entitlement } });
   })
 );
 

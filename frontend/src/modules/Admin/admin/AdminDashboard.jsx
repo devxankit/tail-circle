@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { fetchAdminDashboard, approveVendorGuarded, fetchPendingVendors, resolveActionItemApi } from '../../../services/admin';
+import { fetchAdminDashboard, fetchPendingVendors, resolveActionItemApi, fetchDashboardCharts } from '../../../services/admin';
 import {
   AreaChart, Area, BarChart, Bar, LineChart, Line, ComposedChart,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -19,182 +19,70 @@ import { Modal } from '../components/Modal';
 /* ── palette shorthand ── */
 const C = COLORS;
 
-/* ── generate revenue 30-day data ── */
-const gen30days = () =>
-  Array.from({ length: 30 }, (_, i) => {
-    const d = new Date(2026, 4, 1 + i);
-    const label = `${d.toLocaleString('en', { month: 'short' })} ${d.getDate()}`;
-    const base = 40000 + Math.random() * 55000;
-    return { day: label, thisMonth: Math.round(base), lastMonth: Math.round(base * 0.78 + Math.random() * 8000) };
-  });
+/*
+ * Every series on this dashboard is fetched from /admin/dashboard/charts.
+ *
+ * They used to be hardcoded arrays — the revenue line was literally
+ * `Math.random()`, regenerated on each page load, so the chart moved every time
+ * you refreshed. An operator reading "₹28.1L" had no way to tell it was
+ * fiction. Palette stays client-side; the API returns the numbers and labels.
+ */
+const DONUT_COLOURS = [C.teal, C.blue, C.amber, C.purple, C.red, C.green ?? C.teal];
 
-const revData30 = gen30days();
-const revData7  = revData30.slice(23);
-const revData3m = (() => {
-  const months = ['Mar 1','Mar 8','Mar 15','Mar 22','Apr 1','Apr 8','Apr 15','Apr 22','May 1','May 8','May 15','May 22','May 29'];
-  return months.map(day => ({
-    day,
-    thisMonth: Math.round(35000 + Math.random() * 65000),
-    lastMonth: Math.round(28000 + Math.random() * 50000),
-  }));
-})();
+const EMPTY_CHARTS = {
+  revenueTrend: [],
+  revenueByVendorType: [],
+  newUsersThisWeek: [],
+  ordersVsBookings: [],
+  topVendors: [],
+  partners: [],
+  kpiSparklines: {},
+};
 
-/* ── donut data ── */
-const donutData = [
-  { name: 'Shop',     value: 910000, color: C.teal   },
-  { name: 'Meal',     value: 720000, color: C.blue   },
-  { name: 'Event',    value: 420000, color: C.amber  },
-  { name: 'Doctor',   value: 580000, color: C.purple },
-  { name: 'Memorial', value: 180000, color: C.red    },
-];
-const totalRevDonut = donutData.reduce((s, d) => s + d.value, 0);
-
-/* ── bar chart data ── */
-const weekUsersData = [
-  { day: 'Mon', value: 42 }, { day: 'Tue', value: 58 }, { day: 'Wed', value: 71 },
-  { day: 'Thu', value: 65 }, { day: 'Fri', value: 80 }, { day: 'Sat', value: 95 }, { day: 'Sun', value: 52 },
-];
-const ordersBookingsData = [
-  { day: 'Mon', orders: 88,  bookings: 42 },
-  { day: 'Tue', orders: 124, bookings: 58 },
-  { day: 'Wed', orders: 103, bookings: 71 },
-  { day: 'Thu', orders: 142, bookings: 65 },
-  { day: 'Fri', orders: 189, bookings: 80 },
-  { day: 'Sat', orders: 212, bookings: 95 },
-  { day: 'Sun', orders: 96,  bookings: 52 },
-];
-const topVendorsBar = [
-  { name: 'Happy Paws Store', revenue: 450000 },
-  { name: 'Dr. Rohit Gupta',  revenue: 320000 },
-  { name: 'Fresh Meals Ltd',  revenue: 280000 },
-  { name: 'Pet Events Magic', revenue: 250000 },
-  { name: 'Gentle Care Mem',  revenue: 180000 },
-];
+/** ₹1,26,317 → "₹1.3L" for the compact chart labels. */
+const compactInr = (rupeeValue) => {
+  const n = Number(rupeeValue) || 0;
+  if (n >= 10000000) return `₹${(n / 10000000).toFixed(1)}Cr`;
+  if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`;
+  if (n >= 1000) return `₹${(n / 1000).toFixed(1)}k`;
+  return `₹${n}`;
+};
 
 /* ── KPI sparklines ── */
 const kpis = [
-  { title: 'Total Users',    value: '12,450',  label: 'Owners',       change: '+2.3%', up: true,  icon: Users,    color: C.teal,   data: [320,410,380,500,470,620,580,710,680,760], path: '/admin/users' },
-  { title: 'Active Vendors', value: '342',     label: 'Vetted',       change: '-0.8%', up: false, icon: Store,    color: C.blue,   data: [80,95,88,102,97,90,88,92,88,85], path: '/admin/vendors' },
-  { title: 'Revenue Today',  value: '₹95,200', label: 'Platform',     change: '+12.1%',up: true,  icon: Wallet,   color: C.amber,  data: [420,510,480,600,580,720,700,810,790,950], path: '/admin/finance/transactions' },
-  { title: 'Appointments',   value: '148',     label: 'Today',        change: '+5.3%', up: true,  icon: Calendar, color: C.purple, data: [20,35,28,42,38,55,48,60,52,70], path: '/admin/operations/appointments' },
+  { title: 'Total Users',    value: '—', label: 'Owners',   key: 'totalUsers',        icon: Users,    color: C.teal,   data: [], path: '/admin/users' },
+  { title: 'Active Vendors', value: '—', label: 'Vetted',   key: 'activeVendors',     icon: Store,    color: C.blue,   data: [], path: '/admin/vendors' },
+  { title: 'Revenue Today',  value: '—', label: 'Platform', key: 'revenueToday',      icon: Wallet,   color: C.amber,  data: [], path: '/admin/finance/transactions' },
+  { title: 'Appointments',   value: '—', label: 'Today',    key: 'appointmentsToday', icon: Calendar, color: C.purple, data: [], path: '/admin/operations/appointments' },
 ];
 
 /* ── Initial Action Items requiring Admin Attention ── */
-const initialActionItems = [
-  {
-    id: 'ACT-101',
-    category: 'Vendor Approval',
-    type: 'Veterinarian Partner',
-    title: 'Dr. Happy Paws Vet Clinic Registration',
-    subtitle: 'Medical License & Clinic Verification Pending',
-    details: 'Submitted Practice License #VET-88219 and Clinic Registration Certificate for admin audit.',
-    priority: 'Urgent',
-    time: '12 mins ago',
-    targetId: 'VND-101',
-    navPath: '/admin/vendors/pending',
-    docName: 'Practice_License_2026.pdf',
-    applicant: 'Dr. Ramesh Sharma (Mumbai)'
-  },
-  {
-    id: 'ACT-102',
-    category: 'Vendor Approval',
-    type: 'Fresh Meals Partner',
-    title: 'NutriPaw Organic Meals Co.',
-    subtitle: 'FSSAI Food Safety Cert Verification',
-    details: 'Applied for Fresh Pet Meal Subscription program. Commission rate requested: 10%.',
-    priority: 'High',
-    time: '45 mins ago',
-    targetId: 'VND-102',
-    navPath: '/admin/vendors/pending',
-    docName: 'FSSAI_Food_Safety_Cert.pdf',
-    applicant: 'Ananya Roy (Bengaluru)'
-  },
-  {
-    id: 'ACT-103',
-    category: 'Refund Request',
-    type: 'Event Refund',
-    title: 'Refund Request #TXN-901',
-    subtitle: 'Customer: Rahul Kumar • Amount: ₹1,500',
-    details: 'Pet Event "Monsoon Dog Splash" was rescheduled. Client requested immediate full refund.',
-    priority: 'Urgent',
-    time: '1 hour ago',
-    targetId: 'TXN-901',
-    navPath: '/admin/operations/refunds',
-    amount: '₹1,500',
-    applicant: 'Rahul Kumar'
-  },
-  {
-    id: 'ACT-104',
-    category: 'Moderation',
-    type: 'Spam Feed Report',
-    title: 'Reported Feed Post #RPT-501',
-    subtitle: 'Reported by: Aisha Khan • Reason: Commercial Spam',
-    details: 'Content contains unauthorized external links and unauthorized promotional spam.',
-    priority: 'High',
-    time: '2 hours ago',
-    targetId: 'RPT-501',
-    navPath: '/admin/platform/reports',
-    applicant: 'Reported User: Spammer_88'
-  },
-  {
-    id: 'ACT-105',
-    category: 'Refund Request',
-    type: 'Order Return',
-    title: 'Refund Request #TXN-902',
-    subtitle: 'Customer: Priya Dev • Amount: ₹850',
-    details: 'Incorrect dog harness sizing delivered. Item returned and inspected by vendor.',
-    priority: 'Medium',
-    time: '3 hours ago',
-    targetId: 'TXN-902',
-    navPath: '/admin/operations/refunds',
-    amount: '₹850',
-    applicant: 'Priya Dev'
-  },
-  {
-    id: 'ACT-106',
-    category: 'Vendor Approval',
-    type: 'Memorial Service',
-    title: 'Rainbow Bridge Care Services',
-    subtitle: 'Last Ride Partner Registration',
-    details: 'Submitted tax registry and service menu for pet cremation & memorial plaques.',
-    priority: 'Medium',
-    time: '5 hours ago',
-    targetId: 'VND-103',
-    navPath: '/admin/vendors/pending',
-    docName: 'GST_Registry_Cert.pdf',
-    applicant: 'Sanjay Dutt (Delhi)'
-  },
-  {
-    id: 'ACT-107',
-    category: 'Moderation',
-    type: 'Review Comment',
-    title: 'Review Flag #RPT-502',
-    subtitle: 'Reported by: Rahul Kumar • Reason: Abusive Language',
-    details: 'Inappropriate language used in seller review comment on vendor page.',
-    priority: 'Normal',
-    time: '6 hours ago',
-    targetId: 'RPT-502',
-    navPath: '/admin/platform/reports',
-    applicant: 'Reported User: AngryReviewer'
-  }
-];
+/*
+ * The Action Required Center is derived entirely from live data.
+ *
+ * There was a hardcoded fallback array here — the same invented vendors and
+ * refund requests that were seeded server-side — shown whenever the dashboard
+ * fetch failed. It made a backend outage look like a working queue, and the
+ * fabricated rows carried ids that exist nowhere, so approving one 404'd. An
+ * empty queue with an error is the honest state.
+ */
 
-/* ── partners table ── */
-const partners = [
-  { rank:1, name:'Happy Paws Shop Store',    role:'Shop',          revenue:'₹4,50,000', rating:4.8, up:true  },
-  { rank:2, name:'Dr. Rohit Gupta Clinic',   role:'Doctor',        revenue:'₹3,20,000', rating:4.9, up:true  },
-  { rank:3, name:'Fresh Meals Prep Ltd',     role:'Fresh Meals Partner', revenue:'₹2,80,000', rating:4.5, up:true  },
-  { rank:4, name:'Pet Event Magic',          role:'Event',         revenue:'₹2,50,000', rating:4.6, up:false },
-  { rank:5, name:'Gentle Care Memorials',    role:'Memorial',      revenue:'₹1,80,000', rating:5.0, up:true  },
-  { rank:6, name:'Ravi Pet Clinic',          role:'Shop',          revenue:'₹1,55,000', rating:4.7, up:true  },
-];
+/* Partner league table comes from /admin/dashboard/charts. */
 
+/*
+ * Keyed on the labels the API actually sends (VENDOR_TYPE_LABEL on the server).
+ * These read "Shop", "Doctor", "Event" — none of which the API ever produced —
+ * so every partner row fell through to the grey default.
+ */
 const roleBadge = r => ({
-  Shop:           'bg-teal-50 text-teal-700 border-teal-100',
-  Doctor:         'bg-blue-50 text-blue-700 border-blue-100',
-  'Fresh Meals Partner':'bg-emerald-50 text-emerald-700 border-emerald-100',
-  Event:          'bg-purple-50 text-purple-700 border-purple-100',
-  Memorial:       'bg-slate-100 text-slate-600 border-slate-200',
+  'Shop Partner':         'bg-teal-50 text-teal-700 border-teal-100',
+  'Veterinarian Partner': 'bg-blue-50 text-blue-700 border-blue-100',
+  'Fresh Meals Partner':  'bg-emerald-50 text-emerald-700 border-emerald-100',
+  'Events Partner':       'bg-purple-50 text-purple-700 border-purple-100',
+  'Last Ride Partner':    'bg-slate-100 text-slate-600 border-slate-200',
+  'Grooming Partner':     'bg-amber-50 text-amber-700 border-amber-100',
+  'Day Care Partner':     'bg-indigo-50 text-indigo-700 border-indigo-100',
+  'Adoption Partner':     'bg-rose-50 text-rose-700 border-rose-100',
 }[r] || 'bg-gray-50 text-gray-500 border-gray-100');
 
 const priorityBadge = p => ({
@@ -226,13 +114,19 @@ export function AdminDashboard() {
   const [actionModalOpen, setActionModalOpen] = useState(false);
   const [actionReason, setActionReason] = useState('');
   const [toastMessage, setToastMessage] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [busyActionId, setBusyActionId] = useState(null);
   const [completedCount, setCompletedCount] = useState(0);
-
-  const revChartData = revRange === '7D' ? revData7 : revRange === '3M' ? revData3m : revData30;
-  const showEvery = revRange === '3M' ? 2 : revRange === '1M' ? 5 : 1;
 
   // Live KPI headline numbers + Backend Action Items
   const [live, setLive] = useState(null);
+  const [charts, setCharts] = useState(EMPTY_CHARTS);
+
+  const revChartData = charts.revenueTrend;
+  // Thin the axis labels so 30 daily buckets do not overlap into a smear.
+  const showEvery = revRange === '3M' ? 2 : revRange === '1M' ? 5 : 1;
+
+  const donutTotal = charts.revenueByVendorType.reduce((sum, d) => sum + d.value, 0);
 
   const loadDashboardData = () => {
     fetchAdminDashboard().then(res => {
@@ -240,23 +134,52 @@ export function AdminDashboard() {
       if (res?.actionItems && Array.isArray(res.actionItems)) {
         setActionItems(res.actionItems);
       }
+      setLoadError(null);
     }).catch(err => {
-      console.warn('Backend fetch failed, using default action center items:', err);
-      setActionItems(initialActionItems);
+      // No invented fallback — an empty queue and a visible error beats a
+      // dashboard that looks busy while the API is down.
+      console.error('Dashboard fetch failed:', err);
+      setActionItems([]);
+      setLoadError(err?.message || 'Could not reach the server');
     });
   };
 
-  useEffect(() => { 
+  useEffect(() => {
     loadDashboardData();
   }, []);
 
-  const kpiCards = live ? kpis.map(k => {
-    if (k.title === 'Total Users')    return { ...k, value: (live.kpis.totalUsers || 0).toLocaleString('en-IN') };
-    if (k.title === 'Active Vendors') return { ...k, value: String(live.kpis.activeVendors || 0) };
-    if (k.title === 'Revenue Today')  return { ...k, value: '₹' + (live.kpis.revenueToday || 0).toLocaleString('en-IN') };
-    if (k.title === 'Appointments')   return { ...k, value: String(live.kpis.appointmentsToday || 0) };
-    return k;
-  }) : kpis;
+  /*
+   * Re-fetched when the range toggle changes. Kept separate from the dashboard
+   * call so switching 7D/1M/3M does not also re-run the counters and rebuild
+   * the action queue.
+   */
+  useEffect(() => {
+    let alive = true;
+    fetchDashboardCharts(revRange.toLowerCase())
+      .then((data) => { if (alive) setCharts({ ...EMPTY_CHARTS, ...data }); })
+      .catch((err) => console.error('Dashboard charts fetch failed:', err));
+    return () => { alive = false; };
+  }, [revRange]);
+
+  /*
+   * Headline number from /dashboard, ten-day sparkline from /dashboard/charts.
+   * The sparklines were a fixed array of invented values, so the line under a
+   * tile had no relationship to the figure printed above it.
+   */
+  const kpiCards = kpis.map((k) => {
+    const series = charts.kpiSparklines?.[k.key];
+    const value = live?.kpis?.[k.key];
+    return {
+      ...k,
+      data: Array.isArray(series) && series.length ? series : [],
+      value:
+        value == null
+          ? k.value
+          : k.key === 'revenueToday'
+            ? '₹' + Number(value).toLocaleString('en-IN')
+            : Number(value).toLocaleString('en-IN'),
+    };
+  });
 
   // Trigger Toast Notification
   const showToast = (msg) => {
@@ -264,25 +187,59 @@ export function AdminDashboard() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Direct Approve Handler (Backend Connected)
+  /**
+   * Approve an item.
+   *
+   * The card is removed only after the server confirms, and the toast reports
+   * what the server actually DID ("Partner approved", "Refund retried") rather
+   * than asserting success. Previously the card was removed regardless, the
+   * error was logged to the console, and the immediate refetch brought the item
+   * straight back — which looked like the button was broken.
+   *
+   * Partner approvals gated on incomplete KYC come back as a refusal; the
+   * operator is shown what is missing and can override, which lands in the
+   * audit trail as a forced approval.
+   */
   const handleApproveAction = async (item, e) => {
     if (e) e.stopPropagation();
+    if (busyActionId) return;
+    const actionId = item.id || item.sourceKey || item.targetId;
+    setBusyActionId(item.id);
+
+    const submit = (force) =>
+      resolveActionItemApi(actionId, { action: 'approve', note: actionReason, force });
+
     try {
-      if (item.category === 'Vendor Approval' && item.targetId) {
-        await approveVendorGuarded(item.targetId, item.title);
+      let res;
+      try {
+        res = await submit(false);
+      } catch (err) {
+        const msg = err?.message || '';
+        if (!/KYC incomplete/i.test(msg)) throw err;
+        const missing = msg.replace(/^.*KYC incomplete:\s*/i, '').split(', ');
+        const ok = window.confirm(
+          `KYC is incomplete for ${item.title}:\n\n• ${missing.join('\n• ')}\n\n` +
+          'Verify these on the Vendor Documents screen first.\n\nApprove anyway?'
+        );
+        if (!ok) { setBusyActionId(null); return; }
+        res = await submit(true);
       }
-      await resolveActionItemApi(item.id || item.seedKey || item.targetId, { action: 'approve', note: actionReason });
+
+      setActionItems(prev => prev.filter(i => i.id !== item.id));
+      setCompletedCount(c => c + 1);
+      if (selectedAction?.id === item.id) {
+        setActionModalOpen(false);
+        setSelectedAction(null);
+      }
+      showToast(`✓ ${res?.message || `${item.title} approved`}`);
+      loadDashboardData();
     } catch (err) {
-      console.error('Action resolve failed:', err);
+      // Left in the queue on purpose: nothing happened, so it still needs doing.
+      showToast(`✕ Could not approve: ${err?.message || 'the server refused this action'}`);
+      loadDashboardData();
+    } finally {
+      setBusyActionId(null);
     }
-    setActionItems(prev => prev.filter(i => i.id !== item.id));
-    setCompletedCount(c => c + 1);
-    if (selectedAction?.id === item.id) {
-      setActionModalOpen(false);
-      setSelectedAction(null);
-    }
-    showToast(`✓ Action Completed: "${item.title}" approved successfully!`);
-    loadDashboardData();
   };
 
   // Direct Reject / Dismiss Handler (Backend Connected)
@@ -294,18 +251,25 @@ export function AdminDashboard() {
   };
 
   const confirmRejectAction = async () => {
-    if (!selectedAction) return;
+    if (!selectedAction || busyActionId) return;
+    const item = selectedAction;
+    setBusyActionId(item.id);
     try {
-      await resolveActionItemApi(selectedAction.id || selectedAction.seedKey || selectedAction.targetId, { action: 'reject', note: actionReason });
+      const res = await resolveActionItemApi(
+        item.id || item.sourceKey || item.targetId,
+        { action: 'reject', note: actionReason }
+      );
+      setActionItems(prev => prev.filter(i => i.id !== item.id));
+      setCompletedCount(c => c + 1);
+      showToast(`✕ ${res?.message || `${item.title} rejected`}`);
+      setActionModalOpen(false);
+      setSelectedAction(null);
     } catch (err) {
-      console.error('Action reject failed:', err);
+      showToast(`✕ Could not reject: ${err?.message || 'the server refused this action'}`);
+    } finally {
+      setBusyActionId(null);
+      loadDashboardData();
     }
-    setActionItems(prev => prev.filter(i => i.id !== selectedAction.id));
-    setCompletedCount(c => c + 1);
-    showToast(`✕ Action Item "${selectedAction.title}" rejected/dismissed.`);
-    setActionModalOpen(false);
-    setSelectedAction(null);
-    loadDashboardData();
   };
 
 
@@ -447,12 +411,29 @@ export function AdminDashboard() {
           </div>
         </div>
 
+        {/* An unreachable API must never read as an empty, healthy queue. */}
+        {loadError && (
+          <div className="mb-4 flex items-start gap-2 p-3 bg-rose-50 border border-rose-200 rounded-xl">
+            <AlertTriangle size={15} className="text-rose-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-xs font-bold text-rose-900">Could not load pending actions</p>
+              <p className="text-[11px] text-rose-700 mt-0.5">{loadError} — this queue may be incomplete.</p>
+            </div>
+          </div>
+        )}
+
         {/* Pending Action Cards Grid */}
         {filteredActions.length === 0 ? (
           <div className="py-10 text-center bg-white rounded-xl border border-slate-200/70 p-6">
             <CheckCircle2 className="mx-auto text-emerald-500 mb-2" size={36} />
-            <h4 className="text-sm font-bold text-slate-800">All Action Items Clear!</h4>
-            <p className="text-xs text-slate-500 mt-1">There are currently no pending tasks under this filter.</p>
+            <h4 className="text-sm font-bold text-slate-800">
+              {loadError ? 'Nothing loaded' : 'All Action Items Clear!'}
+            </h4>
+            <p className="text-xs text-slate-500 mt-1">
+              {loadError
+                ? 'Refresh once the connection is back.'
+                : 'There are currently no pending tasks under this filter.'}
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -607,29 +588,36 @@ export function AdminDashboard() {
               <div className="relative shrink-0" style={{ width:160, height:160 }}>
                 <ResponsiveContainer width={160} height={160}>
                   <PieChart>
-                    <Pie data={donutData} cx={75} cy={75} innerRadius={52} outerRadius={78}
+                    <Pie data={charts.revenueByVendorType} cx={75} cy={75} innerRadius={52} outerRadius={78}
                       paddingAngle={3} dataKey="value" animationBegin={0} animationDuration={600}>
-                      {donutData.map((d,i)=><Cell key={i} fill={d.color} stroke="none"/>)}
+                      {charts.revenueByVendorType.map((d,i)=>(
+                        <Cell key={d.vendorType||i} fill={DONUT_COLOURS[i % DONUT_COLOURS.length]} stroke="none"/>
+                      ))}
                     </Pie>
-                    <Tooltip formatter={v=>`₹${(v/100000).toFixed(1)}L`} content={<CustomTooltip />}/>
+                    <Tooltip formatter={compactInr} content={<CustomTooltip />}/>
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                   <span className="text-[10px] text-slate-400 font-semibold">Total</span>
-                  <span className="text-[15px] font-black text-slate-800">₹28.1L</span>
+                  <span className="text-[15px] font-black text-slate-800">{compactInr(donutTotal)}</span>
                 </div>
               </div>
               {/* Legend right */}
               <div className="flex flex-col gap-2 flex-1">
-                {donutData.map((d,i)=>(
-                  <div key={i} className="flex items-center justify-between">
+                {charts.revenueByVendorType.length === 0 && (
+                  <p className="text-[11px] text-slate-400">No billing recorded yet.</p>
+                )}
+                {charts.revenueByVendorType.map((d,i)=>(
+                  <div key={d.vendorType||i} className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background:d.color }}/>
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background:DONUT_COLOURS[i % DONUT_COLOURS.length] }}/>
                       <span className="text-[11px] font-medium text-slate-600">{d.name}</span>
                     </div>
                     <div className="text-right">
-                      <span className="text-[11px] font-bold text-slate-800">₹{(d.value/100000).toFixed(1)}L</span>
-                      <span className="text-[10px] text-slate-400 ml-1">{Math.round(d.value/totalRevDonut*100)}%</span>
+                      <span className="text-[11px] font-bold text-slate-800">{compactInr(d.value)}</span>
+                      <span className="text-[10px] text-slate-400 ml-1">
+                        {donutTotal > 0 ? Math.round(d.value/donutTotal*100) : 0}%
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -645,7 +633,7 @@ export function AdminDashboard() {
         {/* CHART 3 — New Users This Week */}
         <ChartCard title="New Users This Week" subtitle="Daily registrations Mon–Sun">
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={weekUsersData} margin={{ top:14, right:8, left:-20, bottom:0 }}>
+            <BarChart data={charts.newUsersThisWeek} margin={{ top:14, right:8, left:-20, bottom:0 }}>
               <CartesianGrid vertical={false} stroke={gridStroke}/>
               <XAxis dataKey="day" tick={axisTick} axisLine={false} tickLine={false} dy={6}/>
               <YAxis tick={axisTick} axisLine={false} tickLine={false}/>
@@ -661,7 +649,7 @@ export function AdminDashboard() {
         {/* CHART 4 — Orders vs Bookings */}
         <ChartCard title="Orders vs Bookings" subtitle="This week grouped comparison">
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart data={ordersBookingsData} margin={{ top:14, right:8, left:-20, bottom:0 }} barGap={3}>
+            <BarChart data={charts.ordersVsBookings} margin={{ top:14, right:8, left:-20, bottom:0 }} barGap={3}>
               <CartesianGrid vertical={false} stroke={gridStroke}/>
               <XAxis dataKey="day" tick={axisTick} axisLine={false} tickLine={false} dy={6}/>
               <YAxis tick={axisTick} axisLine={false} tickLine={false}/>
@@ -678,7 +666,7 @@ export function AdminDashboard() {
         {/* CHART 5 — Top 5 Vendors by Revenue (horizontal) */}
         <ChartCard title="Top 5 Vendors by Revenue" subtitle="Monthly gross billing">
           <ResponsiveContainer width="100%" height={200}>
-            <BarChart layout="vertical" data={topVendorsBar} margin={{ top:4, right:48, left:0, bottom:0 }}>
+            <BarChart layout="vertical" data={charts.topVendors} margin={{ top:4, right:48, left:0, bottom:0 }}>
               <CartesianGrid horizontal={false} stroke={gridStroke}/>
               <XAxis type="number" tick={axisTick} axisLine={false} tickLine={false} tickFormatter={rupeeFmt}/>
               <YAxis type="category" dataKey="name" width={105} tick={axisTick} axisLine={false} tickLine={false}/>
@@ -715,15 +703,22 @@ export function AdminDashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {partners.map(p=>(
-                <tr key={p.rank} className="hover:bg-teal-50/40 transition-colors group">
+              {charts.partners.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-5 py-8 text-center text-[12px] text-slate-400">
+                    No partner billing recorded in the last 30 days.
+                  </td>
+                </tr>
+              )}
+              {charts.partners.map(p=>(
+                <tr key={p.vendorId || p.rank} className="hover:bg-teal-50/40 transition-colors group">
                   <td className="px-5 py-3.5 whitespace-nowrap">
                     <span className="w-6 h-6 rounded-lg bg-slate-100 flex items-center justify-center text-[11px] font-black text-slate-500">{p.rank}</span>
                   </td>
                   <td className="px-5 py-3.5 whitespace-nowrap">
                     <div className="flex items-center gap-2.5">
                       <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-teal-400 to-teal-600 flex items-center justify-center text-white font-black text-[10px] shrink-0">
-                        {p.name.charAt(0)}
+                        {(p.name || '?').charAt(0)}
                       </div>
                       <span className="text-[12.5px] font-bold text-slate-800 group-hover:text-teal-600 transition">{p.name}</span>
                     </div>
@@ -731,17 +726,26 @@ export function AdminDashboard() {
                   <td className="px-5 py-3.5 whitespace-nowrap">
                     <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wide border ${roleBadge(p.role)}`}>{p.role}</span>
                   </td>
-                  <td className="px-5 py-3.5 text-[13px] font-black text-slate-800 whitespace-nowrap">{p.revenue}</td>
+                  <td className="px-5 py-3.5 text-[13px] font-black text-slate-800 whitespace-nowrap">
+                    ₹{Number(p.revenue || 0).toLocaleString('en-IN')}
+                  </td>
                   <td className="px-5 py-3.5 whitespace-nowrap">
                     <div className="flex items-center gap-1">
                       <Star size={12} className="fill-amber-400 text-amber-400"/>
-                      <span className="text-[12px] font-black text-slate-700">{p.rating}</span>
+                      <span className="text-[12px] font-black text-slate-700">
+                        {p.rating ? Number(p.rating).toFixed(1) : '—'}
+                      </span>
                     </div>
                   </td>
+                  {/*
+                    Was a hardcoded `up` boolean rendering "Growing"/"Declining"
+                    against no measurement at all. Shows the partner's real
+                    transaction count and platform commission instead — both
+                    facts, from the same ledger as the revenue beside them.
+                  */}
                   <td className="px-5 py-3.5 whitespace-nowrap">
-                    <span className={`flex items-center gap-0.5 text-[10px] font-bold ${p.up?'text-emerald-600':'text-rose-500'}`}>
-                      {p.up ? <ArrowUpRight size={12}/> : <ArrowDownRight size={12}/>}
-                      {p.up ? 'Growing' : 'Declining'}
+                    <span className="text-[10px] font-bold text-slate-500">
+                      {p.transactions} txn · ₹{Number(p.commission || 0).toLocaleString('en-IN')} comm.
                     </span>
                   </td>
                 </tr>

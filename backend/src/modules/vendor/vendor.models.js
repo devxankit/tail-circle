@@ -78,7 +78,17 @@ const vendorProfileSchema = new mongoose.Schema(
 
     approvalStatus: { type: String, enum: APPROVAL_STATUSES, default: 'pending', index: true },
     rejectionReason: { type: String, default: null },
-    commissionRate: { type: Number, default: 0.15 }, // platform commission fraction
+    /*
+     * Per-vendor commission override, as a fraction (0.1 === 10%).
+     *
+     * `null` means "inherit", which is the normal state: the rate then comes
+     * from the category default and finally the global default, resolved in
+     * commission.service.js. It defaulted to 0.15 before, which made every
+     * profile look deliberately customised and left no way to express
+     * inheritance -- changing the grooming category rate could not reach any
+     * of its vendors.
+     */
+    commissionRate: { type: Number, default: null, min: 0, max: 1 },
     rating: { type: Number, default: 0 },
 
     policies: {
@@ -132,20 +142,62 @@ const vendorLedgerEntrySchema = new mongoose.Schema(
     gross: { type: Number, required: true }, // paise
     commission: { type: Number, required: true }, // paise
     net: { type: Number, required: true }, // paise
+    /*
+     * The rate this row was actually billed at, snapshotted at posting time.
+     *
+     * Without it a settled entry cannot be explained: category and vendor
+     * rates change, so recomputing `commission / gross` months later is the
+     * only way to answer "why was this vendor charged 18%?" and that breaks
+     * down on rounded amounts. Null on rows written before this field.
+     */
+    commissionRate: { type: Number, default: null },
+    /*
+     * Which direction the money moved.
+     *
+     * `earning` credits the vendor for a fulfilled sale. `reversal` claws it
+     * back when the customer is refunded, and carries NEGATIVE gross,
+     * commission and net so that summing a vendor's entries always yields
+     * their true payable. Before this existed a refunded booking left its
+     * earning row untouched: the vendor was paid for a sale the customer got
+     * their money back for, and the platform booked commission revenue that
+     * never existed.
+     */
+    kind: { type: String, enum: ['earning', 'reversal'], default: 'earning', index: true },
+    /** For reversals: the earning row being clawed back. */
+    reversalOf: { type: mongoose.Schema.Types.ObjectId, ref: 'VendorLedgerEntry', default: null },
+    /** For reversals: the Refund that triggered it, for reconciliation. */
+    refundId: { type: mongoose.Schema.Types.ObjectId, ref: 'Refund', default: null },
     status: { type: String, enum: ['unsettled', 'settled'], default: 'unsettled', index: true },
     settledPayoutId: { type: mongoose.Schema.Types.ObjectId, ref: 'Payout', default: null },
   },
   { timestamps: true }
 );
 /*
- * One entry per vendor per reference.
+ * One EARNING per vendor per reference.
  *
  * This was unique on (refType, refId) alone, which meant a single order could
  * only ever credit one seller — a basket mixing two shops silently dropped the
  * second one's earnings. Including `vendorId` keeps re-fulfilment (verify +
  * webhook) idempotent while letting each seller be paid for their own lines.
+ *
+ * Scoped to `kind: 'earning'` via a partial filter so reversals can coexist
+ * with the row they reverse — and so a sequence of partial refunds can each
+ * post their own reversal. Reversal idempotency is enforced per Refund
+ * (`refundId`) instead, below.
  */
-vendorLedgerEntrySchema.index({ vendorId: 1, refType: 1, refId: 1 }, { unique: true });
+vendorLedgerEntrySchema.index(
+  { vendorId: 1, refType: 1, refId: 1 },
+  { unique: true, partialFilterExpression: { kind: 'earning' } }
+);
+/*
+ * One reversal per Refund per vendor, so retrying a failed ledger reversal
+ * cannot double-debit the vendor. Partial-filtered because `refundId` is null
+ * on every earning row and nulls would otherwise collide.
+ */
+vendorLedgerEntrySchema.index(
+  { vendorId: 1, refundId: 1 },
+  { unique: true, partialFilterExpression: { refundId: { $type: 'objectId' } } }
+);
 vendorLedgerEntrySchema.index({ vendorId: 1, createdAt: -1 });
 
 export const VendorLedgerEntry = mongoose.model('VendorLedgerEntry', vendorLedgerEntrySchema);
@@ -157,7 +209,18 @@ const payoutSchema = new mongoose.Schema(
     grossAmount: { type: Number, default: 0 }, // paise
     commission: { type: Number, default: 0 },
     tax: { type: Number, default: 0 },
+    /* The tax fraction withheld, snapshotted so a settled payout stays explainable. */
+    taxRate: { type: Number, default: null },
     netAmount: { type: Number, default: 0 },
+    /*
+     * Earnings withheld from this payout because their booking is disputed.
+     *
+     * Recorded on the payout rather than left implicit, so a partner asking
+     * "why is this less than I expected?" has an answer on the document itself
+     * instead of a silent shortfall.
+     */
+    heldCount: { type: Number, default: 0 },
+    heldAmount: { type: Number, default: 0 }, // paise
     status: { type: String, enum: ['pending', 'processing', 'paid'], default: 'pending', index: true },
     utr: { type: String, default: null },
     lineItemIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'VendorLedgerEntry' }],

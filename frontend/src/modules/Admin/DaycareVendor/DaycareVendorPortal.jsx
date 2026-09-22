@@ -17,6 +17,7 @@ import {
 } from '../../../services/vendor';
 import { dedupePhotos } from '../../../services/groomingApi';
 import VerificationBanner from '../components/VerificationBanner';
+import { PendingBookingRequests } from '../components/PendingBookingRequests';
 
 /**
  * Daycare centre vendor portal.
@@ -126,6 +127,7 @@ export function DaycareVendorPortal() {
         ))}
       </div>
 
+      {(view === 'dashboard' || view === 'bookings') && <PendingBookingRequests onChange={load} />}
       {view === 'dashboard' && <Dashboard summary={summary} onGo={go} />}
       {view === 'bookings' && <Bookings onChanged={load} />}
       {view === 'plans' && <Catalogue kind="plan" onChanged={load} />}

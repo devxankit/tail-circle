@@ -17,6 +17,18 @@ export const SOCKET_EVENTS = {
   CHAT_READ: 'chat:messages:read',
   CHAT_DELETE: 'chat:message:delete',
   PRESENCE_UPDATE: 'presence:update',
+  /*
+   * New work landing on a partner's panel — a booking request, a paid booking
+   * or a new order. Separate from NOTIFICATION_NEW because the partner panel
+   * treats it as an ALERT: it rings, and keeps ringing, until acknowledged.
+   * A silent badge was never going to get a salon to answer within two hours.
+   */
+  VENDOR_WORK_NEW: 'vendor:work:new',
+  /* Withdraws a ring when the work is answered elsewhere (another tab, the
+   * phone, or an admin acting on the partner's behalf). */
+  VENDOR_WORK_RESOLVED: 'vendor:work:resolved',
+  /* A compliance warning the partner must see immediately. */
+  VENDOR_COMPLIANCE_ALERT: 'vendor:compliance:alert',
 
   // Client → server
   JOIN_ROOM: 'room:join',

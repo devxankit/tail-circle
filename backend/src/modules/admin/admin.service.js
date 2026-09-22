@@ -9,9 +9,11 @@ import { Product } from '../shop/product.model.js';
 import { Provider } from '../provider/provider.model.js';
 import { Doctor } from '../provider/doctor.model.js';
 import { VendorProfile, VendorLedgerEntry } from '../vendor/vendor.models.js';
+import { UserSubscription } from '../subscription/subscription.models.js';
 import { serializeProfile } from '../vendor/vendor.service.js';
 import { VENDOR_TYPE_LABEL } from '../vendor/vendorTypeLabels.js';
 import { invalidate } from '../../services/cache.service.js';
+import { isUserOnline, onlineUserCount } from '../../sockets/index.js';
 import { AuditLog, Banner, PlatformSetting, AdminActionItem } from './admin.models.js';
 
 const oid = (id) => new mongoose.Types.ObjectId(String(id));
@@ -45,126 +47,276 @@ export async function listAuditLogs(limit = 100) {
 }
 
 /* ── Admin Action Items Center ───────────────────────────────────── */
-const DEFAULT_ACTION_ITEMS = [
-  {
-    seedKey: 'act_101',
+
+/*
+ * The founder's "what needs me today" queue.
+ *
+ * This used to seed six hardcoded rows into MongoDB on first read - invented
+ * vendors, invented refund requests, invented customer names, one of them
+ * pointing at a route that does not exist. On launch day the first thing the
+ * Admin Panel would have shown was fabricated work. The seeding is gone; every
+ * item below is derived from something that actually happened.
+ *
+ * Derived items are upserted on a stable `sourceKey` so resolving one sticks,
+ * and are withdrawn automatically when the underlying condition clears - an
+ * approved vendor should not linger in the queue because nobody ticked it off.
+ */
+
+const PRIORITY_ORDER = { Urgent: 0, High: 1, Medium: 2, Normal: 3 };
+
+/**
+ * Rebuild the derived queue from live data.
+ *
+ * Each collector returns rows keyed by `sourceKey`. Anything pending whose key
+ * is no longer produced is withdrawn, so the queue can only ever show work that
+ * is still outstanding.
+ */
+export async function syncActionItems() {
+  const collected = [
+    ...(await collectPendingVendors()),
+    ...(await collectFailedRefunds()),
+    ...(await collectUnreversedRefunds()),
+    ...(await collectUnansweredBookings()),
+    ...(await collectReturnRequests()),
+    ...(await collectOpenSupport()),
+    ...(await collectReportedContent()),
+  ];
+
+  for (const item of collected) {
+    /*
+     * `status` is set ONLY on insert.
+     *
+     * This used to `$set: { ...item, status: 'pending' }` on every sync, and
+     * `listActionItems` syncs on every read — so an item an admin had just
+     * approved was flipped straight back to pending and reappeared on the
+     * dashboard the moment the page refreshed. Approving anything looked like
+     * it did nothing.
+     *
+     * Display fields still refresh (a vendor's document count can change while
+     * the item sits in the queue); the workflow state does not.
+     */
+    const { sourceKey, ...display } = item;
+    await AdminActionItem.updateOne(
+      { sourceKey },
+      {
+        $set: display,
+        $setOnInsert: { sourceKey, status: 'pending', createdAt: new Date() },
+      },
+      { upsert: true }
+    );
+  }
+
+  /*
+   * Withdraw items whose cause is gone — whatever their state.
+   *
+   * Resolved rows are cleared too, not just pending ones: keeping them would
+   * mean a condition that recurs later (a vendor re-applying after rejection)
+   * could never raise a fresh item, because the old resolved row still owns the
+   * unique `sourceKey`.
+   */
+  const liveKeys = collected.map((i) => i.sourceKey);
+  await AdminActionItem.deleteMany({
+    sourceKey: { $exists: true, $nin: liveKeys },
+  });
+
+  return collected.length;
+}
+
+async function collectPendingVendors() {
+  const rows = await VendorProfile.find({ approvalStatus: 'pending' })
+    .populate('userId', 'name email phone')
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+  return rows.map((v) => ({
+    sourceKey: `vendor:${v._id}`,
     category: 'Vendor Approval',
-    type: 'Veterinarian Partner',
-    title: 'Dr. Happy Paws Vet Clinic Registration',
-    subtitle: 'Medical License & Clinic Verification Pending',
-    details: 'Submitted Practice License #VET-88219 and Clinic Registration Certificate for admin audit.',
-    priority: 'Urgent',
-    status: 'pending',
-    targetId: 'VND-101',
+    type: VENDOR_TYPE_LABEL[v.vendorType] || 'Partner',
+    title: v.businessName || v.userId?.name || 'Partner registration',
+    subtitle: `${VENDOR_TYPE_LABEL[v.vendorType] || 'Partner'} - awaiting verification`,
+    details: `${(v.documents || []).length} document(s) submitted. Applied ${new Date(v.createdAt).toLocaleDateString('en-IN')}.`,
+    priority: (v.documents || []).length ? 'High' : 'Medium',
+    targetId: String(v._id),
     navPath: '/admin/vendors/pending',
-    docName: 'Practice_License_2026.pdf',
-    applicant: 'Dr. Ramesh Sharma (Mumbai)',
-  },
-  {
-    seedKey: 'act_102',
-    category: 'Vendor Approval',
-    type: 'Fresh Meals Partner',
-    title: 'NutriPaw Organic Meals Co.',
-    subtitle: 'FSSAI Food Safety Cert Verification',
-    details: 'Applied for Fresh Pet Meal Subscription program. Commission rate requested: 10%.',
-    priority: 'High',
-    status: 'pending',
-    targetId: 'VND-102',
-    navPath: '/admin/vendors/pending',
-    docName: 'FSSAI_Food_Safety_Cert.pdf',
-    applicant: 'Ananya Roy (Bengaluru)',
-  },
-  {
-    seedKey: 'act_103',
+    docName: v.documents?.[0]?.name || '',
+    applicant: v.userId?.name || v.userId?.email || '',
+  }));
+}
+
+async function collectFailedRefunds() {
+  const { Refund } = await import('../payment/refund.model.js');
+  const rows = await Refund.find({ status: 'failed' })
+    .populate('userId', 'name')
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+  return rows.map((r) => ({
+    sourceKey: `refund_failed:${r._id}`,
     category: 'Refund Request',
-    type: 'Event Refund',
-    title: 'Refund Request #TXN-901',
-    subtitle: 'Customer: Rahul Kumar • Amount: ₹1,500',
-    details: 'Pet Event "Monsoon Dog Splash" was rescheduled. Client requested immediate full refund.',
+    type: 'Failed Refund',
+    title: `Refund ${r.refundNo} failed`,
+    subtitle: `${r.userId?.name || 'Customer'} - Rs ${Math.round(r.amount / 100).toLocaleString('en-IN')}`,
+    details: `${r.reason}. Gateway error: ${r.failureReason || 'unknown'}. ${r.attempts} attempt(s). The customer is still owed this money.`,
     priority: 'Urgent',
-    status: 'pending',
-    targetId: 'TXN-901',
-    navPath: '/admin/operations/refunds',
-    amount: '₹1,500',
-    applicant: 'Rahul Kumar',
-  },
-  {
-    seedKey: 'act_104',
-    category: 'Moderation',
-    type: 'Spam Feed Report',
-    title: 'Reported Feed Post #RPT-501',
-    subtitle: 'Reported by: Aisha Khan • Reason: Commercial Spam',
-    details: 'Content contains unauthorized external links and unauthorized promotional spam.',
-    priority: 'High',
-    status: 'pending',
-    targetId: 'RPT-501',
-    navPath: '/admin/platform/reports',
-    applicant: 'Reported User: Spammer_88',
-  },
-  {
-    seedKey: 'act_105',
+    targetId: String(r._id),
+    navPath: '/admin/finance/refunds',
+    amount: `Rs ${Math.round(r.amount / 100).toLocaleString('en-IN')}`,
+    applicant: r.userId?.name || '',
+  }));
+}
+
+/*
+ * Refunds that reached the customer but never clawed the vendor's earning
+ * back. Silent money leak: the platform pays out on a sale it refunded.
+ */
+async function collectUnreversedRefunds() {
+  const { Refund } = await import('../payment/refund.model.js');
+  const rows = await Refund.find({ status: 'processed', ledgerReversed: false })
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+  return rows.map((r) => ({
+    sourceKey: `refund_unreversed:${r._id}`,
+    category: 'Reconciliation',
+    type: 'Ledger Reversal Pending',
+    title: `Refund ${r.refundNo} not clawed back from partner`,
+    subtitle: `Rs ${Math.round(r.amount / 100).toLocaleString('en-IN')} refunded, partner still credited`,
+    details: r.ledgerReversalError || 'The vendor ledger was not reversed for this refund.',
+    priority: 'Urgent',
+    targetId: String(r._id),
+    navPath: '/admin/finance/refunds',
+    amount: `Rs ${Math.round(r.amount / 100).toLocaleString('en-IN')}`,
+  }));
+}
+
+async function collectUnansweredBookings() {
+  const rows = await Booking.find({
+    status: 'awaiting_vendor',
+    vendorRespondBy: { $ne: null, $lt: new Date() },
+  })
+    .populate('userId', 'name')
+    .sort({ vendorRespondBy: 1 })
+    .limit(50)
+    .lean();
+  return rows.map((b) => ({
+    sourceKey: `booking_unanswered:${b._id}`,
+    category: 'Operations',
+    type: 'Unanswered Booking',
+    title: `Booking ${b.bookingNo} unanswered by partner`,
+    subtitle: `${b.userId?.name || 'Customer'} - ${b.type} on ${b.schedule?.startDate || 'TBC'}`,
+    details: 'The partner did not respond inside their window. Reassign or refund before the customer turns up to nothing.',
+    priority: 'Urgent',
+    targetId: String(b._id),
+    navPath: '/admin/operations/bookings',
+    amount: `Rs ${Math.round((b.amounts?.total || 0) / 100).toLocaleString('en-IN')}`,
+    applicant: b.userId?.name || '',
+  }));
+}
+
+async function collectReturnRequests() {
+  const rows = await Order.find({ status: 'return_requested' })
+    .populate('userId', 'name')
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+  return rows.map((o) => ({
+    sourceKey: `return:${o._id}`,
     category: 'Refund Request',
     type: 'Order Return',
-    title: 'Refund Request #TXN-902',
-    subtitle: 'Customer: Priya Dev • Amount: ₹850',
-    details: 'Incorrect dog harness sizing delivered. Item returned and inspected by vendor.',
-    priority: 'Medium',
-    status: 'pending',
-    targetId: 'TXN-902',
-    navPath: '/admin/operations/refunds',
-    amount: '₹850',
-    applicant: 'Priya Dev',
-  },
-  {
-    seedKey: 'act_106',
-    category: 'Vendor Approval',
-    type: 'Memorial Service',
-    title: 'Rainbow Bridge Care Services',
-    subtitle: 'Last Ride Partner Registration',
-    details: 'Submitted tax registry and service menu for pet cremation & memorial plaques.',
-    priority: 'Medium',
-    status: 'pending',
-    targetId: 'VND-103',
-    navPath: '/admin/vendors/pending',
-    docName: 'GST_Registry_Cert.pdf',
-    applicant: 'Sanjay Dutt (Delhi)',
-  },
-  {
-    seedKey: 'act_107',
-    category: 'Moderation',
-    type: 'Review Comment',
-    title: 'Review Flag #RPT-502',
-    subtitle: 'Reported by: Rahul Kumar • Reason: Abusive Language',
-    details: 'Inappropriate language used in seller review comment on vendor page.',
-    priority: 'Normal',
-    status: 'pending',
-    targetId: 'RPT-502',
-    navPath: '/admin/platform/reports',
-    applicant: 'Reported User: AngryReviewer',
-  },
-];
+    title: `Return requested - ${o.orderNo}`,
+    subtitle: `${o.userId?.name || 'Customer'} - Rs ${Math.round((o.amounts?.total || 0) / 100).toLocaleString('en-IN')}`,
+    details: o.timeline?.slice(-1)[0]?.note || 'Return requested by customer.',
+    priority: 'High',
+    targetId: String(o._id),
+    navPath: '/admin/operations/returns',
+    amount: `Rs ${Math.round((o.amounts?.total || 0) / 100).toLocaleString('en-IN')}`,
+    applicant: o.userId?.name || '',
+  }));
+}
 
-export async function ensureActionItemsSeeded() {
-  const count = await AdminActionItem.countDocuments();
-  if (count === 0) {
-    for (const item of DEFAULT_ACTION_ITEMS) {
-      await AdminActionItem.updateOne({ seedKey: item.seedKey }, { $setOnInsert: item }, { upsert: true });
-    }
-  }
+async function collectOpenSupport() {
+  const { SupportTicket } = await import('../support/supportTicket.model.js');
+  const rows = await SupportTicket.find({ status: { $in: ['open', 'in_progress'] } })
+    .populate('userId', 'name role')
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+  return rows.map((t) => ({
+    sourceKey: `support:${t._id}`,
+    category: 'Support',
+    type: t.userId?.role === 'vendor' ? 'Partner Issue' : 'Customer Complaint',
+    title: t.subject || 'Support ticket',
+    subtitle: `${t.userId?.name || 'User'} - ${t.category || 'general'}`,
+    details: t.message || '',
+    priority: 'Medium',
+    targetId: String(t._id),
+    navPath: '/admin/operations/support',
+    applicant: t.userId?.name || '',
+  }));
+}
+
+/*
+ * Reports live in their own collection, so the count per post comes from an
+ * aggregation rather than an embedded array.
+ */
+async function collectReportedContent() {
+  const { Post, PostReport } = await import('../social/social.models.js');
+  const grouped = await PostReport.aggregate([
+    { $group: { _id: '$postId', count: { $sum: 1 }, reason: { $first: '$reason' } } },
+    { $sort: { count: -1 } },
+    { $limit: 50 },
+  ]);
+  if (!grouped.length) return [];
+
+  const posts = await Post.find({
+    _id: { $in: grouped.map((g) => g._id) },
+    deletedAt: null,
+    status: { $ne: 'hidden' },
+  })
+    .select('_id caption')
+    .lean();
+  const live = new Map(posts.map((post) => [String(post._id), post]));
+
+  return grouped
+    .filter((g) => live.has(String(g._id)))
+    .map((g) => ({
+      sourceKey: `post_report:${g._id}`,
+      category: 'Moderation',
+      type: 'Reported Post',
+      title: 'Reported community post',
+      subtitle: `${g.count} report(s)`,
+      details: g.reason || 'Reported by a community member.',
+      priority: g.count > 2 ? 'High' : 'Medium',
+      targetId: String(g._id),
+      navPath: '/admin/platform/reports',
+    }));
 }
 
 export async function listActionItems({ status = 'pending', category, priority } = {}) {
-  await ensureActionItemsSeeded();
+  /*
+   * Refreshed on read rather than on a schedule. The queue is small, it is
+   * opened a handful of times a day, and a stale action queue is worse than a
+   * slightly slower one - an operator acting on withdrawn work is exactly the
+   * failure this replaced.
+   */
+  await syncActionItems().catch(() => {});
   const filter = {};
   if (status && status !== 'All') filter.status = status;
   if (category && category !== 'All') filter.category = category;
   if (priority && priority !== 'All') filter.priority = priority;
 
-  const rows = await AdminActionItem.find(filter).sort({ priority: 1, createdAt: -1 });
+  const rows = await AdminActionItem.find(filter).sort({ createdAt: -1 }).lean();
+  // `priority` is a label, not a number - sorting on it put "High" before
+  // "Urgent" alphabetically and buried the things that actually mattered.
+  rows.sort(
+    (a, b) =>
+      (PRIORITY_ORDER[a.priority] ?? 9) - (PRIORITY_ORDER[b.priority] ?? 9) ||
+      new Date(b.createdAt) - new Date(a.createdAt)
+  );
 
   return rows.map((r) => ({
     id: String(r._id),
-    seedKey: r.seedKey,
+    sourceKey: r.sourceKey,
     category: r.category,
     type: r.type,
     title: r.title,
@@ -181,76 +333,14 @@ export async function listActionItems({ status = 'pending', category, priority }
   }));
 }
 
-export async function resolveActionItem(actor, actionId, { action = 'approve', note = '' } = {}, ip = '') {
-  let item = null;
-
-  // 1. Try finding by MongoDB ObjectId
-  if (mongoose.isValidObjectId(actionId)) {
-    item = await AdminActionItem.findById(actionId);
-  }
-
-  // 2. Try matching seedKey, targetId, or normalized string ID (ACT-101 -> act_101)
-  if (!item) {
-    const normId = String(actionId).toLowerCase().replace('-', '_');
-    const numPart = String(actionId).replace(/\D/g, '');
-    item = await AdminActionItem.findOne({
-      $or: [
-        { seedKey: actionId },
-        { seedKey: normId },
-        { seedKey: numPart ? `act_${numPart}` : normId },
-        { targetId: actionId },
-        { targetId: actionId.toUpperCase() },
-      ],
-    });
-  }
-
-  // 3. Fallback: match seed in default list and insert into DB as resolved
-  if (!item) {
-    const normId = String(actionId).toLowerCase().replace('-', '_');
-    const numPart = String(actionId).replace(/\D/g, '');
-    const mock = DEFAULT_ACTION_ITEMS.find(
-      (m) =>
-        m.seedKey.toLowerCase() === normId ||
-        m.seedKey.toLowerCase() === actionId.toLowerCase() ||
-        (numPart && m.seedKey.endsWith(numPart)) ||
-        m.targetId.toLowerCase() === actionId.toLowerCase()
-    );
-    if (mock) {
-      item = await AdminActionItem.create({
-        ...mock,
-        status: action === 'approve' ? 'approved' : 'rejected',
-        resolvedBy: actor?.name || actor?.email || 'admin',
-        resolvedAt: new Date(),
-        note,
-      });
-    }
-  } else {
-    item.status = action === 'approve' ? 'approved' : 'rejected';
-    item.resolvedBy = actor?.name || actor?.email || 'admin';
-    item.resolvedAt = new Date();
-    if (note) item.note = note;
-    await item.save();
-  }
-
-  if (!item) throw ApiError.notFound(`Action item '${actionId}' not found`);
-
-  await writeAudit(actor, {
-    action: `action_item.${action}`,
-    targetType: item.category.toLowerCase().replace(/\s+/g, '_'),
-    targetId: String(item._id),
-    before: { status: 'pending' },
-    after: { status: item.status, note },
-    ip,
-  });
-
-  return {
-    id: String(item._id),
-    status: item.status,
-    message: `Action item '${item.title}' ${item.status} successfully`,
-  };
-}
-
-
+/*
+ * `resolveActionItem` moved to admin.actions.service.js.
+ *
+ * It lived here doing nothing but flipping a status flag, which is exactly why
+ * approving from the dashboard never changed anything. It now dispatches to the
+ * real operation behind each item, so it needs the ops/refund/social services
+ * that cannot be imported from this file without a cycle.
+ */
 
 /* ── Dashboard ────────────────────────────────────────────────────── */
 // Shared labels — this map covered only five of the eight vendor types, so
@@ -309,28 +399,131 @@ export async function getDashboard() {
 }
 
 /* ── Users & pets ─────────────────────────────────────────────────── */
+/**
+ * A paid subscription counts only while it is both `active` and unexpired.
+ * `getActiveSubscription()` settles a lapsed row on read, but that is a write
+ * per user — far too heavy for a 500-row list, so the same expiry rule is
+ * applied in memory here and the row is left for that path to clean up.
+ */
+const liveSub = (s, now) => s.status === 'active' && (!s.expiresAt || s.expiresAt > now);
+
+/** Search text is a literal, not a pattern — a stray `(` must not 500. */
+const rx = (text) => new RegExp(String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+
 export async function listUsers({ search } = {}) {
   const filter = { role: 'user' };
-  if (search) filter.$or = [{ name: new RegExp(search, 'i') }, { email: new RegExp(search, 'i') }];
+  if (search) {
+    const re = rx(search);
+    filter.$or = [{ name: re }, { email: re }, { phone: re }];
+  }
   const users = await User.find(filter).sort({ createdAt: -1 }).limit(500);
-  const counts = await Pet.aggregate([
-    { $match: { deletedAt: null } },
-    { $group: { _id: '$ownerId', n: { $sum: 1 } } },
+  const ids = users.map((u) => u._id);
+
+  const [counts, subs] = await Promise.all([
+    // Pet names ride along with the count so the profile drawer can list the
+    // actual pets instead of only saying how many there are.
+    Pet.aggregate([
+      { $match: { deletedAt: null, ownerId: { $in: ids } } },
+      { $group: { _id: '$ownerId', n: { $sum: 1 }, names: { $push: '$name' } } },
+    ]),
+    UserSubscription.find({ userId: { $in: ids }, status: 'active' })
+      .select('userId plan planKey expiresAt')
+      .sort({ expiresAt: -1 })
+      .lean(),
   ]);
-  const petMap = new Map(counts.map((c) => [String(c._id), c.n]));
-  return users.map((u) => ({
-    id: String(u._id),
-    name: u.name || 'Unnamed',
-    email: u.email || u.phone || '',
-    phone: u.phone || '—',
-    city: u.city || '—',
-    avatar: u.avatarUrl || `https://i.pravatar.cc/150?u=${u._id}`,
-    joined: u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : '—',
-    plan: 'Free',
-    pets: petMap.get(String(u._id)) || 0,
-    status: u.isBlocked ? 'Suspended' : 'Active',
-    kyc: u.isPhoneVerified ? 'Verified' : 'Pending',
-  }));
+
+  const now = new Date();
+  const petMap = new Map(counts.map((c) => [String(c._id), c]));
+  // Sorted by expiry above, so the first live row per user is the longest-running.
+  const subMap = new Map();
+  for (const s of subs) {
+    if (liveSub(s, now) && !subMap.has(String(s.userId))) subMap.set(String(s.userId), s);
+  }
+
+  return users.map((u) => {
+    const pets = petMap.get(String(u._id));
+    const sub = subMap.get(String(u._id));
+    return {
+      id: String(u._id),
+      name: u.name || 'Unnamed',
+      // The phone belongs in its own column; borrowing it here made every
+      // OTP-only account look like it had an email address.
+      email: u.email || '',
+      phone: u.phone || '—',
+      city: u.city || '—',
+      // Null when the user never set a picture — the panel draws initials.
+      // This used to hand back a random stock portrait from pravatar.cc.
+      avatar: u.avatarUrl || null,
+      joined: u.createdAt ? new Date(u.createdAt).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' }) : '—',
+      joinedAt: u.createdAt || null,
+      // `plan` is the bucket the filter tabs work on; `planName` is what the
+      // user actually bought ("Gold", "Standard", …).
+      plan: sub ? 'Premium' : 'Free',
+      planName: sub?.plan?.name || sub?.planKey || 'Free',
+      planExpiresAt: sub?.expiresAt || null,
+      pets: pets?.n || 0,
+      petNames: pets?.names || [],
+      status: u.isBlocked ? 'Suspended' : 'Active',
+      kyc: u.isPhoneVerified ? 'Verified' : 'Pending',
+      lastActiveAt: u.lastSeenAt || u.lastLoginAt || null,
+      // Live socket presence, not a timestamp comparison: `isUserOnline` counts
+      // the sockets actually open for this account right now.
+      online: isUserOnline(u._id),
+      lastLoginAt: u.lastLoginAt || null,
+      lastSeenAt: u.lastSeenAt || null,
+    };
+  });
+}
+
+/**
+ * Counters for the User Management header cards.
+ *
+ * Deliberately separate from the list: the list is capped at 500 rows and
+ * narrowed by the search box, so counting it would understate the platform.
+ */
+export async function userStats() {
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const unexpired = { $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }] };
+  // Subscribers, not subscriptions — one person renewing twice is one of these.
+  // Grouped rather than `distinct()`, which would cap out at a 16MB result.
+  const subscribers = (match) =>
+    UserSubscription.aggregate([{ $match: match }, { $group: { _id: '$userId' } }, { $count: 'n' }])
+      .then((rows) => rows[0]?.n || 0);
+
+  const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  // "Seen" covers either signal, because a user who signed in today but has
+  // not reconnected a socket since is still someone who used the platform.
+  const seenSince = (since) => ({
+    role: 'user',
+    $or: [{ lastSeenAt: { $gte: since } }, { lastLoginAt: { $gte: since } }],
+  });
+
+  const [total, newThisWeek, suspended, premium, premiumNewThisWeek, activeToday, activeThisWeek] =
+    await Promise.all([
+      User.countDocuments({ role: 'user' }),
+      User.countDocuments({ role: 'user', createdAt: { $gte: weekAgo } }),
+      User.countDocuments({ role: 'user', isBlocked: true }),
+      subscribers({ status: 'active', ...unexpired }),
+      subscribers({ status: 'active', startsAt: { $gte: weekAgo }, ...unexpired }),
+      User.countDocuments(seenSince(dayAgo)),
+      User.countDocuments(seenSince(weekAgo)),
+    ]);
+
+  return {
+    total,
+    newThisWeek,
+    // `active` is "not suspended" -- an account state. The engagement numbers
+    // below are the ones that answer "who is actually using the platform".
+    active: total - suspended,
+    suspended,
+    premium,
+    premiumNewThisWeek,
+    free: total - premium,
+    onlineNow: onlineUserCount(),
+    activeToday,
+    activeThisWeek,
+  };
 }
 
 export async function setUserBlocked(actor, userId, blocked, ip) {
@@ -344,23 +537,62 @@ export async function setUserBlocked(actor, userId, blocked, ip) {
   return { id: String(user._id), status: blocked ? 'Suspended' : 'Active' };
 }
 
-export async function listPets({ search } = {}) {
-  const filter = { deletedAt: null };
-  if (search) filter.name = new RegExp(search, 'i');
-  const pets = await Pet.find(filter).populate('ownerId', 'name phone').sort({ createdAt: -1 }).limit(500);
-  return pets.map((p) => ({
+/**
+ * Coarse health summary from the record the owner filled in. "Unknown" is a
+ * real answer here — an untouched health section must not read as "Good".
+ */
+function petHealthStatus(health) {
+  if (!health) return 'Unknown';
+  if (health.conditions?.length) return 'Needs Attention';
+  if (health.allergies?.length) return 'Monitored';
+  if (health.vaccinated) return 'Good';
+  return 'Unknown';
+}
+
+/** One pet row, shaped the way every admin pet list renders it. */
+function serializePet(p) {
+  return {
     id: String(p._id),
     name: p.name,
     species: p.type ? p.type.charAt(0).toUpperCase() + p.type.slice(1) : 'Dog',
     breed: p.breed,
     owner: p.ownerId?.name || '—',
+    ownerPhone: p.ownerId?.phone || '—',
     gender: p.gender,
     age: p.ageText || '—',
     weight: p.weightKg ? `${p.weightKg} kg` : '—',
-    avatar: p.avatarUrl || (p.photos && p.photos[0]) || `https://i.pravatar.cc/150?u=${p._id}`,
-    vaccinated: true,
-    healthStatus: 'Good',
-  }));
+    // Null rather than a stock photo when the owner uploaded nothing; the
+    // panel falls back to the pet's initial.
+    avatar: p.avatarUrl || (p.photos && p.photos[0]) || null,
+    // Both of these were hardcoded, so every pet on the platform read as
+    // vaccinated and healthy no matter what its record said.
+    vaccinated: Boolean(p.health?.vaccinated),
+    healthStatus: petHealthStatus(p.health),
+    createdAt: p.createdAt || null,
+  };
+}
+
+export async function listPets({ search } = {}) {
+  const filter = { deletedAt: null };
+  if (search) filter.name = rx(search);
+  const pets = await Pet.find(filter).populate('ownerId', 'name phone').sort({ createdAt: -1 }).limit(500);
+  return pets.map(serializePet);
+}
+
+/**
+ * Every pet registered to one owner.
+ *
+ * Backs the expandable pets panel on User Management, which replaced the
+ * separate Pets screen. Loaded per row on demand rather than embedded in the
+ * user list: most rows are never expanded, and full pet records for 500 users
+ * would dwarf the list they are attached to.
+ */
+export async function listUserPets(userId) {
+  if (!mongoose.isValidObjectId(userId)) throw ApiError.badRequest('Invalid user id');
+  const pets = await Pet.find({ ownerId: userId, deletedAt: null })
+    .populate('ownerId', 'name phone')
+    .sort({ createdAt: -1 });
+  return pets.map(serializePet);
 }
 
 /* ── Vendors & approvals ──────────────────────────────────────────── */
@@ -690,13 +922,32 @@ const serializeBanner = (b) => ({
   sort: b.sort,
 });
 
-export async function listBanners() {
-  const rows = await Banner.find().sort({ sort: 1, createdAt: 1 });
+/**
+ * Turn a `?slot=` query value into a Mongo filter.
+ *
+ * Callers that want one rail should not have to download every other one.
+ * Banner images can be inlined data URLs -- the Banners & Content screen
+ * writes them that way -- so a handful of Section rows makes an unfiltered
+ * list several megabytes, which is slow enough to look like a hung screen.
+ * Accepts one slot or a comma-separated list.
+ */
+function slotFilter(slot) {
+  if (!slot) return {};
+  const slots = String(slot)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!slots.length) return {};
+  return { slot: { $in: slots } };
+}
+
+export async function listBanners({ slot } = {}) {
+  const rows = await Banner.find(slotFilter(slot)).sort({ sort: 1, createdAt: 1 });
   return rows.map(serializeBanner);
 }
 
-export async function listPublicBanners() {
-  const rows = await Banner.find({ active: true }).sort({ sort: 1, createdAt: 1 });
+export async function listPublicBanners({ slot } = {}) {
+  const rows = await Banner.find({ active: true, ...slotFilter(slot) }).sort({ sort: 1, createdAt: 1 });
   return rows.map(serializeBanner);
 }
 

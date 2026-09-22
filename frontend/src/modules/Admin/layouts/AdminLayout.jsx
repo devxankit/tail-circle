@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
 import { 
-  Menu, X, Bell, LogOut, LayoutDashboard, Users, PawPrint, Store, 
+  Menu, X, Bell, LogOut, LayoutDashboard, Users, Store, 
   Settings, Shield, ChevronDown, ChevronRight, Activity, Calendar, 
   ShoppingBag, ClipboardList, Briefcase, FileText, PieChart, 
   ShieldAlert, Cpu, Database, Search, Package, DollarSign,
@@ -15,8 +15,10 @@ const navigationGroups = [
     title: 'Main',
     items: [
       { label: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
-      { label: 'Users', path: '/admin/users', icon: Users },
-      { label: 'Pets', path: '/admin/pets', icon: PawPrint },
+      // Pets are managed inside User Management now -- each user row expands to
+      // the pets registered to it, so a separate screen would only split the
+      // same records across two places.
+      { label: 'Users & Pets', path: '/admin/users', icon: Users },
     ]
   },
   {
@@ -32,6 +34,7 @@ const navigationGroups = [
       { label: 'Last Ride Partners', path: '/admin/vendors/memorial' },
       { label: 'Vendor Documents', path: '/admin/vendors/documents' },
       { label: 'Vendor Performance', path: '/admin/vendors/performance' },
+      { label: 'Compliance & Violations', path: '/admin/vendors/compliance' },
     ]
   },
   {
@@ -44,6 +47,8 @@ const navigationGroups = [
       { label: 'Deliveries', path: '/admin/operations/deliveries' },
       { label: 'Returns & Refunds', path: '/admin/operations/refunds' },
       { label: 'Support Tickets', path: '/admin/operations/support' },
+      { label: 'Disputes', path: '/admin/operations/disputes' },
+      { label: 'Operational Queues', path: '/admin/operations/queues' },
     ]
   },
   {
@@ -53,6 +58,7 @@ const navigationGroups = [
       { label: 'Products', path: '/admin/services/products' },
       { label: 'Product Categories', path: '/admin/services/product-categories' },
       { label: 'Meal Plans', path: '/admin/services/meal-plans' },
+      { label: 'Match Subscriptions', path: '/admin/services/match-subscriptions' },
       { label: 'Doctor Services', path: '/admin/services/doctor-services' },
       { label: 'Event Categories', path: '/admin/services/event-categories' },
       { label: 'Memorial Packages', path: '/admin/services/memorial-packages' },
@@ -69,6 +75,8 @@ const navigationGroups = [
       { label: 'Payments', path: '/admin/finance/payments' },
       { label: 'Commission', path: '/admin/finance/commission' },
       { label: 'Vendor Payouts', path: '/admin/finance/payouts' },
+      { label: 'Refunds', path: '/admin/finance/refunds' },
+      { label: 'Reconciliation', path: '/admin/finance/reconciliation' },
       { label: 'Wallet', path: '/admin/finance/wallet' },
       { label: 'Tax / GST Reports', path: '/admin/finance/tax' },
     ]
@@ -81,7 +89,10 @@ const navigationGroups = [
       { label: 'Community', path: '/admin/platform/community' },
       { label: 'Reviews', path: '/admin/platform/reviews' },
       { label: 'Banners & Content', path: '/admin/platform/content' },
+      { label: 'Home Service Images', path: '/admin/platform/service-images' },
+      { label: 'Pet Prompts & Fun Facts', path: '/admin/platform/prompts' },
       { label: 'Reports', path: '/admin/platform/reports' },
+      { label: 'Customer Behaviour', path: '/admin/platform/behaviour' },
       { label: 'Security', path: '/admin/platform/security' },
       { label: 'Admin Staff & Roles', path: '/admin/platform/staff' },
       { label: 'Settings', path: '/admin/platform/settings' },

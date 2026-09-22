@@ -1,15 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Heart, MapPin, MoreHorizontal, Filter, MessageCircle, Sparkles, RefreshCw, RotateCcw, CheckCircle, ChevronDown, User } from 'lucide-react';
+import { X, Heart, MapPin, MoreHorizontal, Filter, MessageCircle, Sparkles, RefreshCw, RotateCcw, CheckCircle, ChevronDown, User, Compass, Globe, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '../../utils/cn';
 import { fetchMatchDeck, swipeProfile, fetchMatches, reportProfile, resetMatchesSwipe } from '../../../../services/social';
 import { MatchesFilterModal } from './MatchesFilterModal';
 import { ReportModal } from '../../../../components/common/ReportModal';
 import { CitySelectorModal } from './CitySelectorModal';
-import { MatchPointsBreakdown } from './MatchPoints';
 import { MatchCelebrationModal } from './MatchCelebrationModal';
-import { BehaviourCompatibilityChip } from './BehaviourCompatibility';
+import { BehaviourCompatibility } from './BehaviourCompatibility';
 import { markCelebrated } from './matchCelebrations';
+import { LikeLimitSheet } from '../subscription/LikeLimitSheet';
+import { isLikeLimitError, entitlementFromError, fetchEntitlement } from '../../../../services/subscriptions';
+import { getSavedLocation } from '../../../../services/location';
 
 const DEFAULT_FILTERS = {
   type: 'Any',
@@ -32,8 +34,17 @@ export function MatchSwipe({ setView }) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('Discover');
 
-  // Location / City selector state
-  const [selectedCity, setSelectedCity] = useState({ name: 'Delhi NCR', lat: 28.6139, lng: 77.2090 });
+  /*
+   * Location / City selector state.
+   *
+   * Seeded from the location saved on the account at onboarding rather than a
+   * hardcoded Delhi, which was wrong for every user who does not live there and
+   * became the city the first deck request was filtered by.
+   */
+  const [selectedCity, setSelectedCity] = useState(() => {
+    const saved = getSavedLocation();
+    return saved ? { name: saved.name, lat: saved.lat, lng: saved.lng } : null;
+  });
   const [isCityModalOpen, setIsCityModalOpen] = useState(false);
 
   // Filters state & modal toggle
@@ -47,8 +58,17 @@ export function MatchSwipe({ setView }) {
   // Candidate deck from Match Engine API with instant sessionStorage caching
   const [filteredProfiles, setFilteredProfiles] = useState(() => {
     try {
-      const cached = sessionStorage.getItem('tc_match_deck_cache');
-      return cached ? JSON.parse(cached) : [];
+      const cachedCity = sessionStorage.getItem('tc_user_gps_city');
+      const cachedDeck = sessionStorage.getItem('tc_match_deck_cache');
+      const cachedDeckCity = sessionStorage.getItem('tc_match_deck_city');
+      if (cachedCity && cachedDeckCity) {
+        const parsedCity = JSON.parse(cachedCity);
+        if (parsedCity?.name !== cachedDeckCity) {
+          sessionStorage.removeItem('tc_match_deck_cache');
+          return [];
+        }
+      }
+      return cachedDeck ? JSON.parse(cachedDeck) : [];
     } catch {
       return [];
     }
@@ -66,6 +86,16 @@ export function MatchSwipe({ setView }) {
   // Celebratory "IT'S A MATCH!" modal state
   const [matchedModalData, setMatchedModalData] = useState(null);
 
+  /*
+   * Like allowance.
+   *
+   * Seeded from the deck response so the counter and the first card land
+   * together, then advanced by each swipe response — the server is the only
+   * thing that decides what remains, the client just displays its last answer.
+   */
+  const [entitlement, setEntitlement] = useState(null);
+  const [isPaywallOpen, setIsPaywallOpen] = useState(false);
+
   // Touch state for swipe gestures
   const [touchStart, setTouchStart] = useState({ x: null, y: null, time: null });
   const [touchEnd, setTouchEnd] = useState({ x: null, y: null });
@@ -73,39 +103,85 @@ export function MatchSwipe({ setView }) {
   const [userCoords, setUserCoords] = useState(null);
   const scrollRef = useRef(null);
 
-  const loadDeck = (activeFilters = filters, showLoading = false) => {
-    if (showLoading || filteredProfiles.length === 0) {
+  /*
+   * The location bar hides as you read down a profile and comes back the moment
+   * you scroll up — the city is worth a glance when you arrive at a card, not a
+   * permanent strip across a screen that is mostly photograph.
+   */
+  const [isLocationBarVisible, setIsLocationBarVisible] = useState(true);
+  const lastScrollTop = useRef(0);
+
+  const handleDeckScroll = (e) => {
+    const top = e.currentTarget.scrollTop;
+    const delta = top - lastScrollTop.current;
+    // A dead zone, so a thumb resting on the screen does not flicker it.
+    if (Math.abs(delta) < 6) return;
+    // Always visible at the top, whatever direction the last twitch was.
+    setIsLocationBarVisible(top <= 8 || delta < 0);
+    lastScrollTop.current = top;
+  };
+
+  const loadDeck = (activeFilters = filters, showLoading = false, targetCity = null) => {
+    if (showLoading) {
       setIsLoadingDeck(true);
+      setFilteredProfiles([]);
     }
-    const cityParams = selectedCity
-      ? { city: selectedCity.name, cityName: selectedCity.name, lat: selectedCity.lat, lng: selectedCity.lng }
+    const currentCityObj = targetCity || selectedCity;
+    const cityParams = currentCityObj?.name
+      ? { city: currentCityObj.name, cityName: currentCityObj.name, lat: currentCityObj.lat, lng: currentCityObj.lng }
       : {};
     const queryFilters = { ...cityParams, ...(userCoords || {}), ...activeFilters };
     fetchMatchDeck(queryFilters)
-      .then((data) => {
+      .then(({ profiles: data, entitlement: quota }) => {
         setFilteredProfiles(data || []);
+        setCurrentIndex(0);
+        if (quota) setEntitlement(quota);
         if (data && data.length > 0) {
           try {
             sessionStorage.setItem('tc_match_deck_cache', JSON.stringify(data));
+            if (currentCityObj?.name) {
+              sessionStorage.setItem('tc_match_deck_city', currentCityObj.name);
+            }
+          } catch {}
+        } else {
+          try {
+            sessionStorage.removeItem('tc_match_deck_cache');
+            sessionStorage.removeItem('tc_match_deck_city');
           } catch {}
         }
-        setCurrentIndex(0);
       })
-      .catch(() => {})
+      .catch(() => {
+        setFilteredProfiles([]);
+      })
       .finally(() => setIsLoadingDeck(false));
   };
 
   const handleResetSwipes = async () => {
     try {
       setIsLoadingDeck(true);
+      setFilteredProfiles([]);
       await resetMatchesSwipe();
       setFilters(DEFAULT_FILTERS);
-      loadDeck(userCoords ? { ...DEFAULT_FILTERS, ...userCoords } : DEFAULT_FILTERS, true);
+      const cityCoords = selectedCity
+        ? { lat: selectedCity.lat, lng: selectedCity.lng, city: selectedCity.name, cityName: selectedCity.name }
+        : {};
+      loadDeck({ ...DEFAULT_FILTERS, ...cityCoords }, true, selectedCity);
     } catch {
       setIsLoadingDeck(false);
     }
   };
 
+  /*
+   * Every one of these paths must hand `loadDeck` the city explicitly.
+   *
+   * `setSelectedCity(x)` does not change `selectedCity` for the rest of this
+   * tick, so a `loadDeck()` called straight after it read the *previous* value
+   * — on mount, the hardcoded default. The deck was then requested as
+   * "city: Delhi NCR" carrying the real city's coordinates, and the server
+   * answered with whatever matched either, which is why a refresh after
+   * switching city led with pets from somewhere else. Switching city always
+   * worked because that handler already passed the city through.
+   */
   useEffect(() => {
     try {
       const cachedCity = sessionStorage.getItem('tc_user_gps_city');
@@ -114,7 +190,7 @@ export function MatchSwipe({ setView }) {
         if (parsed?.name && parsed?.lat && parsed?.lng) {
           setSelectedCity(parsed);
           setUserCoords({ lat: parsed.lat, lng: parsed.lng });
-          loadDeck({ ...filters, lat: parsed.lat, lng: parsed.lng });
+          loadDeck({ ...filters, lat: parsed.lat, lng: parsed.lng }, false, parsed);
           fetchMatches().then(setRealMatches).catch(() => setRealMatches([]));
           return;
         }
@@ -134,12 +210,12 @@ export function MatchSwipe({ setView }) {
             try {
               sessionStorage.setItem('tc_user_gps_city', JSON.stringify(cityObj));
             } catch {}
-            loadDeck({ ...filters, lat, lng });
+            loadDeck({ ...filters, lat, lng }, false, cityObj);
           } catch {
             const fallbackCity = { name: 'Current Location', lat, lng, isGps: true };
             setSelectedCity(fallbackCity);
             setUserCoords({ lat, lng });
-            loadDeck({ ...filters, lat, lng });
+            loadDeck({ ...filters, lat, lng }, false, fallbackCity);
           }
         },
         () => {
@@ -158,14 +234,29 @@ export function MatchSwipe({ setView }) {
   const handleAction = async (dir) => {
     if (animatingOut || !currentProfile) return;
 
-    setAnimationDir(dir);
-    setAnimatingOut(true);
-
     const actionType = dir === 'pass' ? 'pass' : dir;
     const targetProfile = currentProfile;
 
+    /*
+     * Stop a spent like before it animates.
+     *
+     * The server is still the authority — it re-checks and returns 402 either
+     * way — but catching it here means the card does not fly off screen and
+     * snap back when the request is refused. Passing is never metered, so it
+     * always goes through.
+     */
+    const isLike = actionType !== 'pass';
+    if (isLike && entitlement && !entitlement.unlimited && (entitlement.remaining ?? 0) <= 0) {
+      setIsPaywallOpen(true);
+      return;
+    }
+
+    setAnimationDir(dir);
+    setAnimatingOut(true);
+
     try {
       const res = await swipeProfile(targetProfile.id, actionType);
+      if (res?.entitlement) setEntitlement(res.entitlement);
       if (res?.matched) {
         // Claimed before rendering so the `match:new` socket event for the
         // same match does not open a second copy of this modal.
@@ -174,10 +265,6 @@ export function MatchSwipe({ setView }) {
           profileName: res.profileName || targetProfile.name,
           profileImage: res.profileImage || targetProfile.img || targetProfile.photos?.[0],
           conversationId: res.conversationId,
-          // The swipe response already carries the pair's rating; the modal's
-          // compatibility meter was rendering off a field nobody ever set.
-          matchPoints: res.matchPoints,
-          maxMatchPoints: res.maxMatchPoints,
           behaviourMatch: res.behaviourMatch,
           // Which of my pets this match is actually for. The client used to
           // fetch my pets and take the first, which for a two-pet owner is a
@@ -185,8 +272,21 @@ export function MatchSwipe({ setView }) {
           myPetImage: res.myPet?.image || null,
         });
       }
-    } catch {
-      /* ignore */
+    } catch (err) {
+      if (isLikeLimitError(err)) {
+        /*
+         * The allowance ran out between the local check and the request — a
+         * second device, or a rapid double tap. Put the card back rather than
+         * advancing past a pet that was never actually liked, and open the
+         * paywall with the numbers the server just returned.
+         */
+        setEntitlement(entitlementFromError(err) || entitlement);
+        setAnimatingOut(false);
+        setAnimationDir('');
+        setIsPaywallOpen(true);
+        return;
+      }
+      /* any other failure: fall through and advance, as before */
     }
 
     setTimeout(() => {
@@ -196,6 +296,9 @@ export function MatchSwipe({ setView }) {
       if (scrollRef.current) {
         scrollRef.current.scrollTop = 0;
       }
+      // A new card starts at the top, so the bar comes back with it.
+      lastScrollTop.current = 0;
+      setIsLocationBarVisible(true);
     }, 400);
   };
 
@@ -281,7 +384,11 @@ export function MatchSwipe({ setView }) {
           setSelectedCity(city);
           const cityCoords = { lat: city.lat, lng: city.lng, city: city.name, cityName: city.name };
           setUserCoords(cityCoords);
-          loadDeck({ ...filters, ...cityCoords }, true);
+          try {
+            sessionStorage.setItem('tc_user_gps_city', JSON.stringify(city));
+            sessionStorage.removeItem('tc_match_deck_cache');
+          } catch {}
+          loadDeck({ ...filters, ...cityCoords }, true, city);
         }}
       />
 
@@ -314,6 +421,20 @@ export function MatchSwipe({ setView }) {
           }}
         />
       )}
+
+      {/* Out-of-likes paywall. Opens the moment a like is refused for want
+          of allowance — the deck no longer counts down to it in the header. */}
+      <LikeLimitSheet
+        open={isPaywallOpen}
+        entitlement={entitlement}
+        onClose={() => setIsPaywallOpen(false)}
+        onPurchased={(fresh) => {
+          // The purchase returns the new allowance, so the counter flips to the
+          // upgraded plan without a reload; re-fetch only if it did not.
+          if (fresh) setEntitlement(fresh);
+          else fetchEntitlement().then(setEntitlement).catch(() => {});
+        }}
+      />
 
       {/* Premium Header Tabs with Actions */}
       <div className="flex items-center justify-between px-4 pt-4 pb-3 bg-[#f4f1eb] z-10 shrink-0">
@@ -359,8 +480,13 @@ export function MatchSwipe({ setView }) {
 
       {/* City Location Switcher Bar */}
       {activeTab === 'Discover' && (
-        <div className="flex items-center justify-between px-5 py-2 bg-[#e8e4db]/70 border-y border-[#dcd7cc] text-xs font-bold text-slate-700 shadow-2xs">
-          <div className="flex items-center gap-2">
+        <div
+          className={cn(
+            'overflow-hidden shrink-0 transition-all duration-300 ease-out',
+            isLocationBarVisible ? 'max-h-12 opacity-100' : 'max-h-0 opacity-0'
+          )}
+        >
+          <div className="flex items-center gap-2 px-5 py-2 bg-[#e8e4db]/70 border-y border-[#dcd7cc] text-xs font-bold text-slate-700 shadow-2xs">
             <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">Location:</span>
             <button
               onClick={() => setIsCityModalOpen(true)}
@@ -371,9 +497,6 @@ export function MatchSwipe({ setView }) {
               <ChevronDown size={13} className="text-slate-400" />
             </button>
           </div>
-          <span className="text-[10px] font-bold text-slate-500 bg-white/60 px-2 py-0.5 rounded-full border border-slate-200/50">
-            Nearest Pets First
-          </span>
         </div>
       )}
 
@@ -397,7 +520,61 @@ export function MatchSwipe({ setView }) {
               <div className="h-4 w-4/5 bg-slate-200 rounded"></div>
             </div>
           </div>
+        ) : filteredProfiles.length === 0 ? (
+          /* State 1: 0 Pet profiles available in this city (Service Unavailable / Coming Soon) */
+          <div className="flex-1 flex flex-col items-center justify-center bg-[#f4f1eb] p-4 text-center animate-in fade-in duration-200">
+            <div className="bg-white rounded-3xl p-5 max-w-[310px] w-full shadow-xl border border-slate-100 flex flex-col items-center animate-in zoom-in-95 duration-200">
+              
+              {/* Cute Pet Image with Coming Soon Badge */}
+              <div className="relative mb-3">
+                <img 
+                  src="https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=240&h=240&q=80" 
+                  alt="Curious Pet" 
+                  className="w-20 h-20 rounded-full object-cover border-4 border-[#e8f4f3] shadow-md"
+                />
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-[#4C8684] text-white text-[9px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-md whitespace-nowrap flex items-center gap-1">
+                  <Sparkles size={10} /> Coming Soon
+                </span>
+              </div>
+
+              {/* Short Title & Concise Message */}
+              <h2 className="text-base font-black text-slate-900 mb-1 leading-snug">
+                No Pets in {selectedCity?.name || 'Your City'} Yet
+              </h2>
+              <p className="text-[11px] font-medium text-slate-500 mb-4 leading-relaxed max-w-[240px]">
+                Service isn't available in <strong>{selectedCity?.name || 'this city'}</strong> yet. Switch location to find playdates nearby!
+              </p>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col gap-2 w-full">
+                <button 
+                  onClick={() => setIsCityModalOpen(true)}
+                  className="w-full bg-[#4C8684] hover:bg-[#3d6b6a] text-white py-2.5 rounded-xl font-black text-xs shadow-md transition flex items-center justify-center gap-1.5 active:scale-95"
+                >
+                  <MapPin size={15} strokeWidth={2.5} /> Change Location
+                </button>
+
+                <button 
+                  onClick={handleResetSwipes}
+                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 py-2.5 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 active:scale-95"
+                >
+                  <RotateCcw size={14} /> Reset Swipes & Discover
+                </button>
+
+                <button 
+                  onClick={() => {
+                    setFilters(DEFAULT_FILTERS);
+                    loadDeck(DEFAULT_FILTERS, true);
+                  }}
+                  className="w-full text-[#4C8684] hover:underline py-1 font-bold text-xs flex items-center justify-center gap-1.5 transition"
+                >
+                  <RefreshCw size={13} /> Clear Filters
+                </button>
+              </div>
+            </div>
+          </div>
         ) : !currentProfile ? (
+          /* State 2: Swiping completed for all available profiles (You're all caught up!) */
           <div className="flex-1 flex flex-col items-center justify-center bg-[#f4f1eb] p-6 text-center animate-in fade-in duration-300">
             <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-md mb-4 text-[#F87B68]">
               <Heart size={40} />
@@ -431,6 +608,7 @@ export function MatchSwipe({ setView }) {
         ) : (
           <div 
             ref={scrollRef}
+            onScroll={handleDeckScroll}
             onTouchStart={onTouchStart}
             onTouchMove={onTouchMove}
             onTouchEnd={onTouchEndEvent}
@@ -467,7 +645,14 @@ export function MatchSwipe({ setView }) {
                   <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-5 pt-12">
                     <div className="flex items-center text-white/90 text-sm font-bold gap-1 mb-1">
                       <MapPin size={14} />
-                      <span>{currentProfile.distance} km away</span>
+                      {/* Null when either pet has no location recorded. The
+                          server used to invent a number here rather than admit
+                          that, so every card claimed a precise distance. */}
+                      <span>
+                        {currentProfile.distance != null
+                          ? `${currentProfile.distance} km away`
+                          : currentProfile.city || 'Location not shared'}
+                      </span>
                     </div>
                     <div className="flex flex-wrap gap-2 mt-2">
                       {currentProfile.tags && currentProfile.tags.map(tag => (
@@ -490,24 +675,11 @@ export function MatchSwipe({ setView }) {
               </div>
 
               {/* Sits directly under the first photo: the pet is seen first,
-                  then how well they suit you — and the strip's own card echoes
+                  then how well they suit you — and the panel's own card echoes
                   the photo's rounded block, so the two read as one unit. */}
-              {currentProfile.matchPoints != null && (
+              {currentProfile.behaviourMatch && (
                 <div className="px-4 mb-4 -mt-1">
-                  <MatchPointsBreakdown
-                    points={currentProfile.matchPoints}
-                    maxPoints={currentProfile.maxMatchPoints || 5}
-                    factors={currentProfile.matchFactors || []}
-                    confidence={currentProfile.matchConfidence}
-                  />
-                  {/* Only the levels that ask something of the owner. A chip on
-                      every card saying "High" would be wallpaper; a warning
-                      before the swipe is worth more than one after it. */}
-                  {['Moderate', 'Caution'].includes(currentProfile.behaviourMatch?.level) && (
-                    <div className="mt-2">
-                      <BehaviourCompatibilityChip behaviour={currentProfile.behaviourMatch} />
-                    </div>
-                  )}
+                  <BehaviourCompatibility behaviour={currentProfile.behaviourMatch} />
                 </div>
               )}
 
@@ -645,13 +817,19 @@ export function MatchSwipe({ setView }) {
                   </div>
 
                   <div className="flex items-start gap-4">
-                    {/* Parent Photo */}
+                    {/* Parent Photo / Avatar */}
                     <div className="relative shrink-0">
-                      <img 
-                        src={currentProfile.ownerInfo?.avatar || currentProfile.ownerAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80'} 
-                        alt={currentProfile.ownerInfo?.name || 'Pet Parent'} 
-                        className="w-14 h-14 rounded-full object-cover border-2 border-[#4C8684]/20 shadow-sm bg-gray-100" 
-                      />
+                      {currentProfile.ownerInfo?.avatar || currentProfile.ownerAvatar ? (
+                        <img 
+                          src={currentProfile.ownerInfo?.avatar || currentProfile.ownerAvatar} 
+                          alt={currentProfile.ownerInfo?.name || 'Pet Parent'} 
+                          className="w-14 h-14 rounded-full object-cover border-2 border-[#4C8684]/20 shadow-sm bg-gray-100" 
+                        />
+                      ) : (
+                        <div className="w-14 h-14 rounded-full bg-[#e8f4f3] text-[#4C8684] flex items-center justify-center font-black text-xl border-2 border-[#4C8684]/20 shadow-sm">
+                          {(currentProfile.ownerInfo?.name || currentProfile.ownerName || 'P')[0]?.toUpperCase()}
+                        </div>
+                      )}
                       <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-[#4C8684] text-white rounded-full flex items-center justify-center text-[10px] font-bold shadow-sm">
                         ✓
                       </div>
@@ -660,10 +838,10 @@ export function MatchSwipe({ setView }) {
                     {/* Parent Name & Short Bio */}
                     <div className="flex-1 min-w-0">
                       <h4 className="text-base font-black text-[#222] truncate">
-                        {currentProfile.ownerInfo?.name?.split(' ')[0] || currentProfile.ownerName || 'Pet Parent'}
+                        {currentProfile.ownerInfo?.name || currentProfile.ownerName || 'Pet Parent'}
                       </h4>
                       <p className="text-xs font-medium text-gray-600 mt-1 leading-relaxed">
-                        {currentProfile.ownerInfo?.bio || currentProfile.ownerBio || `Loving parent of ${currentProfile.name}. Always excited for weekend dog park playdates, social walks & happy furry meetups!`}
+                        {currentProfile.ownerInfo?.bio || currentProfile.ownerBio || `Loving parent of ${currentProfile.name}. Always excited for weekend playdates & furry meetups!`}
                       </p>
                     </div>
                   </div>

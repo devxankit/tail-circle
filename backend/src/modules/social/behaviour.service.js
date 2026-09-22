@@ -1,98 +1,83 @@
 /**
- * Behavioural compatibility between two pets.
+ * Temperament compatibility between two pets.
  *
- * The old temperament scorer compared trait strings for exact equality, which
- * made "Friendly" and "Social" a total miss and — far worse — made "Aggressive"
- * paired with "Shy" score exactly the same as any other pair with no words in
- * common. Behaviour is the one factor where a mismatch is not merely a weaker
- * match but a safety note for the first meeting, so it needs a model that
- * knows what the traits *mean*, not just whether the strings are equal.
+ * One question, asked plainly: do these two pets have temperaments that suit
+ * each other? An earlier model answered it with three numeric axes, a synonym
+ * table, a friction budget and a set of safety cautions layered on top — a lot
+ * of machinery behind a chip list an owner picks in five seconds, and more
+ * than a match card can honestly explain.
  *
- * Each canonical trait carries three readings:
- *   `sociability` -1 (withdraws from other pets) … +1 (seeks them out)
- *   `assertive`    0 (yields space) … 1 (pushes into it)
- *   `energy`      -1 (settled) … +1 (constantly on)
- *
- * Compatibility is then the blend of what the two pets share (family-level, so
- * synonyms count) and how close they sit on those axes, minus friction from
- * specific pairings that are known to need managing. Traits that say nothing
- * about how a pet handles another pet — water preferences, say — carry no axis
- * reading and only count toward shared interests.
+ * What replaces it: the sixteen temperaments the app offers, grouped so that
+ * near-synonyms count toward each other, and a score built from the traits two
+ * pets share outright plus the ones that merely sit in the same group.
+ * Nothing else feeds it — this is the whole of match compatibility now.
  */
 
-/* `family` collapses synonyms; `sensitive` marks a pet that is easily
-   overwhelmed; `reactive` marks one that may escalate. */
-const TRAITS = {
-  friendly:     { family: 'social',   sociability: 1,    assertive: 0.4, energy: 0.2 },
-  social:       { family: 'social',   sociability: 1,    assertive: 0.4, energy: 0.3 },
-  outgoing:     { family: 'social',   sociability: 0.9,  assertive: 0.5, energy: 0.4 },
-  affectionate: { family: 'social',   sociability: 0.9,  assertive: 0.3, energy: 0 },
-  cuddly:       { family: 'social',   sociability: 0.9,  assertive: 0.2, energy: -0.3 },
+/**
+ * The temperaments the app offers, in the order the profile screen shows them.
+ *
+ * 'Aggressive' sits last and apart on purpose. It is not a personality note
+ * like the sixteen above it — it is the one answer that decides whether an
+ * event needs a handler booked, so it has to stay pickable. See `REACTIVE`.
+ */
+export const BEHAVIOUR_OPTIONS = [
+  'Friendly', 'Calm', 'Gentle', 'Playful', 'Energetic', 'Curious',
+  'Confident', 'Shy', 'Easy-going', 'Affectionate', 'Independent',
+  'Sensitive', 'Cautious', 'Adaptable', 'Excitable', 'Reserved',
+  'Aggressive',
+];
 
-  playful:      { family: 'playful',  sociability: 0.8,  assertive: 0.6, energy: 0.9 },
-  energetic:    { family: 'playful',  sociability: 0.5,  assertive: 0.6, energy: 1 },
-  active:       { family: 'playful',  sociability: 0.5,  assertive: 0.5, energy: 1 },
-  hyper:        { family: 'playful',  sociability: 0.4,  assertive: 0.7, energy: 1 },
+/*
+ * Groups exist for exactly one reason: two lively pets should not read as
+ * strangers because one owner picked "Playful" and the other "Excitable".
+ * A group hit is worth less than the same trait on both pets, never more.
+ *
+ * A trait the taxonomy does not know — free text, or a value left over from an
+ * older list — becomes its own group, so it still matches itself and nothing
+ * else. That is the correct answer for a word we cannot interpret.
+ */
+const GROUPS = {
+  friendly: 'warm',
+  affectionate: 'warm',
 
-  calm:         { family: 'calm',     sociability: 0.3,  assertive: 0.2, energy: -0.6 },
-  gentle:       { family: 'calm',     sociability: 0.5,  assertive: 0.1, energy: -0.3, sensitive: true },
-  relaxed:      { family: 'calm',     sociability: 0.2,  assertive: 0.1, energy: -0.8 },
-  lazy:         { family: 'calm',     sociability: 0.1,  assertive: 0.1, energy: -1 },
+  playful: 'lively',
+  energetic: 'lively',
+  excitable: 'lively',
 
-  shy:          { family: 'reserved', sociability: -0.8, assertive: 0,   energy: -0.3, sensitive: true },
-  timid:        { family: 'reserved', sociability: -0.9, assertive: 0,   energy: -0.4, sensitive: true },
-  anxious:      { family: 'reserved', sociability: -0.9, assertive: 0.1, energy: 0,    sensitive: true },
-  nervous:      { family: 'reserved', sociability: -0.9, assertive: 0.1, energy: 0,    sensitive: true },
-  introvert:    { family: 'reserved', sociability: -0.6, assertive: 0.1, energy: -0.3 },
-  independent:  { family: 'reserved', sociability: -0.5, assertive: 0.3, energy: 0 },
+  curious: 'curious',
+  confident: 'confident',
 
-  curious:      { family: 'curious',  sociability: 0.5,  assertive: 0.5, energy: 0.5 },
-  adventurous:  { family: 'curious',  sociability: 0.5,  assertive: 0.6, energy: 0.7 },
-  smart:        { family: 'curious',  sociability: 0.4,  assertive: 0.4, energy: 0.3 },
+  calm: 'settled',
+  gentle: 'settled',
 
-  protective:   { family: 'guardian', sociability: -0.2, assertive: 0.8 },
-  loyal:        { family: 'guardian', sociability: 0.2,  assertive: 0.5 },
-  alert:        { family: 'guardian', sociability: -0.1, assertive: 0.6 },
-  alpha:        { family: 'guardian', sociability: 0,    assertive: 1 },
-  dominant:     { family: 'guardian', sociability: 0,    assertive: 1 },
-  territorial:  { family: 'guardian', sociability: -0.4, assertive: 0.9 },
+  'easy-going': 'easy',
+  adaptable: 'easy',
 
-  aggressive:   { family: 'reactive', sociability: -0.6, assertive: 1, energy: 0.3, reactive: true },
-  reactive:     { family: 'reactive', sociability: -0.6, assertive: 1, energy: 0.3, reactive: true },
+  shy: 'reserved',
+  reserved: 'reserved',
+  cautious: 'reserved',
 
-  /* Trained pets carry the same axes as their other traits but earn a small
-     credit below: handling is what turns a difficult pairing into a managed
-     one. */
-  trained:      { family: 'trained',  trained: true },
-  obedient:     { family: 'trained',  trained: true },
-
-  /* Preferences, not dispositions — shared-interest signal only. */
-  'likes water':  { family: 'likes-water' },
-  'avoids water': { family: 'avoids-water' },
+  sensitive: 'sensitive',
+  independent: 'independent',
 };
 
 const norm = (v) => String(v || '').trim().toLowerCase();
 const clamp01 = (n) => Math.max(0, Math.min(1, n));
 
-/** Traits offered in the app, in the order the profile screen shows them. */
-export const BEHAVIOUR_OPTIONS = [
-  'Friendly', 'Social', 'Playful', 'Energetic', 'Curious', 'Calm', 'Gentle',
-  'Lazy', 'Shy', 'Anxious', 'Introvert', 'Independent', 'Protective', 'Alpha',
-  'Aggressive', 'Trained', 'Likes water', 'Avoids water',
-];
-
 /**
- * The traits on a pet that mark it as liable to escalate around other animals.
+ * Traits that mark a pet as liable to escalate around other animals.
  *
- * One definition, shared. Anything that needs to know "is this pet reactive?"
- * — the compatibility verdict, an event's handler requirement — asks here
- * rather than string-matching 'Aggressive', so a trait added to the taxonomy
- * is picked up everywhere at once and the answer cannot disagree with itself
- * between two screens.
+ * Read only by the event and booking flows, to decide whether a handler is
+ * required — 'Aggressive' is in `BEHAVIOUR_OPTIONS` for exactly that reason.
+ * It plays no part in match compatibility, which compares temperament and
+ * nothing else. The other three are legacy and free-text values that mean the
+ * same thing, kept so an older record still flags.
  */
+const REACTIVE = new Set(['aggressive', 'reactive', 'dominant', 'territorial']);
+
 export function reactiveTraits(temperament) {
   return (temperament || [])
-    .filter((t) => TRAITS[norm(t)]?.reactive)
+    .filter((t) => REACTIVE.has(norm(t)))
     .map((t) => String(t).trim());
 }
 
@@ -101,186 +86,100 @@ export function isReactive(temperament) {
 }
 
 /**
- * Resolve a raw trait list into what the model can reason about.
+ * A trait list reduced to what the comparison needs: labels and their groups.
  *
- * Unrecognised strings are not discarded: a trait we have no axes for is still
- * a thing both owners typed, so it counts as a shared interest under its own
- * name. It just contributes nothing to temperament alignment.
+ * Every trait counts the same, 'Aggressive' included. It carries a second job
+ * outside this file — `isReactive()` reads it to decide whether an event needs
+ * a handler booked — but that is the events flow's question, not this one.
+ * Here it is a temperament like any other, because comparing temperament is
+ * all this is for.
  */
 function resolve(list) {
-  const families = new Set();
-  const axes = [];
-  let sensitive = false;
-  let reactive = false;
-  let trained = false;
   const labels = [];
+  const traits = new Set();
+  const groups = new Set();
+  // First label seen for each group, for naming a group-level match.
+  const labelByGroup = new Map();
 
   for (const raw of list || []) {
     const key = norm(raw);
-    if (!key) continue;
-    const t = TRAITS[key];
-    labels.push(String(raw).trim());
-    families.add(t ? t.family : key);
-    if (!t) continue;
-    if (t.sensitive) sensitive = true;
-    if (t.reactive) reactive = true;
-    if (t.trained) trained = true;
-    if (t.sociability != null) {
-      axes.push({ sociability: t.sociability, assertive: t.assertive ?? 0.5, energy: t.energy ?? 0 });
-    }
+    if (!key || traits.has(key)) continue;
+    const label = String(raw).trim();
+    const group = GROUPS[key] || key;
+    labels.push(label);
+    traits.add(key);
+    groups.add(group);
+    if (!labelByGroup.has(group)) labelByGroup.set(group, label);
   }
 
-  const mean = (k) => (axes.length ? axes.reduce((s, a) => s + a[k], 0) / axes.length : null);
-  return {
-    families,
-    labels,
-    sensitive,
-    reactive,
-    trained,
-    hasAxes: axes.length > 0,
-    sociability: mean('sociability'),
-    assertive: mean('assertive'),
-    energy: mean('energy'),
-    // Peak assertiveness matters more than the average: one dominant trait is
-    // not averaged away by three gentle ones when two pets first meet.
-    peakAssertive: axes.length ? Math.max(...axes.map((a) => a.assertive)) : null,
-  };
+  return { labels, traits, groups, labelByGroup };
 }
 
+/**
+ * What to call a score.
+ *
+ * Each band used to carry a headline and a line of advice for the card to
+ * print. The card shows the number and the shared traits now, so the words
+ * were computed on every pairing and read by nobody.
+ */
 const LEVELS = [
-  {
-    min: 0.78,
-    level: 'High',
-    headline: 'Their temperaments line up closely.',
-    advice: 'Both pets read the same way socially, so a normal first meeting should go smoothly.',
-  },
-  {
-    min: 0.58,
-    level: 'Good',
-    headline: 'Mostly compatible temperaments.',
-    advice: 'Meet on neutral ground and let them set the pace — this pairing usually settles quickly.',
-  },
-  {
-    min: 0.34,
-    level: 'Moderate',
-    headline: 'Both pets share some behavioural traits, but there are differences in temperament.',
-    advice: 'We recommend a controlled first interaction — somewhere neutral, both on lead, and kept short.',
-  },
-  {
-    min: 0,
-    level: 'Caution',
-    headline: 'These temperaments can clash.',
-    advice:
-      'Introduce them slowly on neutral ground with both pets leashed, keep the first session brief, and stop at the first sign either is uncomfortable.',
-  },
+  { min: 0.75, level: 'High' },
+  { min: 0.5, level: 'Good' },
+  { min: 0.25, level: 'Moderate' },
+  { min: 0, level: 'Low' },
 ];
 
 /**
- * Behavioural compatibility for a pair of trait lists.
+ * Temperament compatibility for a pair of trait lists.
  *
- * Returns `null` when either pet has no behaviour recorded — an unanswered
- * question is not a bad score, and the caller drops unknown factors from the
- * average rather than counting them against the pet.
+ * Returns `null` when either pet has no temperament recorded. An unanswered
+ * question is not a bad score, and temperament is the only thing being asked.
  */
 export function behaviourCompatibility(mine, theirs) {
   const a = resolve(mine);
   const b = resolve(theirs);
-  if (!a.families.size || !b.families.size) return null;
-
-  const sharedFamilies = [...a.families].filter((f) => b.families.has(f));
-  // Denominator is the shorter list, matching the rest of the engine: a pet
-  // with two traits that both appear on a pet with six overlaps completely on
-  // everything we know about it.
-  const overlap = sharedFamilies.length / Math.min(a.families.size, b.families.size);
+  if (!a.traits.size || !b.traits.size) return null;
 
   /*
-   * Axis alignment.
+   * Denominator is the shorter list: a pet with two temperaments that both
+   * appear on a pet with six overlaps completely on everything we know about
+   * it, and should not be penalised for the other owner ticking more boxes.
+   */
+  const ratio = (mySet, theirSet) =>
+    [...mySet].filter((v) => theirSet.has(v)).length / Math.min(mySet.size, theirSet.size);
+
+  const exact = ratio(a.traits, b.traits);
+  const grouped = ratio(a.groups, b.groups);
+
+  // `grouped` is always at least `exact`, so this lands between the two: the
+  // same trait on both pets counts for full, a near-synonym for most of it.
+  const value = clamp01(exact * 0.4 + grouped * 0.6);
+
+  const tier = LEVELS.find((l) => value >= l.min) || LEVELS[LEVELS.length - 1];
+
+  /*
+   * The traits to name on the card — one per shared group, never more.
    *
-   * Sociability dominates: how much each pet wants another pet around decides
-   * far more about a first meeting than how energetic they are. Energy is a
-   * play-style question — a bouncing puppy and a settled senior can get on,
-   * they just want different things from the hour.
+   * Listing every trait that merely lands in a shared group double-counts: a
+   * pet marked both Energetic and Excitable, meeting one marked Playful, would
+   * show two chips for what is one thing in common. Where the two pets picked
+   * the same word, that word is the chip; where they only landed in the same
+   * group, the candidate's word is, since the card belongs to that pet and
+   * every chip should be checkable against their profile.
    */
-  let alignment = null;
-  if (a.hasAxes && b.hasAxes) {
-    const socGap = Math.abs(a.sociability - b.sociability) / 2;
-    const energyGap = Math.abs(a.energy - b.energy) / 2;
-    alignment = clamp01(1 - (socGap * 0.68 + energyGap * 0.32));
-  }
-
-  /*
-   * Friction — specific pairings that need managing, named so the app can tell
-   * the owner *why* rather than just handing them a lower number.
-   */
-  const cautions = [];
-  let friction = 0;
-
-  if (a.reactive && b.reactive) {
-    friction += 0.55;
-    cautions.push('Both pets are marked reactive — meet on neutral ground with both on lead.');
-  } else if ((a.reactive && b.sensitive) || (b.reactive && a.sensitive)) {
-    friction += 0.5;
-    cautions.push(
-      'One pet is marked reactive and the other is shy or sensitive — keep the first meeting short, leashed and supervised.'
+  const shared = [];
+  for (const group of a.groups) {
+    if (!b.groups.has(group)) continue;
+    const exact = a.labels.find(
+      (label) => (GROUPS[norm(label)] || norm(label)) === group && b.traits.has(norm(label))
     );
-  } else if (a.reactive || b.reactive) {
-    friction += 0.3;
-    cautions.push('One pet is marked reactive — a slow, leashed introduction is safest.');
+    shared.push(exact || b.labelByGroup.get(group));
   }
-
-  if ((a.peakAssertive ?? 0) >= 0.85 && (b.peakAssertive ?? 0) >= 0.85 && !(a.reactive && b.reactive)) {
-    friction += 0.22;
-    cautions.push('Both pets like to take charge — expect some sorting out of who leads.');
-  }
-
-  // Only when one pet is the reserved half of the pair. Two equally reserved
-  // pets are not this problem, and firing here on a pairing that is already
-  // flagged reactive just repeats the same warning in weaker words.
-  const reservedForward = (x, y) => x.sociability <= -0.5 && y.sociability > -0.3 && (y.peakAssertive ?? 0) >= 0.7;
-  if (a.hasAxes && b.hasAxes && (reservedForward(a, b) || reservedForward(b, a))) {
-    friction += 0.15;
-    cautions.push('One pet is reserved while the other is forward — let the quieter one approach first.');
-  }
-
-  if (a.hasAxes && b.hasAxes && Math.abs(a.energy - b.energy) >= 1.2) {
-    cautions.push('Very different energy levels — a short walk together suits them better than a play session.');
-  }
-
-  // Handling counts. A trained pet on either side makes a difficult pairing
-  // materially easier to manage, so it takes the edge off the friction rather
-  // than inflating the raw compatibility.
-  if (friction > 0 && (a.trained || b.trained)) friction *= a.trained && b.trained ? 0.6 : 0.8;
-
-  /*
-   * With no axis readings on one side — a profile carrying only free-text
-   * traits the taxonomy does not know — there is no evidence of a clash, only
-   * an absence of information. Sitting that at the neutral midpoint keeps it
-   * out of the Caution band: an unrecognised answer is not a dangerous one.
-   */
-  const base = alignment == null ? 0.5 + 0.5 * overlap : alignment * 0.6 + overlap * 0.4;
-  const value = clamp01(base - friction);
-
-  let tier = LEVELS.find((l) => value >= l.min) || LEVELS[LEVELS.length - 1];
-  // A reactive pet meeting a sensitive one never reads as an easy introduction,
-  // however much else the two happen to have in common.
-  if ((a.reactive && b.sensitive) || (b.reactive && a.sensitive) || (a.reactive && b.reactive)) {
-    tier = LEVELS[LEVELS.length - 1];
-  }
-
-  const sharedLabels = a.labels.filter((label) => {
-    const key = norm(label);
-    const family = TRAITS[key]?.family || key;
-    return b.families.has(family);
-  });
 
   return {
     value,
     level: tier.level,
-    headline: tier.headline,
-    advice: tier.advice,
-    // The traits actually driving the verdict, for the app to name.
-    shared: [...new Set(sharedLabels)],
-    cautions,
+    shared: [...new Set(shared)],
   };
 }
 

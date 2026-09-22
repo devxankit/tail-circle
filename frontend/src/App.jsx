@@ -299,6 +299,7 @@ const BookingConfirmed = lazy(() => import('./modules/user/features/grooming/boo
 const GroomingBookingDetail = lazy(() => import('./modules/user/features/grooming/booking/MyBookingDetail').then(m => ({ default: m.MyBookingDetail })));
 const Profile = lazy(() => import('./modules/user/features/profile/Profile').then(m => ({ default: m.Profile })));
 const Wallet = lazy(() => import('./modules/user/features/wallet/Wallet').then(m => ({ default: m.Wallet })));
+const MySubscription = lazy(() => import('./modules/user/features/subscription/MySubscription').then(m => ({ default: m.MySubscription })));
 const Notifications = lazy(() => import('./modules/user/features/notifications/Notifications').then(m => ({ default: m.Notifications })));
 const BookingHistory = lazy(() => import('./modules/user/features/profile/screens/BookingHistory').then(m => ({ default: m.BookingHistory })));
 const BookingDetail = lazy(() => import('./modules/user/features/profile/screens/BookingDetail').then(m => ({ default: m.BookingDetail })));
@@ -306,6 +307,7 @@ const MyOrders = lazy(() => import('./modules/user/features/profile/screens/MyOr
 const SavedItems = lazy(() => import('./modules/user/features/profile/screens/SavedItems').then(m => ({ default: m.SavedItems })));
 const MyPosts = lazy(() => import('./modules/user/features/profile/screens/MyPosts').then(m => ({ default: m.MyPosts })));
 const AddressBook = lazy(() => import('./modules/user/features/profile/screens/AddressBook').then(m => ({ default: m.AddressBook })));
+const PrivacySettings = lazy(() => import('./modules/user/features/profile/screens/PrivacySettings').then(m => ({ default: m.PrivacySettings || m.default })));
 const AddAddress = lazy(() => import('./modules/user/features/profile/screens/AddAddress').then(m => ({ default: m.AddAddress })));
 const HelpSupport = lazy(() => import('./modules/user/features/profile/screens/HelpSupport').then(m => ({ default: m.HelpSupport })));
 const EditProfile = lazy(() => import('./modules/user/features/profile/screens/EditProfile').then(m => ({ default: m.EditProfile })));
@@ -317,6 +319,17 @@ const UpdateAllergies = lazy(() => import('./modules/user/features/meals/screens
 const PauseSubscription = lazy(() => import('./modules/user/features/meals/screens/PauseSubscription').then(m => ({ default: m.PauseSubscription })));
 const MealSubscribeFlow = lazy(() => import('./modules/user/features/meals/MealSubscribeFlow').then(m => ({ default: m.MealSubscribeFlow })));
 const UserMealDashboard = lazy(() => import('./modules/user/features/meals/MealDashboard').then(m => ({ default: m.MealDashboard })));
+import { VendorAlertProvider } from './context/VendorAlertContext';
+import { CookieConsent } from './components/common/CookieConsent';
+import { useActivityTracking } from './hooks/useActivityTracking';
+
+/*
+ * One compliance page serves every partner panel. The API resolves which
+ * business line is being viewed from the `X-Vendor-Type` header the panel
+ * already sets, so there is nothing per-type to duplicate here.
+ */
+const VendorCompliancePage = lazy(() => import('./modules/Admin/components/VendorCompliancePage').then(m => ({ default: m.VendorCompliancePage || m.default })));
+
 const VendorLayout = lazy(() => import('./modules/Admin/layouts/VendorLayout').then(m => ({ default: m.VendorLayout || m.default })));
 const AdminLayout = lazy(() => import('./modules/Admin/layouts/AdminLayout').then(m => ({ default: m.AdminLayout || m.default })));
 const VendorAuth = lazy(() => import('./modules/Admin/auth/VendorAuth').then(m => ({ default: m.VendorAuth || m.default })));
@@ -384,7 +397,6 @@ const FinanceAdminView = lazy(() => import('./modules/Admin/MealPortalAdmin/view
 const AdminDashboard = lazy(() => import('./modules/Admin/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard || m.default })));
 const AdminManagement = lazy(() => import('./modules/Admin/admin/AdminManagement').then(m => ({ default: m.AdminManagement || m.default })));
 const Users = lazy(() => import('./modules/Admin/admin/views/users/Users').then(m => ({ default: m.Users || m.default })));
-const Pets = lazy(() => import('./modules/Admin/admin/views/users/Pets').then(m => ({ default: m.Pets || m.default })));
 const AllVendors = lazy(() => import('./modules/Admin/admin/views/vendors/AllVendors').then(m => ({ default: m.AllVendors || m.default })));
 const PendingApprovals = lazy(() => import('./modules/Admin/admin/views/vendors/PendingApprovals').then(m => ({ default: m.PendingApprovals || m.default })));
 const ShopVendors = lazy(() => import('./modules/Admin/admin/views/vendors/ShopVendors').then(m => ({ default: m.ShopVendors || m.default })));
@@ -394,15 +406,19 @@ const DoctorsClinics = lazy(() => import('./modules/Admin/admin/views/vendors/Do
 const MemorialProviders = lazy(() => import('./modules/Admin/admin/views/vendors/MemorialProviders').then(m => ({ default: m.MemorialProviders || m.default })));
 const VendorDocuments = lazy(() => import('./modules/Admin/admin/views/vendors/VendorDocuments').then(m => ({ default: m.VendorDocuments || m.default })));
 const VendorPerformance = lazy(() => import('./modules/Admin/admin/views/vendors/VendorPerformance').then(m => ({ default: m.VendorPerformance || m.default })));
+const VendorCompliance = lazy(() => import('./modules/Admin/admin/views/vendors/VendorCompliance').then(m => ({ default: m.VendorCompliance || m.default })));
 const Orders = lazy(() => import('./modules/Admin/admin/views/operations/Orders').then(m => ({ default: m.Orders || m.default })));
 const Bookings = lazy(() => import('./modules/Admin/admin/views/operations/Bookings').then(m => ({ default: m.Bookings || m.default })));
 const Appointments = lazy(() => import('./modules/Admin/admin/views/operations/Appointments').then(m => ({ default: m.Appointments || m.default })));
 const Deliveries = lazy(() => import('./modules/Admin/admin/views/operations/Deliveries').then(m => ({ default: m.Deliveries || m.default })));
 const Returns = lazy(() => import('./modules/Admin/admin/views/operations/Returns').then(m => ({ default: m.Returns || m.default })));
 const Support = lazy(() => import('./modules/Admin/admin/views/operations/Support').then(m => ({ default: m.Support || m.default })));
+const Disputes = lazy(() => import('./modules/Admin/admin/views/operations/Disputes').then(m => ({ default: m.Disputes || m.default })));
+const OpsQueues = lazy(() => import('./modules/Admin/admin/views/operations/OpsQueues').then(m => ({ default: m.OpsQueues || m.default })));
 const Products = lazy(() => import('./modules/Admin/admin/views/services/Products').then(m => ({ default: m.Products || m.default })));
 const ProductCategories = lazy(() => import('./modules/Admin/admin/views/services/ProductCategories').then(m => ({ default: m.ProductCategories || m.default })));
 const MealPlans = lazy(() => import('./modules/Admin/admin/views/services/MealPlans').then(m => ({ default: m.MealPlans || m.default })));
+const MatchSubscriptions = lazy(() => import('./modules/Admin/admin/views/services/MatchSubscriptions').then(m => ({ default: m.MatchSubscriptions || m.default })));
 const DoctorServices = lazy(() => import('./modules/Admin/admin/views/services/DoctorServices').then(m => ({ default: m.DoctorServices || m.default })));
 const EventCategories = lazy(() => import('./modules/Admin/admin/views/services/EventCategories').then(m => ({ default: m.EventCategories || m.default })));
 const MemorialPackages = lazy(() => import('./modules/Admin/admin/views/services/MemorialPackages').then(m => ({ default: m.MemorialPackages || m.default })));
@@ -415,11 +431,16 @@ const Commission = lazy(() => import('./modules/Admin/admin/views/finance/Commis
 const AdminVendorPayouts = lazy(() => import('./modules/Admin/admin/views/finance/VendorPayouts').then(m => ({ default: m.VendorPayouts || m.default })));
 const AdminWallet = lazy(() => import('./modules/Admin/admin/views/finance/Wallet').then(m => ({ default: m.Wallet || m.default })));
 const TaxGSTReports = lazy(() => import('./modules/Admin/admin/views/finance/TaxGSTReports').then(m => ({ default: m.TaxGSTReports || m.default })));
+const AdminRefunds = lazy(() => import('./modules/Admin/admin/views/finance/Refunds').then(m => ({ default: m.Refunds || m.default })));
+const Reconciliation = lazy(() => import('./modules/Admin/admin/views/finance/Reconciliation').then(m => ({ default: m.Reconciliation || m.default })));
 const AdminNotifications = lazy(() => import('./modules/Admin/admin/views/platform/Notifications').then(m => ({ default: m.Notifications || m.default })));
 const AdminCommunity = lazy(() => import('./modules/Admin/admin/views/platform/Community').then(m => ({ default: m.Community || m.default })));
 const Reviews = lazy(() => import('./modules/Admin/admin/views/platform/Reviews').then(m => ({ default: m.Reviews || m.default })));
 const BannersContent = lazy(() => import('./modules/Admin/admin/views/platform/BannersContent').then(m => ({ default: m.BannersContent || m.default })));
+const HomeServiceImages = lazy(() => import('./modules/Admin/admin/views/platform/HomeServiceImages').then(m => ({ default: m.HomeServiceImages || m.default })));
+const PetPromptsAdminView = lazy(() => import('./modules/Admin/admin/views/platform/PetPromptsAdminView').then(m => ({ default: m.PetPromptsAdminView || m.default })));
 const Reports = lazy(() => import('./modules/Admin/admin/views/platform/Reports').then(m => ({ default: m.Reports || m.default })));
+const CustomerBehaviour = lazy(() => import('./modules/Admin/admin/views/platform/CustomerBehaviour').then(m => ({ default: m.CustomerBehaviour || m.default })));
 const Security = lazy(() => import('./modules/Admin/admin/views/platform/Security').then(m => ({ default: m.Security || m.default })));
 const Staff = lazy(() => import('./modules/Admin/admin/views/platform/Staff').then(m => ({ default: m.Staff || m.default })));
 const AdminSettings = lazy(() => import('./modules/Admin/admin/views/platform/Settings').then(m => ({ default: m.AdminSettings || m.Settings || m.default })));
@@ -495,7 +516,24 @@ function ProtectedVendorRoute({ children, allow }) {
     }
     if (match) setActiveVendorType(match);
   }
-  return children;
+  /*
+   * Every authenticated vendor surface is wrapped here rather than at each
+   * `/vendor/*` route block. Partner panels are mounted from several separate
+   * top-level routes (shop, meals, events, memorial, the shared layout), so
+   * wrapping per block would guarantee one of them silently misses the ring —
+   * and the panel that misses it is the one whose partner gets suspended for
+   * not responding.
+   */
+  return <VendorAlertProvider>{children}</VendorAlertProvider>;
+}
+
+/**
+ * Screen tracking lives in its own component because the hook needs
+ * `useLocation`, which is only available INSIDE the router. Renders nothing.
+ */
+function ActivityTracker() {
+  useActivityTracking();
+  return null;
 }
 
 function App() {
@@ -503,6 +541,10 @@ function App() {
     <BrowserRouter>
       <MobileWrapper>
         <ErrorBoundary>
+          {/* Tracks route changes; silent until the visitor accepts cookies. */}
+          <ActivityTracker />
+          {/* Shown on first arrival only, and only until a choice is made. */}
+          <CookieConsent />
           {/* Wraps the router so an in-progress consultation survives navigation. */}
           <CallProvider>
             {/* Inner boundary: a page that throws is contained here, so the call
@@ -603,6 +645,7 @@ function App() {
                   <Route path="/app/services/grooming/booking/:id" element={<GroomingBookingDetail />} />
                   <Route path="/app/services/grooming/:id" element={<GroomingDetail />} />
                   <Route path="/app/wallet" element={<Wallet />} />
+                  <Route path="/app/subscription" element={<MySubscription />} />
                   <Route path="/app/notifications" element={<Notifications />} />
 
                   {/* Meal Plan Sub-screens */}
@@ -621,6 +664,8 @@ function App() {
                   <Route path="/app/profile/bookings" element={<BookingHistory />} />
                   <Route path="/app/profile/bookings/:id" element={<BookingDetail />} />
                   <Route path="/app/profile/orders" element={<MyOrders />} />
+                  {/* Reached from the cookie banner's "change your mind in Settings". */}
+                  <Route path="/app/profile/privacy" element={<PrivacySettings />} />
                   <Route path="/app/profile/address" element={<AddressBook />} />
                   <Route path="/app/profile/address/add" element={<AddAddress />} />
                   <Route path="/app/profile/saved" element={<SavedItems />} />
@@ -642,7 +687,8 @@ function App() {
                   {/* Main */}
                   <Route path="dashboard" element={<AdminDashboard />} />
                   <Route path="users" element={<Users />} />
-                  <Route path="pets" element={<Pets />} />
+                  {/* Pet management moved into User Management; keep old links working. */}
+                  <Route path="pets" element={<Navigate to="/admin/users" replace />} />
 
                   {/* Vendors */}
                   <Route path="vendors" element={<AllVendors />} />
@@ -654,6 +700,7 @@ function App() {
                   <Route path="vendors/memorial" element={<MemorialProviders />} />
                   <Route path="vendors/documents" element={<VendorDocuments />} />
                   <Route path="vendors/performance" element={<VendorPerformance />} />
+                  <Route path="vendors/compliance" element={<VendorCompliance />} />
 
                   {/* Operations */}
                   <Route path="operations/orders" element={<Orders />} />
@@ -662,11 +709,14 @@ function App() {
                   <Route path="operations/deliveries" element={<Deliveries />} />
                   <Route path="operations/refunds" element={<Returns />} />
                   <Route path="operations/support" element={<Support />} />
+                  <Route path="operations/disputes" element={<Disputes />} />
+                  <Route path="operations/queues" element={<OpsQueues />} />
 
                   {/* Services */}
                   <Route path="services/products" element={<Products />} />
                   <Route path="services/product-categories" element={<ProductCategories />} />
                   <Route path="services/meal-plans" element={<MealPlans />} />
+                  <Route path="services/match-subscriptions" element={<MatchSubscriptions />} />
                   <Route path="services/doctor-services" element={<DoctorServices />} />
                   <Route path="services/event-categories" element={<EventCategories />} />
                   <Route path="services/memorial-packages" element={<MemorialPackages />} />
@@ -679,6 +729,8 @@ function App() {
                   <Route path="finance/payments" element={<Payments />} />
                   <Route path="finance/commission" element={<Commission />} />
                   <Route path="finance/payouts" element={<AdminVendorPayouts />} />
+                  <Route path="finance/refunds" element={<AdminRefunds />} />
+                  <Route path="finance/reconciliation" element={<Reconciliation />} />
                   <Route path="finance/wallet" element={<AdminWallet />} />
                   <Route path="finance/tax" element={<TaxGSTReports />} />
 
@@ -687,7 +739,10 @@ function App() {
                   <Route path="platform/community" element={<AdminCommunity />} />
                   <Route path="platform/reviews" element={<Reviews />} />
                   <Route path="platform/content" element={<BannersContent />} />
+                  <Route path="platform/service-images" element={<HomeServiceImages />} />
+                  <Route path="platform/prompts" element={<PetPromptsAdminView />} />
                   <Route path="platform/reports" element={<Reports />} />
+                  <Route path="platform/behaviour" element={<CustomerBehaviour />} />
                   <Route path="platform/security" element={<Security />} />
                   <Route path="platform/staff" element={<Staff />} />
                   <Route path="platform/settings" element={<AdminSettings />} />
@@ -735,6 +790,7 @@ function App() {
                   <Route path="meal/plans" element={<Navigate to="/vendor/meal-provider/dashboard" replace />} />
                   <Route path="event/packages" element={<Navigate to="/vendor/events-organizer" replace />} />
                   <Route path="memorial/requests" element={<Navigate to="/vendor/memorial-provider" replace />} />
+                  <Route path="compliance" element={<VendorCompliancePage />} />
                   <Route path="settings" element={<VendorSettings />} />
                   <Route path="payouts" element={<VendorPayouts />} />
                   <Route path="support" element={<VendorSupport />} />
@@ -749,6 +805,7 @@ function App() {
                   <Route path="returns" element={<ShopReturnsView />} />
                   <Route path="feedback" element={<ShopFeedbackView />} />
                   <Route path="finance" element={<ShopFinanceView />} />
+                  <Route path="compliance" element={<VendorCompliancePage />} />
                   <Route path="settings" element={<ShopSettingsView />} />
                   <Route path="*" element={<Navigate to="/vendor/shop-provider" replace />} />
                 </Route>
@@ -765,6 +822,7 @@ function App() {
                   <Route path="feedback" element={<CustomerFeedbackView />} />
 
                   <Route path="finance" element={<FinanceCenterView />} />
+                  <Route path="compliance" element={<VendorCompliancePage />} />
                   <Route path="settings" element={<BusinessControlCenterView />} />
 
                   {/* Redirects for removed legacy routes */}
@@ -791,6 +849,7 @@ function App() {
                   <Route path="requests" element={<CustomerRequestsView />} />
                   <Route path="feedback" element={<EventsFeedbackView />} />
                   <Route path="finance" element={<EventsFinanceView />} />
+                  <Route path="compliance" element={<VendorCompliancePage />} />
                   <Route path="settings" element={<EventsSettingsView />} />
                   <Route path="*" element={<Navigate to="/vendor/events-organizer" replace />} />
                 </Route>
@@ -806,6 +865,7 @@ function App() {
                   <Route path="proofs" element={<ServiceProofsView />} />
                   <Route path="support" element={<MemorialSupport />} />
                   <Route path="finance" element={<MemorialFinance />} />
+                  <Route path="compliance" element={<VendorCompliancePage />} />
                   <Route path="settings" element={<MemorialSettings />} />
                   <Route path="*" element={<Navigate to="/vendor/memorial-provider" replace />} />
                 </Route>

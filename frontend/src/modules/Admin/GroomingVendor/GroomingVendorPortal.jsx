@@ -18,6 +18,7 @@ import {
 } from '../../../services/vendor';
 import { dedupePhotos } from '../../../services/groomingApi';
 import VerificationBanner from '../components/VerificationBanner';
+import { PendingBookingRequests } from '../components/PendingBookingRequests';
 
 /**
  * Grooming salon vendor portal.
@@ -135,6 +136,7 @@ export function GroomingVendorPortal() {
         ))}
       </div>
 
+      {(view === 'dashboard' || view === 'bookings') && <PendingBookingRequests onChange={load} />}
       {view === 'dashboard' && <Dashboard summary={summary} onGo={go} />}
       {view === 'bookings' && <Bookings onChanged={load} />}
       {view === 'packages' && <Catalogue kind="package" onChanged={load} />}

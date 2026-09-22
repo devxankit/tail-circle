@@ -3,10 +3,11 @@ import {
   Search, Download, Filter, Eye, Edit, Trash2, Ban, X, CheckCircle, XCircle, 
   FileText, MapPin, Phone, Mail, ExternalLink, ShieldCheck, AlertTriangle, 
   RefreshCw, UserCheck, Building, CreditCard, Check, Sparkles 
-} from 'lucide-react';
+, Clock} from 'lucide-react';
 import { StatusBadge, ActionMenu, Pagination, PageHeader, StatCard } from '../../components/VendorShared';
 import { 
-  fetchAdminVendors, approveVendorGuarded, suspendVendorApi, 
+  fetchAdminVendors, approveVendorGuarded, suspendVendorApi,
+  fetchAcceptanceMode, setAcceptanceModeApi, 
   verifyAdminDocument, fetchVendorDocuments 
 } from '../../../../../services/admin';
 import { VENDOR_TYPE_LABEL } from '../../../../../constants/vendorTypes';
@@ -160,6 +161,42 @@ export function AllVendors() {
     }
   };
 
+  /**
+   * Switch a partner between accepting bookings by hand and auto-confirming on
+   * payment. Previously a database field with no interface at all.
+   *
+   * Turning it ON is the consequential direction: from that point the partner
+   * has a hard deadline on every request, and missing it auto-declines the
+   * booking, refunds the customer and costs them a compliance point. So the
+   * confirmation spells that out rather than asking a bare yes/no.
+   */
+  const toggleAcceptance = async (vendor) => {
+    try {
+      const current = await fetchAcceptanceMode(vendor.id);
+      if (!current.supported) {
+        window.alert(`${vendor.name}: ${current.reason}`);
+        return;
+      }
+      const turningOn = !current.requiresAcceptance;
+      const ok = window.confirm(
+        turningOn
+          ? `Require ${vendor.name} to accept bookings manually?
+
+New bookings will wait for them to Accept or Decline. Requests they do not answer within the response window are auto-declined, the customer is refunded, and it counts against their service standing.`
+          : `Let ${vendor.name} auto-confirm bookings again?
+
+New bookings will confirm as soon as the customer pays.`
+      );
+      if (!ok) return;
+      const res = await setAcceptanceModeApi(vendor.id, turningOn);
+      window.alert(
+        `${vendor.name}: bookings now ${res.requiresAcceptance ? 'require manual acceptance' : 'confirm automatically'}.`
+      );
+    } catch (err) {
+      window.alert(err?.message || 'Could not change the acceptance mode');
+    }
+  };
+
   const getOptions = (vendor) => {
     const base = [
       { label: 'View Profile', icon: Eye, onClick: () => setSelectedVendorForView(vendor) },
@@ -181,6 +218,7 @@ export function AllVendors() {
         }
       });
     }
+    base.push({ label: 'Booking acceptance mode', icon: Clock, onClick: () => toggleAcceptance(vendor) });
     base.push({ label: 'Delete', icon: Trash2, danger: true, onClick: () => handleDelete(vendor.id) });
     return base;
   };

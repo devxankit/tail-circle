@@ -3,6 +3,7 @@ import { ArrowLeft, Star, Clock, MapPin, Award, Users, MessageSquare, Phone, Vid
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../../components/ui/Button';
 import { getDoctor } from '../../../../services/doctorsApi';
+import { useTrackItemView } from '../../../../hooks/useTrackItemView';
 
 export function DoctorDetail() {
   const { id } = useParams();
@@ -36,6 +37,9 @@ export function DoctorDetail() {
   }, [id, location.state]);
 
   const doctor = location.state?.doctor || fetchedDoctor || { id, name: 'Loading…', spec: '', rating: null, reviews: null };
+
+  // Records what the customer looked at, and for how long.
+  useTrackItemView({ refType: 'doctor', refId: id, refName: doctor?.name, category: doctor?.spec });
 
   return (
     <div className="flex flex-col h-full bg-white absolute inset-0 z-[60] animate-in slide-in-from-right duration-300">

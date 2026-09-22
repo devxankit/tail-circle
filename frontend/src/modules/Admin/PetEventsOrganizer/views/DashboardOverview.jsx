@@ -6,6 +6,7 @@ import {
   Clock, MapPin, CalendarClock, Inbox
 } from 'lucide-react';
 import { cn } from '../../../user/utils/cn';
+import { PendingBookingRequests } from '../../components/PendingBookingRequests';
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const asDate = (d) => (d ? String(d).slice(0, 10) : '');
@@ -23,6 +24,7 @@ export function DashboardOverview() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-10">
+      <PendingBookingRequests />
 
       <div>
         <h2 className="text-2xl font-black text-slate-900 tracking-tight">Dashboard Overview</h2>

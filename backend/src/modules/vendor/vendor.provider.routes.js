@@ -10,7 +10,14 @@ import { ApiError } from '../../utils/ApiError.js';
 import { invalidate } from '../../services/cache.service.js';
 import { Provider } from '../provider/provider.model.js';
 import { ServiceOffering } from '../provider/serviceOffering.model.js';
-import { Booking } from '../booking/booking.model.js';
+import { Booking, canTransition } from '../booking/booking.model.js';
+import {
+  vendorAcceptBooking,
+  vendorRejectBooking,
+  performCancellation,
+  pushTimeline,
+} from '../booking/booking.service.js';
+import { notify } from '../../services/notify.js';
 import { SlotBooking } from '../booking/slot.model.js';
 
 /**
@@ -275,23 +282,105 @@ export function providerVendorRouter(providerType) {
     sendSuccess(res, { data: bookings });
   }));
 
-  /** Move a booking through its lifecycle. Ownership is part of the filter. */
+  /**
+   * Accept a booking request that is waiting on this partner.
+   *
+   * Only meaningful for providers who opted into manual acceptance; everything
+   * else is already `confirmed` by the time they see it.
+   */
+  router.post(
+    '/bookings/:id/accept',
+    ...guard,
+    validate(z.object({ note: z.string().max(300).optional() })),
+    asyncHandler(async (req, res) => {
+      const provider = await ownProvider(req, providerType);
+      const booking = await ownBooking(req.params.id, provider._id);
+      const updated = await vendorAcceptBooking(provider.vendorUserId, booking._id, {
+        note: req.body.note || '',
+        actor: req.user,
+      });
+      sendSuccess(res, { message: 'Booking accepted', data: updated });
+    })
+  );
+
+  /** Decline a request. The customer is always refunded in full. */
+  router.post(
+    '/bookings/:id/reject',
+    ...guard,
+    validate(z.object({ reason: z.string().trim().min(3).max(300) })),
+    asyncHandler(async (req, res) => {
+      const provider = await ownProvider(req, providerType);
+      const booking = await ownBooking(req.params.id, provider._id);
+      const updated = await vendorRejectBooking(provider.vendorUserId, booking._id, {
+        reason: req.body.reason,
+        actor: req.user,
+      });
+      sendSuccess(res, { message: 'Booking declined and refunded', data: updated });
+    })
+  );
+
+  /**
+   * Move a booking through its lifecycle. Ownership is part of the filter.
+   *
+   * This used to assign `req.body.status` straight onto the document with no
+   * transition check and no side effects. Two consequences mattered: a partner
+   * could move a booking anywhere (completed -> confirmed, cancelled ->
+   * in_progress), and `cancelled` did nothing but change a word — the customer
+   * was never refunded, never notified, capacity was never released, and the
+   * partner kept their ledger credit for a service they had just cancelled.
+   */
   router.patch(
     '/bookings/:id/status',
     ...guard,
-    validate(z.object({ status: z.enum(['confirmed', 'in_progress', 'completed', 'no_show', 'cancelled']), note: z.string().max(300).optional() })),
+    validate(
+      z.object({
+        status: z.enum(['confirmed', 'in_progress', 'completed', 'no_show', 'cancelled']),
+        note: z.string().max(300).optional(),
+      })
+    ),
     asyncHandler(async (req, res) => {
       const provider = await ownProvider(req, providerType);
-      if (!mongoose.isValidObjectId(req.params.id)) throw ApiError.badRequest('Invalid booking id');
-      const booking = await Booking.findOne({ _id: req.params.id, providerId: provider._id });
-      if (!booking) throw ApiError.notFound('Booking not found');
+      const booking = await ownBooking(req.params.id, provider._id);
+      const { status, note } = req.body;
 
-      booking.status = req.body.status;
-      booking.timeline.push({ status: req.body.status, note: req.body.note || `Updated by ${provider.name}` });
+      if (!canTransition(booking.status, status)) {
+        throw ApiError.badRequest(`A ${booking.status} booking cannot become ${status}`);
+      }
+
+      // Cancellation is never just a status write — it refunds the customer,
+      // releases capacity and reverses this partner's earning.
+      if (status === 'cancelled') {
+        const updated = await performCancellation(booking, {
+          by: 'vendor',
+          actor: req.user,
+          reason: note || `Cancelled by ${provider.name}`,
+        });
+        return sendSuccess(res, { message: 'Booking cancelled and customer refunded', data: updated });
+      }
+
+      booking.status = status;
+      pushTimeline(booking, status, note || `Updated by ${provider.name}`, 'vendor', req.user);
       await booking.save();
-      sendSuccess(res, { message: 'Booking updated', data: booking });
+
+      await notify(booking.userId, {
+        title: 'Booking updated',
+        body: `Your ${booking.type || 'booking'} is now ${status.replace(/_/g, ' ')}.`,
+        type: 'booking',
+        link: '/app/profile/bookings',
+        data: { bookingId: String(booking._id) },
+      }).catch(() => {});
+
+      return sendSuccess(res, { message: 'Booking updated', data: booking });
     })
   );
+
+  /** Load a booking and assert it belongs to this provider. */
+  async function ownBooking(id, providerId) {
+    if (!mongoose.isValidObjectId(id)) throw ApiError.badRequest('Invalid booking id');
+    const booking = await Booking.findOne({ _id: id, providerId });
+    if (!booking) throw ApiError.notFound('Booking not found');
+    return booking;
+  }
 
   /* ── Dashboard summary ──────────────────────────────────── */
 

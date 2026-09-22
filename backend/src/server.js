@@ -4,7 +4,11 @@ import { env, assertProductionConfig } from './config/env.js';
 import { connectDatabase, disconnectDatabase } from './config/database.js';
 import { connectRedis, disconnectRedis } from './config/redis.js';
 import { initFirebase } from './config/firebase.js';
+import { ensureDefaultPlans } from './modules/subscription/subscription.service.js';
 import { initSocket, getIO } from './sockets/index.js';
+import { applyDueCommissionSchedules } from './modules/admin/admin.finance.service.js';
+import { runComplianceSweeps } from './modules/compliance/compliance.sweeps.js';
+import { retryFailedPushes } from './services/notify.js';
 import { logger } from './utils/logger.js';
 
 async function start() {
@@ -16,6 +20,16 @@ async function start() {
     await connectRedis(); // non-fatal — API degrades gracefully without Redis
     initFirebase(); // non-fatal — chat/push disabled until service account exists
 
+    /*
+     * The match deck refuses every like when there is no plan to draw an
+     * allowance from, so the starter catalog is created on first boot. It is a
+     * no-op the moment any plan exists — an admin's edits, and their deletions,
+     * are never undone by a restart.
+     */
+    await ensureDefaultPlans().catch((err) =>
+      logger.warn(`Could not seed match subscription plans: ${err.message}`)
+    );
+
     const server = http.createServer(app);
     initSocket(server);
 
@@ -23,6 +37,78 @@ async function start() {
       logger.info(`🚀 TailCircle API running on http://localhost:${env.port}${env.apiPrefix}`);
       logger.info(`   Environment: ${env.nodeEnv}`);
     });
+
+    /*
+     * Commission changes an operator dated into the future.
+     *
+     * Polled rather than timer-per-row so a restart cannot lose a pending
+     * change, and applied through the ordinary admin setter so each one is
+     * bounds-checked and audited like a manual edit. A minute of latency is
+     * immaterial for a commission rate, and each row is claimed atomically so
+     * several servers running this loop apply it exactly once.
+     */
+    const runDueCommissionSchedules = () =>
+      applyDueCommissionSchedules()
+        .then((ids) => {
+          if (ids.length) logger.info(`Applied ${ids.length} scheduled commission change(s)`);
+        })
+        .catch((err) => logger.warn(`Commission schedule sweep failed: ${err.message}`));
+
+    runDueCommissionSchedules();
+    const scheduleTimer = setInterval(runDueCommissionSchedules, 60_000);
+    scheduleTimer.unref();
+
+    /*
+     * Partner SLA enforcement.
+     *
+     * Three things nobody was watching: booking requests left unanswered,
+     * paid bookings that sail past their service date untouched, and paid
+     * orders that never ship. Each one is a customer who paid and got nothing,
+     * and each was previously discovered only when that customer complained.
+     *
+     * Polled on the same pattern as the commission sweep above, for the same
+     * reasons — a restart cannot lose work, and the sweeps are idempotent
+     * (unique on vendor+type+reference), so several instances running this loop
+     * record each violation exactly once. Five minutes rather than one: these
+     * measure in hours and days, and the sweep touches more rows.
+     */
+    const runComplianceSweep = () =>
+      runComplianceSweeps()
+        .then((out) => {
+          const flagged =
+            (out.undeliveredServices?.flagged || 0) +
+            (out.stalledOrders?.flagged || 0) +
+            (out.unansweredBookings?.violations || 0);
+          if (flagged) logger.warn(`Compliance sweep flagged ${flagged} SLA breach(es)`);
+        })
+        .catch((err) => logger.warn(`Compliance sweep failed: ${err.message}`));
+
+    // Delayed first run so a cold boot finishes wiring up before it scans.
+    setTimeout(runComplianceSweep, 30_000).unref();
+    const complianceTimer = setInterval(runComplianceSweep, 5 * 60_000);
+    complianceTimer.unref();
+
+    /*
+     * Retry notifications whose push failed.
+     *
+     * FCM failures are overwhelmingly transient - a dropped connection, a token
+     * refreshing mid-send - so one retry recovers most of them. Without this a
+     * customer whose phone was briefly unreachable simply never learned their
+     * booking was cancelled.
+     *
+     * Every fifteen minutes, and capped per notification inside the function so
+     * a permanently dead token is not retried forever.
+     */
+    const runPushRetry = () =>
+      retryFailedPushes({ hours: 24, limit: 100 })
+        .then(({ attempted, recovered }) => {
+          if (attempted) logger.info(`Push retry: recovered ${recovered}/${attempted}`);
+        })
+        .catch((err) => logger.warn(`Push retry sweep failed: ${err.message}`));
+
+    setTimeout(runPushRetry, 60_000).unref();
+    const pushRetryTimer = setInterval(runPushRetry, 15 * 60_000);
+    pushRetryTimer.unref();
 
     let shuttingDown = false;
     const shutdown = async (signal) => {

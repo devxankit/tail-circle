@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronLeft, Camera, Check, ShieldCheck, Tag, Gift, MapPin, Plus, X, Loader2 } from 'lucide-react';
+import { ChevronLeft, Camera, Check, ShieldCheck, Tag, Gift, MapPin, Plus, X, Loader2, Sparkles } from 'lucide-react';
 import { createAdoptionListing } from '../../../../../services/adoptApi';
+import { IdealProfileModal } from '../../../../../components/common/IdealProfileModal';
 
 const DEFAULT_TRAITS = ['Friendly', 'Playful', 'Loyal', 'Good with Kids', 'House Trained', 'Intelligent', 'Energetic', 'Gentle'];
 
@@ -9,6 +10,7 @@ export function ListPetForAdoption() {
   const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [showIdealModal, setShowIdealModal] = useState(false);
 
   // Form State
   const [name, setName] = useState('');
@@ -333,9 +335,25 @@ export function ListPetForAdoption() {
           </div>
         </div>
 
+        {/* Ideal Pet Profile Modal */}
+        <IdealProfileModal
+          isOpen={showIdealModal}
+          onClose={() => setShowIdealModal(false)}
+        />
+
         {/* Section 4: Photos */}
         <div className="bg-white rounded-[24px] p-5 border border-gray-100/80 shadow-[0_4px_20px_rgba(0,0,0,0.02)] space-y-3">
-          <h2 className="text-[15px] font-black text-gray-900 tracking-tight">4. Pet Photos</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-[15px] font-black text-gray-900 tracking-tight">4. Pet Photos</h2>
+            <button
+              type="button"
+              onClick={() => setShowIdealModal(true)}
+              className="inline-flex items-center gap-1.5 bg-[#4C8684] hover:bg-[#3d6b6a] text-white px-3 py-1 rounded-full text-[11px] font-black shadow-xs transition active:scale-95"
+            >
+              <Sparkles size={12} className="text-amber-300 animate-pulse" />
+              <span>See Ideal Profile</span>
+            </button>
+          </div>
           
           <input
             ref={fileInputRef}

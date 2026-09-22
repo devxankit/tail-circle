@@ -20,6 +20,16 @@ export function isUserOnline(userId) {
   return (onlineCounts.get(String(userId)) || 0) > 0;
 }
 
+/**
+ * How many distinct users have at least one socket open right now.
+ *
+ * Safe as a plain `.size` because the disconnect handler deletes a user's
+ * entry when their count reaches zero rather than leaving a 0 behind.
+ */
+export function onlineUserCount() {
+  return onlineCounts.size;
+}
+
 /** Socket.IO handshake auth — shared by the default and `/video` namespaces. */
 async function sameAuth(socket, next) {
   try {

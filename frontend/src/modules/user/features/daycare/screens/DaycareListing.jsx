@@ -9,6 +9,7 @@ import { api } from '../../../../../services/api';
 import { DaycareFilters } from '../components/DaycareFilters';
 import { useDaycareStore } from '../../../../../store/useDaycareStore';
 import { useVoiceSearch } from '../../../../../hooks/useVoiceSearch';
+import { useTrackSearch } from '../../../../../hooks/useTrackSearch';
 
 const formatDateDisplay = (dateStr) => {
   if (!dateStr) return '';
@@ -304,6 +305,9 @@ export function DaycareListing() {
     );
   });
 
+  // Reports what customers searched for, and how many results they got.
+  useTrackSearch(searchQuery, filteredDaycares.length);
+
   return (
     <div className="flex flex-col h-full bg-[#FAF7F2] overflow-y-auto hide-scrollbar animate-in slide-in-from-right duration-300 relative pb-24">
       
@@ -328,27 +332,20 @@ export function DaycareListing() {
       </div>
 
       <div className="pt-2">
-        {/* Dynamic Daycare Banner */}
-        <div className="px-4 mb-4">
-          {customBanner ? (
-            <div className="w-full rounded-[20px] overflow-hidden shadow-sm border border-gray-100/50 h-[170px]">
-              <img 
-                src={customBanner} 
-                alt="Daycare Promo Banner" 
-                className="w-full h-full object-cover block" 
+        {/* Dynamic Daycare Banner — admin-managed only. The bundled
+            banner_daycare.png used to render as a fallback, which flashed a
+            second, outdated banner before the API banner arrived. */}
+        {customBanner && (
+          <div className="px-4 mb-4">
+            <div className="w-full rounded-[20px] overflow-hidden shadow-sm border border-gray-100/50">
+              <img
+                src={customBanner}
+                alt="Daycare Promo Banner"
+                className="w-full h-auto block"
               />
             </div>
-          ) : (
-            // Default fall-back daycare banner
-            <div className="w-full rounded-[20px] overflow-hidden shadow-sm border border-gray-100/50 h-[170px]">
-              <img 
-                src="/assets/banners/banner_daycare.png" 
-                alt="Daycare Promo Banner" 
-                className="w-full h-full object-cover block" 
-              />
-            </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Search Bar Input with Voice Search */}
         <div className="px-4 mb-4">

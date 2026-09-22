@@ -505,7 +505,7 @@ export function EventList() {
             }`}
           >
             <Sparkles size={16} strokeWidth={2.5} />
-            <span>Book Event Package</span>
+            <span>Plan My Pet Event</span>
           </button>
         </div>
 

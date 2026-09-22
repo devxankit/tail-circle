@@ -3,7 +3,11 @@ import mongoose from 'mongoose';
 export const PAYMENT_PURPOSES = [
   'order',
   'booking',
+  // Meal packages. Named before there was a second kind of subscription on the
+  // platform, and left alone so existing rows keep resolving to their handler.
   'subscription',
+  // Match-deck like plans — see modules/subscription.
+  'match_subscription',
   'wallet_topup',
   'adoption_fee',
   // Overtime on a video consultation, invoiced after the call. Amount is always

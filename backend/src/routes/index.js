@@ -20,10 +20,12 @@ import adoptionRoutes from '../modules/adoption/adoption.routes.js';
 import marketplaceRoutes from '../modules/adoption/marketplace.routes.js';
 import communityRoutes from '../modules/social/community.routes.js';
 import { matchRouter, chatRouter, storyRouter } from '../modules/social/social.routes.js';
+import subscriptionRoutes from '../modules/subscription/subscription.routes.js';
 import walletRoutes from '../modules/wallet/wallet.routes.js';
 import notificationRoutes from '../modules/notification/notification.routes.js';
 import vendorRoutes from '../modules/vendor/vendor.routes.js';
 import { providerVendorRouter } from '../modules/vendor/vendor.provider.routes.js';
+import analyticsRoutes from '../modules/analytics/analytics.routes.js';
 import adminRoutes, { bannersRouter, adminBannersRouter } from '../modules/admin/admin.routes.js';
 
 const router = Router();
@@ -61,8 +63,12 @@ router.use('/community', communityRoutes);
 router.use('/matches', matchRouter);
 router.use('/chat', chatRouter);
 router.use('/stories', storyRouter);
+router.use('/subscriptions', subscriptionRoutes);
 router.use('/wallet', walletRoutes);
 router.use('/notifications', notificationRoutes);
+/* Cookie consent + customer activity ingest. Public: guests are tracked too,
+   but only once they have actively consented. */
+router.use('/analytics', analyticsRoutes);
 // Provider-backed vendor portals. Mounted before /vendor so their paths win.
 router.use('/vendor/grooming', providerVendorRouter('grooming'));
 router.use('/vendor/daycare', providerVendorRouter('daycare'));
