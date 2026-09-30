@@ -35,8 +35,16 @@ export function DoctorManagement() {
     setCurrentView(view);
   }, [searchParams, selectedAppointment]);
 
+  /*
+   * The appointment / patient being opened also goes in the URL, so a detail
+   * screen survives a refresh or a shared link (it used to open blank: the
+   * selection lived only in memory).
+   */
   const navigateTo = (view, appointment = null, patient = null) => {
-    setSearchParams({ view });
+    const params = { view };
+    if (appointment?.id && (view === 'appointment_detail' || view === 'video_call')) params.bookingId = String(appointment.id);
+    if (patient?.id && view === 'patient_detail') params.patientId = String(patient.id);
+    setSearchParams(params);
     if (appointment) setSelectedAppointment(appointment);
     if (patient) setSelectedPatient(patient);
   };
@@ -56,7 +64,7 @@ export function DoctorManagement() {
       case 'patients_list':
         return <PatientRecordsView onNavigate={navigateTo} />;
       case 'patient_detail':
-        return <PatientDetailView patient={selectedPatient} onNavigate={navigateTo} />;
+        return <PatientDetailView patient={selectedPatient} patientId={searchParams.get('patientId')} onNavigate={navigateTo} />;
       case 'emergency':
         return <EmergencyRequestsView onNavigate={navigateTo} />;
       case 'prescriptions':
@@ -83,20 +91,18 @@ export function DoctorManagement() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/*
         Above every view, not inside one. A clinic that turned on manual
         acceptance has a two-hour window to answer, and a request buried on a
         tab they are not currently looking at is one that auto-declines.
       */}
-      <PendingBookingRequests />
+      <PendingBookingRequests compact />
 
-      {/* The top tabs were removed here because navigation is now fully handled by the powerful Doctor Sidebar. */}
-      
+      {/* Navigation lives in the partner app's bottom tabs and More screen. */}
+
       {/* Render selected view */}
-      <div className="mt-2">
-        {renderView()}
-      </div>
+      {renderView()}
     </div>
   );
 }

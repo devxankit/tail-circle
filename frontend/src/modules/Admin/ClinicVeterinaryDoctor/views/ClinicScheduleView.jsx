@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Clock, Plus, Trash2, Save, Loader2, AlertCircle, CheckCircle2,
-  CalendarOff, Eye, Video, MapPin, Home, Siren,
+  CalendarOff, Eye, Video, MapPin, Home, Siren, ChevronDown,
 } from 'lucide-react';
 import {
   fetchVetAvailability, saveVetAvailability, fetchVetSlotPreview,
   addVetBlackout, removeVetBlackout,
 } from '../../../../services/vendor';
 import { useVetSelection, VetSelector } from '../components/VetSelector';
+import { FormSection, StickyActionBar, PrimaryButton, SkeletonList, InlineError, fieldClass, labelClass } from '../../vendor/mobile';
 
 /**
  * Working schedule editor — the source of truth for what pet parents can book.
@@ -16,6 +17,9 @@ import { useVetSelection, VetSelector } from '../components/VetSelector';
  * nothing behind it. Every control now writes to the availability engine, and
  * the preview panel calls the same generator the booking screen uses, so the
  * dashboard and the user app cannot disagree.
+ *
+ * On a phone each weekday is a card that expands to its sessions; Save sits
+ * in the bottom bar.
  */
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -28,6 +32,25 @@ const MODES = [
 ];
 
 const blankBlock = () => ({ start: '10:00', end: '13:00', modes: ['inClinic'], capacity: 1 });
+
+const timeField = 'w-full h-11 rounded-xl border border-border-light bg-white px-3 text-[16px] font-medium text-text-primary focus:outline-none focus:border-accent-teal focus:ring-2 focus:ring-accent-teal/20';
+
+function Switch({ on, onClick, label }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={!!on}
+      aria-label={label}
+      onClick={onClick}
+      className="h-11 flex items-center shrink-0"
+    >
+      <span className={`w-11 h-6 rounded-full transition relative ${on ? 'bg-success' : 'bg-text-disabled'}`}>
+        <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${on ? 'left-[22px]' : 'left-0.5'}`} />
+      </span>
+    </button>
+  );
+}
 
 export function ClinicScheduleView() {
   // A clinic with several vets must say which one it is editing.
@@ -45,6 +68,10 @@ export function ClinicScheduleView() {
 
   const [blackoutDate, setBlackoutDate] = useState('');
   const [blackoutReason, setBlackoutReason] = useState('');
+
+  // Which weekday cards are open (today's starts open).
+  const [openDays, setOpenDays] = useState(() => ({ [new Date().getDay()]: true }));
+  const toggleOpen = (dayIdx) => setOpenDays((prev) => ({ ...prev, [dayIdx]: !prev[dayIdx] }));
 
   useEffect(() => {
     if (!ready) return undefined;
@@ -175,73 +202,51 @@ export function ClinicScheduleView() {
   );
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 size={28} className="animate-spin text-gray-400" />
-      </div>
-    );
+    return <SkeletonList rows={5} />;
   }
 
   if (!availability) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3 text-center px-8">
-        <AlertCircle size={32} className="text-amber-500" />
-        <p className="font-bold text-gray-800">Could not load your schedule</p>
-        <p className="text-sm text-gray-500">{error}</p>
+        <AlertCircle size={32} className="text-warning" />
+        <p className="font-bold text-text-primary">Could not load your schedule</p>
+        <p className="text-sm text-text-secondary">{error}</p>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <VetSelector vets={vets} isOwner={isOwner} doctorId={doctorId} onChange={setDoctorId} onVetAdded={refreshVets} />
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900">Working Schedule</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Pet parents can only book times you set here.{' '}
-            <span className="font-medium text-gray-700">
-              {workingDays} working {workingDays === 1 ? 'day' : 'days'} a week
-            </span>
-            {' • '}{availability.timezone}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleEnableCurrentVideoSession}
-            className="px-4 h-11 rounded-xl bg-teal-50 border border-teal-200 text-teal-700 font-bold text-xs flex items-center gap-1.5 hover:bg-teal-100 transition cursor-pointer"
-            title="Enable 24hr video slots for today so users can book right now"
-          >
-            <Video size={16} /> Enable Today's Video Slots
-          </button>
-          {saved && (
-            <span className="text-emerald-600 text-sm font-bold flex items-center gap-1.5">
-              <CheckCircle2 size={16} /> Saved
-            </span>
-          )}
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-5 h-11 rounded-xl bg-[#F87B68] text-white font-bold text-sm flex items-center gap-2 disabled:opacity-60 cursor-pointer"
-          >
-            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-            {saving ? 'Saving…' : 'Save schedule'}
-          </button>
-        </div>
+
+      <div className="px-1">
+        <h1 className="text-lg font-bold text-text-primary">Working Schedule</h1>
+        <p className="text-xs text-text-secondary mt-1">
+          Pet parents can only book times you set here.{' '}
+          <span className="font-bold text-text-primary">
+            {workingDays} working {workingDays === 1 ? 'day' : 'days'} a week
+          </span>
+          {' • '}{availability.timezone}
+        </p>
       </div>
 
+      <button
+        onClick={handleEnableCurrentVideoSession}
+        className="w-full min-h-[48px] px-4 rounded-2xl bg-accent-teal/10 border border-accent-teal/30 text-[#4C8684] font-bold text-sm flex items-center justify-center gap-2 transition cursor-pointer"
+        title="Enable 24hr video slots for today so users can book right now"
+      >
+        <Video size={17} /> Enable Today's Video Slots
+      </button>
+
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm flex items-start gap-2">
-          <AlertCircle size={16} className="shrink-0 mt-0.5" /> {error}
-        </div>
+        <InlineError>
+          <span className="flex items-start gap-2"><AlertCircle size={16} className="shrink-0 mt-0.5" /> {error}</span>
+        </InlineError>
       )}
 
       {/* Consult settings */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-5">
-        <h2 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-          <Clock size={18} className="text-gray-400" /> Consultation settings
-        </h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <FormSection title="Consultation settings" icon={Clock}>
+        <div className="grid grid-cols-2 gap-4">
           <NumberField
             label="Default slot length" suffix="min" value={availability.slotMinutes} min={5} max={180}
             hint="Overridden per consult type"
@@ -263,116 +268,138 @@ export function ClinicScheduleView() {
             onChange={(v) => { setAvailability((p) => ({ ...p, horizonDays: v })); dirty(); }}
           />
         </div>
-      </div>
+      </FormSection>
 
-      {/* Weekly grid */}
-      <div className="bg-white rounded-2xl border border-gray-200 divide-y divide-gray-100">
-        {availability.weekly.map((day) => (
-          <div key={day.day} className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <button
+      {/* Weekly schedule: one expandable card per day */}
+      <div className="space-y-2">
+        {availability.weekly.map((day) => {
+          const open = !!openDays[day.day];
+          const summary = !day.enabled
+            ? 'Closed'
+            : day.blocks.length
+              ? day.blocks.map((b) => `${b.start}–${b.end}`).join(', ')
+              : 'No sessions yet';
+          return (
+            <div key={day.day} className="bg-white rounded-[20px] border border-border-light shadow-sm">
+              <div className="flex items-center gap-3 pl-4 pr-2">
+                <Switch
+                  on={day.enabled}
                   onClick={() => patchDay(day.day, { enabled: !day.enabled })}
-                  className={`w-11 h-6 rounded-full transition relative shrink-0 ${day.enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}
-                  aria-label={`Toggle ${DAYS[day.day]}`}
-                >
-                  <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${day.enabled ? 'left-[22px]' : 'left-0.5'}`} />
-                </button>
-                <span className={`font-bold ${day.enabled ? 'text-gray-900' : 'text-gray-400'}`}>
-                  {DAYS[day.day]}
-                </span>
-              </div>
-              {day.enabled && (
+                  label={`Toggle ${DAYS[day.day]}`}
+                />
                 <button
-                  onClick={() => addBlock(day.day)}
-                  className="text-xs font-bold text-[#F87B68] flex items-center gap-1 hover:underline"
+                  type="button"
+                  onClick={() => toggleOpen(day.day)}
+                  aria-expanded={open}
+                  className="flex-1 min-w-0 min-h-[60px] py-2 flex items-center gap-2 text-left"
                 >
-                  <Plus size={14} /> Add session
+                  <span className="flex-1 min-w-0">
+                    <span className={`block font-bold ${day.enabled ? 'text-text-primary' : 'text-text-disabled'}`}>
+                      {DAYS[day.day]}
+                    </span>
+                    <span className="block text-xs text-text-secondary truncate">{summary}</span>
+                  </span>
+                  <ChevronDown size={20} className={`text-text-secondary shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
                 </button>
-              )}
-            </div>
+              </div>
 
-            {day.enabled && (
-              day.blocks.length ? (
-                <div className="space-y-3 md:pl-14">
-                  {day.blocks.map((block, i) => (
-                    <div key={i} className="bg-gray-50 rounded-xl p-3 border border-gray-200">
-                      <div className="flex items-center gap-2 flex-wrap mb-3">
-                        <input
-                          type="time" value={block.start}
-                          onChange={(e) => patchBlock(day.day, i, { start: e.target.value })}
-                          className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-medium"
-                        />
-                        <span className="text-gray-400 text-sm">to</span>
-                        <input
-                          type="time" value={block.end}
-                          onChange={(e) => patchBlock(day.day, i, { end: e.target.value })}
-                          className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-medium"
-                        />
-                        <div className="flex items-center gap-1.5 ml-2">
-                          <span className="text-xs text-gray-500">seats</span>
+              {open && (
+                <div className="px-4 pb-4 space-y-3">
+                  {!day.enabled ? (
+                    <p className="text-sm text-text-secondary">Turn the day on to add sessions.</p>
+                  ) : day.blocks.length ? (
+                    day.blocks.map((block, i) => (
+                      <div key={i} className="bg-bg-primary rounded-2xl p-3 border border-border-light space-y-3">
+                        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
                           <input
-                            type="number" min={1} max={20} value={block.capacity ?? 1}
-                            onChange={(e) => patchBlock(day.day, i, { capacity: Math.max(1, Number(e.target.value) || 1) })}
-                            className="w-14 border border-gray-200 rounded-lg px-2 py-1.5 text-sm"
+                            type="time" value={block.start}
+                            onChange={(e) => patchBlock(day.day, i, { start: e.target.value })}
+                            className={timeField}
+                            aria-label="Start time"
+                          />
+                          <span className="text-text-secondary text-sm">to</span>
+                          <input
+                            type="time" value={block.end}
+                            onChange={(e) => patchBlock(day.day, i, { end: e.target.value })}
+                            className={timeField}
+                            aria-label="End time"
                           />
                         </div>
-                        <button
-                          onClick={() => removeBlock(day.day, i)}
-                          className="ml-auto p-1.5 text-gray-400 hover:text-red-500 rounded-lg"
-                          aria-label="Remove session"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-text-secondary">seats</span>
+                          <input
+                            type="number" inputMode="numeric" min={1} max={20} value={block.capacity ?? 1}
+                            onChange={(e) => patchBlock(day.day, i, { capacity: Math.max(1, Number(e.target.value) || 1) })}
+                            className={`${timeField} w-20`}
+                          />
+                          <button
+                            onClick={() => removeBlock(day.day, i)}
+                            className="ml-auto w-11 h-11 flex items-center justify-center text-error bg-error/10 rounded-xl"
+                            aria-label="Remove session"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
 
-                      {/* Which consult types this session serves — this is how a
-                          vet offers video only in the evening, say. */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mr-1">
-                          Available for
-                        </span>
-                        {MODES.map(({ key, label, icon: Icon }) => {
-                          const on = block.modes?.includes(key);
-                          return (
-                            <button
-                              key={key}
-                              onClick={() => toggleBlockMode(day.day, i, key)}
-                              className={`px-2.5 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1 transition ${
-                                on ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-500 border-gray-200'
-                              }`}
-                            >
-                              <Icon size={11} /> {label}
-                            </button>
-                          );
-                        })}
-                        {!block.modes?.length && (
-                          <span className="text-[11px] text-amber-600 font-medium">
-                            No type selected — this session will not be bookable
+                        {/* Which consult types this session serves — this is how a
+                            vet offers video only in the evening, say. */}
+                        <div>
+                          <span className="block text-[11px] font-bold text-text-secondary uppercase tracking-wide mb-2">
+                            Available for
                           </span>
-                        )}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {MODES.map(({ key, label, icon: Icon }) => {
+                              const on = block.modes?.includes(key);
+                              return (
+                                <button
+                                  key={key}
+                                  onClick={() => toggleBlockMode(day.day, i, key)}
+                                  className={`min-h-[36px] px-3 rounded-full text-xs font-bold border flex items-center gap-1 transition ${
+                                    on ? 'bg-text-primary text-white border-text-primary' : 'bg-white text-text-secondary border-border-light'
+                                  }`}
+                                >
+                                  <Icon size={12} /> {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {!block.modes?.length && (
+                            <p className="text-[11px] text-warning font-medium mt-2">
+                              No type selected — this session will not be bookable
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))
+                  ) : (
+                    <p className="text-sm text-text-secondary">
+                      No sessions yet — add one so patients can book.
+                    </p>
+                  )}
+                  {day.enabled && (
+                    <button
+                      onClick={() => addBlock(day.day)}
+                      className="w-full min-h-[44px] rounded-xl border border-dashed border-primary-main/40 text-sm font-bold text-primary-main flex items-center justify-center gap-1"
+                    >
+                      <Plus size={16} /> Add session
+                    </button>
+                  )}
                 </div>
-              ) : (
-                <p className="md:pl-14 text-sm text-gray-400">
-                  No sessions yet — add one so patients can book.
-                </p>
-              )
-            )}
-          </div>
-        ))}
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* Emergency / after-hours cover — scheduled separately from the weekly
           grid so a vet can take urgent cases outside normal hours. */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-5">
-        <div className="flex items-center justify-between mb-1">
-          <h2 className="font-bold text-gray-900 flex items-center gap-2">
-            <Siren size={18} className="text-gray-400" /> Emergency &amp; after-hours
-          </h2>
-          <button
+      <FormSection
+        title="Emergency & after-hours"
+        icon={Siren}
+        description="Urgent cases outside your normal sessions. Requires the Emergency consult type to be enabled on your profile."
+        action={(
+          <Switch
+            on={availability.emergency?.enabled}
             onClick={() => {
               setAvailability((p) => ({
                 ...p,
@@ -380,19 +407,14 @@ export function ClinicScheduleView() {
               }));
               dirty();
             }}
-            className={`w-11 h-6 rounded-full transition relative shrink-0 ${availability.emergency?.enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}
-            aria-label="Toggle emergency availability"
-          >
-            <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${availability.emergency?.enabled ? 'left-[22px]' : 'left-0.5'}`} />
-          </button>
-        </div>
-        <p className="text-sm text-gray-500 mb-4">
-          Urgent cases outside your normal sessions. Requires the Emergency consult type to be enabled on your profile.
-        </p>
-
+            label="Toggle emergency availability"
+          />
+        )}
+        bodyClassName={availability.emergency?.enabled ? undefined : 'hidden'}
+      >
         {availability.emergency?.enabled && (
           <>
-            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-4">
+            <label className="flex items-center gap-3 min-h-[44px] text-sm font-medium text-text-primary">
               <input
                 type="checkbox"
                 checked={availability.emergency?.alwaysOn ?? false}
@@ -403,7 +425,7 @@ export function ClinicScheduleView() {
                   }));
                   dirty();
                 }}
-                className="rounded"
+                className="w-5 h-5 rounded accent-[#66B4B1]"
               />
               Available 24×7 for emergencies
             </label>
@@ -411,7 +433,7 @@ export function ClinicScheduleView() {
             {!availability.emergency?.alwaysOn && (
               <div className="space-y-2">
                 {(availability.emergency?.blocks || []).map((block, i) => (
-                  <div key={i} className="flex items-center gap-2 flex-wrap bg-gray-50 rounded-lg p-2 border border-gray-200">
+                  <div key={i} className="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-2 bg-bg-primary rounded-2xl p-2 border border-border-light">
                     <input
                       type="time" value={block.start}
                       onChange={(e) => {
@@ -420,9 +442,10 @@ export function ClinicScheduleView() {
                         setAvailability((p) => ({ ...p, emergency: { ...p.emergency, blocks } }));
                         dirty();
                       }}
-                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm"
+                      className={timeField}
+                      aria-label="Start time"
                     />
-                    <span className="text-gray-400 text-sm">to</span>
+                    <span className="text-text-secondary text-sm">to</span>
                     <input
                       type="time" value={block.end}
                       onChange={(e) => {
@@ -431,7 +454,8 @@ export function ClinicScheduleView() {
                         setAvailability((p) => ({ ...p, emergency: { ...p.emergency, blocks } }));
                         dirty();
                       }}
-                      className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm"
+                      className={timeField}
+                      aria-label="End time"
                     />
                     <button
                       onClick={() => {
@@ -439,10 +463,10 @@ export function ClinicScheduleView() {
                         setAvailability((p) => ({ ...p, emergency: { ...p.emergency, blocks } }));
                         dirty();
                       }}
-                      className="ml-auto p-1.5 text-gray-400 hover:text-red-500"
+                      className="w-11 h-11 flex items-center justify-center text-error"
                       aria-label="Remove emergency window"
                     >
-                      <Trash2 size={15} />
+                      <Trash2 size={16} />
                     </button>
                   </div>
                 ))}
@@ -452,91 +476,92 @@ export function ClinicScheduleView() {
                     setAvailability((p) => ({ ...p, emergency: { ...p.emergency, blocks } }));
                     dirty();
                   }}
-                  className="text-xs font-bold text-[#F87B68] flex items-center gap-1 hover:underline"
+                  className="w-full min-h-[44px] rounded-xl border border-dashed border-primary-main/40 text-sm font-bold text-primary-main flex items-center justify-center gap-1"
                 >
-                  <Plus size={14} /> Add emergency window
+                  <Plus size={16} /> Add emergency window
                 </button>
               </div>
             )}
           </>
         )}
-      </div>
+      </FormSection>
 
       {/* Days off */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-5">
-        <h2 className="font-bold text-gray-900 mb-1 flex items-center gap-2">
-          <CalendarOff size={18} className="text-gray-400" /> Days off
-        </h2>
-        <p className="text-sm text-gray-500 mb-4">
-          Leave, holidays or conferences. These dates are removed from booking entirely.
-        </p>
-        <div className="flex gap-2 flex-wrap mb-4">
+      <FormSection
+        title="Days off"
+        icon={CalendarOff}
+        description="Leave, holidays or conferences. These dates are removed from booking entirely."
+      >
+        <div className="space-y-2">
           <input
             type="date" value={blackoutDate} onChange={(e) => setBlackoutDate(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            className={fieldClass}
+            aria-label="Day off"
           />
-          <input
-            type="text" placeholder="Reason (optional)" value={blackoutReason}
-            onChange={(e) => setBlackoutReason(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm flex-1 min-w-[180px]"
-          />
-          <button
-            onClick={handleAddBlackout} disabled={!blackoutDate}
-            className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-bold disabled:opacity-40"
-          >
-            Add
-          </button>
+          <div className="flex gap-2">
+            <input
+              type="text" placeholder="Reason (optional)" value={blackoutReason}
+              onChange={(e) => setBlackoutReason(e.target.value)}
+              className={`${fieldClass} flex-1 min-w-0`}
+            />
+            <button
+              onClick={handleAddBlackout} disabled={!blackoutDate}
+              className="h-12 px-5 rounded-xl bg-text-primary text-white text-sm font-bold disabled:opacity-40 shrink-0"
+            >
+              Add
+            </button>
+          </div>
         </div>
         {availability.blackouts?.length ? (
           <div className="flex flex-wrap gap-2">
             {availability.blackouts.map((b) => (
-              <span key={b.date} className="bg-gray-100 rounded-lg px-3 py-1.5 text-sm flex items-center gap-2">
-                <strong className="text-gray-800">{b.date}</strong>
-                {b.reason && <span className="text-gray-500 text-xs">{b.reason}</span>}
+              <span key={b.date} className="bg-bg-secondary rounded-xl pl-3 pr-1 min-h-[40px] text-sm flex items-center gap-2">
+                <strong className="text-text-primary">{b.date}</strong>
+                {b.reason && <span className="text-text-secondary text-xs">{b.reason}</span>}
                 <button
                   onClick={() => handleRemoveBlackout(b.date)}
-                  className="text-gray-400 hover:text-red-500"
+                  className="w-9 h-9 flex items-center justify-center text-text-secondary"
                   aria-label={`Remove ${b.date}`}
                 >
-                  <Trash2 size={13} />
+                  <Trash2 size={14} />
                 </button>
               </span>
             ))}
           </div>
         ) : (
-          <p className="text-sm text-gray-400">No days off scheduled.</p>
+          <p className="text-sm text-text-secondary">No days off scheduled.</p>
         )}
-      </div>
+      </FormSection>
 
       {/* Preview — same generator the booking screen uses */}
-      <div className="bg-white rounded-2xl border border-gray-200 p-5">
-        <h2 className="font-bold text-gray-900 mb-1 flex items-center gap-2">
-          <Eye size={18} className="text-gray-400" /> What patients see
-        </h2>
-        <p className="text-sm text-gray-500 mb-4">
-          Generated by the same engine as the booking screen. Save first to preview unsaved edits.
-        </p>
-        <div className="flex gap-2 flex-wrap mb-4">
+      <FormSection
+        title="What patients see"
+        icon={Eye}
+        description="Generated by the same engine as the booking screen. Save first to preview unsaved edits."
+      >
+        <div className="grid grid-cols-2 gap-2">
           <input
             type="date" value={previewDate} onChange={(e) => setPreviewDate(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            className={fieldClass}
+            aria-label="Preview date"
           />
           <select
             value={previewMode} onChange={(e) => setPreviewMode(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium"
+            className={fieldClass}
+            aria-label="Consult type"
           >
             <option value="clinic">In-Clinic</option>
             <option value="video">Video</option>
             <option value="home">Home Visit</option>
             <option value="emergency">Emergency</option>
           </select>
-          <button
-            onClick={runPreview}
-            className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-bold flex items-center gap-2"
-          >
-            {previewing ? <Loader2 size={14} className="animate-spin" /> : <Eye size={14} />} Preview
-          </button>
         </div>
+        <button
+          onClick={runPreview}
+          className="w-full h-12 rounded-xl bg-text-primary text-white text-sm font-bold flex items-center justify-center gap-2"
+        >
+          {previewing ? <Loader2 size={15} className="animate-spin" /> : <Eye size={15} />} Preview
+        </button>
 
         {preview && (
           preview.slots.length ? (
@@ -544,10 +569,10 @@ export function ClinicScheduleView() {
               {preview.slots.map((s) => (
                 <span
                   key={s.time}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-bold border ${
+                  className={`px-3 py-1.5 rounded-xl text-sm font-bold border ${
                     s.available
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-gray-100 text-gray-400 border-gray-200 line-through'
+                      ? 'bg-success/10 text-success border-success/20'
+                      : 'bg-bg-secondary text-text-disabled border-border-light line-through'
                   }`}
                 >
                   {s.time}
@@ -555,30 +580,42 @@ export function ClinicScheduleView() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <p className="text-sm text-text-primary bg-warning/10 border border-warning/25 rounded-xl px-3 py-2">
               No bookable slots on this date
               {preview.reason ? ` — ${String(preview.reason).replace(/_/g, ' ')}` : ''}.
             </p>
           )
         )}
-      </div>
+      </FormSection>
+
+      <StickyActionBar
+        note={saved ? (
+          <span className="text-success text-sm font-bold inline-flex items-center gap-1.5">
+            <CheckCircle2 size={16} /> Saved
+          </span>
+        ) : null}
+      >
+        <PrimaryButton onClick={handleSave} disabled={saving} icon={saving ? undefined : Save} loading={saving}>
+          {saving ? 'Saving…' : 'Save schedule'}
+        </PrimaryButton>
+      </StickyActionBar>
     </div>
   );
 }
 
 function NumberField({ label, suffix, value, min, max, onChange, hint }) {
   return (
-    <div>
-      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">{label}</label>
+    <div className="min-w-0">
+      <label className={labelClass}>{label}</label>
       <div className="flex items-center gap-2">
         <input
-          type="number" min={min} max={max} value={value ?? 0}
+          type="number" inputMode="numeric" min={min} max={max} value={value ?? 0}
           onChange={(e) => onChange(Number(e.target.value) || 0)}
-          className="w-20 border border-gray-200 rounded-lg px-2 py-2 text-sm font-medium"
+          className="w-20 h-11 rounded-xl border border-border-light bg-white px-3 text-[16px] font-medium text-text-primary focus:outline-none focus:border-accent-teal focus:ring-2 focus:ring-accent-teal/20"
         />
-        <span className="text-sm text-gray-400">{suffix}</span>
+        <span className="text-sm text-text-secondary">{suffix}</span>
       </div>
-      {hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
+      {hint && <p className="text-[11px] text-text-secondary mt-1">{hint}</p>}
     </div>
   );
 }

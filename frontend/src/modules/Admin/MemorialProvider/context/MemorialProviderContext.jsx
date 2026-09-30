@@ -23,6 +23,7 @@ import {
   claimMemorialCustomerRequest,
   resolveMemorialCustomerRequest,
 } from '../../../../services/vendor';
+import { reportVendorError } from '../../vendor/mobile/toastContext';
 
 const MemorialProviderContext = createContext();
 
@@ -41,7 +42,7 @@ function toPortalProfile(p) {
   const base = { businessName: 'Last Ride Partner', ownerName: '', email: '', phone: '', address: '', verification: 'Pending', status: 'Online', logo: null, gst: '' };
   if (!p) return base;
   const vmap = { approved: 'Approved', pending: 'Pending', rejected: 'Rejected', suspended: 'Suspended' };
-  return { ...base, businessName: p.businessName, ownerName: p.bank?.accountHolder || p.businessName, email: p.email, phone: p.phone, address: p.address, verification: vmap[p.approvalStatus] || 'Pending', status: p.online ? 'Online' : 'Offline', logo: p.logo || null, gst: p.gst?.number || '' };
+  return { ...base, businessName: p.businessName, ownerName: p.bank?.accountHolder || p.businessName, email: p.email, phone: p.phone, address: p.address, verification: vmap[p.approvalStatus] || 'Pending', status: p.online ? 'Online' : 'Offline', logo: p.logo || null, gst: p.gst?.number || '', approvalStatus: p.approvalStatus || 'pending', documents: p.documents || [] };
 }
 
 export const MemorialProviderProvider = ({ children }) => {
@@ -92,7 +93,9 @@ export const MemorialProviderProvider = ({ children }) => {
     const member = team.find((t) => t.name === teamName || t.id === teamName || t._id === teamName);
     setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, assignedTeam: member?.name || teamName, status: 'Assigned' } : r)));
     setTeam((prev) => prev.map((t) => (t.id === member?.id ? { ...t, status: 'Assigned' } : t)));
-    if (member?._id || member?.id) await assignMemorialTeam(id, member._id || member.id).catch(() => {});
+    if (member?._id || member?.id) {
+      await assignMemorialTeam(id, member._id || member.id).catch((e) => { reportVendorError(e, 'Could not assign the team.'); refresh(); });
+    }
   };
 
   const addRequest = async (req) => {
@@ -107,7 +110,7 @@ export const MemorialProviderProvider = ({ children }) => {
       notes: req.notes,
       addons: req.addons || [],
       amount: parsePrice(req.amount || req.price),
-    }).catch(() => null);
+    }).catch((e) => { reportVendorError(e, 'Could not create the request.'); return null; });
     if (created) setRequests((prev) => [created, ...prev]);
   };
 
@@ -136,22 +139,22 @@ export const MemorialProviderProvider = ({ children }) => {
   /* ── Team ─────────────────────────────────────────────── */
 
   const addTeamMember = async (member) => {
-    const created = await createTeamMember(member).catch(() => null);
+    const created = await createTeamMember(member).catch((e) => { reportVendorError(e, 'Could not add the team member.'); return null; });
     if (created) setTeam((prev) => [...prev, created]);
   };
   const updateTeamMember = async (id, updates) => {
     setTeam((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
-    await updateTeamMemberApi(id, updates).catch(() => {});
+    await updateTeamMemberApi(id, updates).catch((e) => { reportVendorError(e, 'Could not update the team member.'); refresh(); });
   };
   const removeTeamMember = async (id) => {
     setTeam((prev) => prev.filter((t) => t.id !== id));
-    await deleteTeamMember(id).catch(() => {});
+    await deleteTeamMember(id).catch((e) => { reportVendorError(e, 'Could not remove the team member.'); refresh(); });
   };
 
   /* ── Services ─────────────────────────────────────────── */
 
   const addService = async (service) => {
-    const created = await createMemorialService({ ...service, price: parsePrice(service.price), staff: Number(service.staff) || 1 }).catch(() => null);
+    const created = await createMemorialService({ ...service, price: parsePrice(service.price), staff: Number(service.staff) || 1 }).catch((e) => { reportVendorError(e, 'Could not add the service.'); return null; });
     if (created) setServices((prev) => [...prev, created]);
   };
   const updateService = async (id, updates) => {
@@ -159,28 +162,28 @@ export const MemorialProviderProvider = ({ children }) => {
     const patch = { ...updates };
     if (patch.price != null) patch.price = parsePrice(patch.price);
     if (patch.staff != null) patch.staff = Number(patch.staff);
-    await apiUpdateService(id, patch).catch(() => {});
+    await apiUpdateService(id, patch).catch((e) => { reportVendorError(e, 'Could not update the service.'); refresh(); });
   };
   const removeService = async (id) => {
     setServices((prev) => prev.filter((s) => s.id !== id));
-    await deleteMemorialService(id).catch(() => {});
+    await deleteMemorialService(id).catch((e) => { reportVendorError(e, 'Could not delete the service.'); refresh(); });
   };
 
   /* ── Add-ons ──────────────────────────────────────────── */
 
   const addAddon = async (addon) => {
-    const created = await createMemorialAddon({ ...addon, price: parsePrice(addon.price) }).catch(() => null);
+    const created = await createMemorialAddon({ ...addon, price: parsePrice(addon.price) }).catch((e) => { reportVendorError(e, 'Could not add the item.'); return null; });
     if (created) setAddons((prev) => [...prev, created]);
   };
   const updateAddon = async (id, updates) => {
     setAddons((prev) => prev.map((a) => (a.id === id ? { ...a, ...updates } : a)));
     const patch = { ...updates };
     if (patch.price != null) patch.price = parsePrice(patch.price);
-    await apiUpdateAddon(id, patch).catch(() => {});
+    await apiUpdateAddon(id, patch).catch((e) => { reportVendorError(e, 'Could not update the item.'); refresh(); });
   };
   const removeAddon = async (id) => {
     setAddons((prev) => prev.filter((a) => a.id !== id));
-    await deleteMemorialAddon(id).catch(() => {});
+    await deleteMemorialAddon(id).catch((e) => { reportVendorError(e, 'Could not delete the item.'); refresh(); });
   };
 
   const markAllNotificationsRead = () => setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));

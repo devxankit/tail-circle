@@ -10,6 +10,7 @@ import {
   fetchClinicPrescriptions,
   createClinicPrescription,
   fetchClinicLabReports,
+  createClinicLabReport,
   fetchClinicFollowUps,
   createClinicFollowUp,
   updateClinicFollowUp,
@@ -18,7 +19,9 @@ import {
   acceptClinicEmergency,
   declineClinicEmergency,
   getStoredVendor,
+  sendClinicVaccinationReminder,
 } from '../../../../services/vendor';
+import { reportVendorError } from '../../vendor/mobile/toastContext';
 
 /**
  * Real-data context for the Clinic / Veterinary Doctor portal. Exposes the same
@@ -73,15 +76,22 @@ export function ClinicVendorProvider({ children }) {
     refresh();
   }, [refresh]);
 
-  /* ── Appointment mutations (optimistic) ─────────────────── */
+  /*
+   * Appointment mutations (optimistic). A failure rolls the list back to the
+   * server's copy and says so — it used to only log to the console, so the
+   * screen showed a change that had not happened. Each resolves to whether
+   * the change was saved.
+   */
   const updateDoctorAppointmentStatus = async (id, status) => {
     setDoctorAppointments((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
     try {
       const updated = await updateClinicAppointmentStatus(id, status);
       setDoctorAppointments((prev) => prev.map((a) => (a.id === id ? updated : a)));
+      return true;
     } catch (err) {
-      console.error('Failed to update appointment', err);
+      reportVendorError(err, 'Could not update the appointment.');
       refresh();
+      return false;
     }
   };
 
@@ -91,9 +101,11 @@ export function ClinicVendorProvider({ children }) {
       const updated = await addClinicConsultationNotes(id, notes);
       setDoctorAppointments((prev) => prev.map((a) => (a.id === id ? updated : a)));
       fetchClinicMedicalRecords().then(setMedicalRecords).catch(() => {});
+      return true;
     } catch (err) {
-      console.error('Failed to save notes', err);
+      reportVendorError(err, 'Could not save the consultation notes.');
       refresh();
+      return false;
     }
   };
 
@@ -144,6 +156,15 @@ export function ClinicVendorProvider({ children }) {
     setEmergencies((prev) => prev.filter((e) => e._id !== id));
   };
 
+  /** Notify the pet's owner that a vaccination is due (throws if it can't). */
+  const sendVaccinationReminder = (id) => sendClinicVaccinationReminder(id);
+
+  const addLabReport = async (body) => {
+    const rep = await createClinicLabReport(body);
+    setLabReports((prev) => [rep, ...prev]);
+    return rep;
+  };
+
   return (
     <ClinicVendorContext.Provider
       value={{
@@ -167,6 +188,8 @@ export function ClinicVendorProvider({ children }) {
         patchFollowUp,
         acceptEmergency,
         declineEmergency,
+        sendVaccinationReminder,
+        addLabReport,
       }}
     >
       {children}

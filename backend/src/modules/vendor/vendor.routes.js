@@ -127,6 +127,7 @@ import {
   createFollowUp,
   updateFollowUp,
   listVaccinations,
+  sendVaccinationReminder,
   listEmergencies,
   acceptEmergency,
   declineEmergency,
@@ -1178,6 +1179,11 @@ router.post(
         .optional(),
       notes: z.string().max(2000).optional(),
       followUpDate: z.string().max(40).optional(),
+      // Photo prescriptions. Without these the validator stripped the image and
+      // the prescription was saved as an empty digital one.
+      type: z.enum(['digital', 'photo']).optional(),
+      prescriptionUrl: z.string().max(2000).optional(),
+      prescriptionUrls: z.array(z.string().max(2000)).max(10).optional(),
     })
   ),
   asyncHandler(async (req, res) => {
@@ -1242,6 +1248,9 @@ router.patch(
 
 router.get('/vaccinations', ...clinic, asyncHandler(async (req, res) => {
   sendSuccess(res, { data: await listVaccinations(req.vetScope) });
+}));
+router.post('/vaccinations/:id/remind', ...clinic, asyncHandler(async (req, res) => {
+  sendSuccess(res, { data: await sendVaccinationReminder(req.vetScope, req.params.id) });
 }));
 
 router.get('/emergencies', ...clinic, asyncHandler(async (req, res) => {

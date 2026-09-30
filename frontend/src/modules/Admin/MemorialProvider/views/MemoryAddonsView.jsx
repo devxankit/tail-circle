@@ -1,6 +1,41 @@
 import React, { useState, useRef } from 'react';
 import { useMemorialProvider } from '../context/MemorialProviderContext';
-import { Gift, Plus, MoreVertical, Image as ImageIcon, X } from 'lucide-react';
+import { Gift, Plus, MoreVertical, Image as ImageIcon, Pencil, Trash2 } from 'lucide-react';
+import { BottomSheet, ActionSheet, PrimaryButton, EmptyState, fieldClass, textareaClass, labelClass } from '../../vendor/mobile';
+
+/** The item form's fields, shared by Add and Edit (each keeps its own state and file input). */
+function AddonFields({ data, setData, inputRef, onImage, withPlaceholders }) {
+  return (
+    <div className="space-y-4 pb-2">
+      <div
+        className="h-36 bg-bg-primary border-2 border-dashed border-accent-teal/50 rounded-2xl flex flex-col items-center justify-center text-text-secondary transition cursor-pointer relative overflow-hidden"
+        onClick={() => inputRef.current?.click()}
+      >
+        {data.image ? (
+          <img src={data.image} className="w-full h-full object-cover" alt="Preview" />
+        ) : (
+          <>
+            <Plus size={24} className="mb-2" />
+            <span className="text-xs font-bold text-text-secondary">Upload Item Image</span>
+          </>
+        )}
+        <input type="file" accept="image/*" className="hidden" ref={inputRef} onChange={onImage} />
+      </div>
+      <div>
+        <label className={labelClass}>Item Name</label>
+        <input type="text" value={data.name} onChange={e => setData({...data, name: e.target.value})} placeholder={withPlaceholders ? 'e.g., Memory Stone' : undefined} className={fieldClass} />
+      </div>
+      <div>
+        <label className={labelClass}>Price (₹)</label>
+        <input type="number" inputMode="decimal" value={data.price} onChange={e => setData({...data, price: e.target.value})} placeholder={withPlaceholders ? '1200' : undefined} className={fieldClass} />
+      </div>
+      <div>
+        <label className={labelClass}>Description</label>
+        <textarea rows="2" value={data.description} onChange={e => setData({...data, description: e.target.value})} placeholder={withPlaceholders ? 'Brief description of the item...' : undefined} className={textareaClass}></textarea>
+      </div>
+    </div>
+  );
+}
 
 export function MemoryAddonsView() {
   const { addons, addAddon, updateAddon, removeAddon } = useMemorialProvider();
@@ -41,212 +76,151 @@ export function MemoryAddonsView() {
     }
   };
 
+  const dropdownAddon = addons.find((a) => a.id === activeDropdown);
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-10">
-      
+    <div className="space-y-4">
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Memory Add-ons</h2>
-          <p className="text-sm font-semibold text-slate-500 mt-0.5">Manage optional remembrance items available to customers.</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-bold text-text-primary leading-tight">Memory Add-ons</h2>
+          <p className="text-xs text-text-secondary mt-1">Manage optional remembrance items available to customers.</p>
         </div>
-        <button 
+        <button
           onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 bg-slate-900 hover:bg-black text-white px-5 py-2.5 rounded-xl text-sm font-bold transition shadow-lg cursor-pointer"
+          className="h-11 px-4 rounded-full bg-primary-main text-white text-sm font-bold flex items-center gap-1.5 shadow-md shadow-primary-main/25 shrink-0 cursor-pointer"
         >
-          <Plus size={18} /> Add New Item
+          <Plus size={16} /> Add Item
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {addons.length === 0 && <EmptyState icon={Gift} text="No memory add-ons yet." />}
+
+      <div className="grid grid-cols-2 gap-3">
         {addons.map(addon => (
-          <div key={addon.id} className={`bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition relative ${activeDropdown === addon.id ? 'z-50' : 'z-10'}`}>
-            <div className="h-40 bg-slate-50 border-b border-slate-100 flex flex-col items-center justify-center text-slate-300 relative group overflow-hidden rounded-t-3xl">
+          <div key={addon.id} className="bg-white rounded-[20px] border border-border-light shadow-sm overflow-hidden flex flex-col">
+            <div className="aspect-square bg-bg-primary border-b border-border-light flex flex-col items-center justify-center text-text-disabled relative overflow-hidden">
               {addon.image ? (
                 <img src={addon.image} className="w-full h-full object-cover" alt={addon.name} />
               ) : (
                 <>
-                  <ImageIcon size={32} className="mb-2 group-hover:text-slate-400 transition" />
+                  <ImageIcon size={28} className="mb-1.5" />
                   <span className="text-[10px] font-bold">No Image Uploaded</span>
                 </>
               )}
-              <button 
+              <button
                 onClick={() => setActiveDropdown(activeDropdown === addon.id ? null : addon.id)}
-                className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-700 transition shadow-sm border border-slate-200 cursor-pointer"
+                aria-label="Item actions"
+                className="absolute top-2 right-2 w-9 h-9 rounded-full bg-white/95 flex items-center justify-center text-text-secondary transition shadow-sm cursor-pointer"
               >
                 <MoreVertical size={16} />
               </button>
             </div>
-            
-            {activeDropdown === addon.id && (
-              <div className="absolute right-4 top-14 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-in fade-in zoom-in-95 duration-200">
-                <button 
-                  onClick={() => {
-                    setEditFormData({...addon, price: addon.price.replace('₹', '')});
-                    setShowEditModal(true);
-                    setActiveDropdown(null);
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+            <div className="p-3 flex-1 flex flex-col">
+              <h3 className="text-sm font-black text-text-primary truncate">{addon.name}</h3>
+              <p className="text-[11px] font-medium text-text-secondary line-clamp-2 mt-0.5 mb-2">{addon.description}</p>
+
+              <div className="mt-auto flex items-center justify-between pt-2 border-t border-border-light">
+                <p className="text-sm font-black text-success">{addon.price}</p>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={addon.status === 'Active'}
+                  aria-label={addon.status === 'Active' ? 'Active — tap to deactivate' : 'Inactive — tap to activate'}
+                  onClick={() => updateAddon(addon.id, { status: addon.status === 'Active' ? 'Inactive' : 'Active' })}
+                  className="h-11 -mr-1 px-1 flex items-center cursor-pointer"
                 >
-                  Edit Item
+                  <span className={`w-10 h-6 rounded-full relative transition-colors ${addon.status === 'Active' ? 'bg-accent-teal' : 'bg-text-disabled'}`}>
+                    <span className={`w-4 h-4 bg-white rounded-full absolute top-1 shadow-sm transition-all ${addon.status === 'Active' ? 'right-1' : 'left-1'}`}></span>
+                  </span>
                 </button>
-                <div className="my-1 border-t border-slate-100"></div>
-                <button 
-                  onClick={() => {
-                    removeAddon(addon.id);
-                    setActiveDropdown(null);
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 transition cursor-pointer"
-                >
-                  Delete Item
-                </button>
-              </div>
-            )}
-            <div className="p-5">
-              <h3 className="text-base font-black text-slate-900 mb-1 truncate">{addon.name}</h3>
-              <p className="text-xs font-medium text-slate-500 line-clamp-2 mb-4 h-8">{addon.description}</p>
-              
-              <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                <p className="text-lg font-black text-emerald-600">{addon.price}</p>
-                <div className="flex items-center gap-2">
-                  <div 
-                    onClick={() => updateAddon(addon.id, { status: addon.status === 'Active' ? 'Inactive' : 'Active' })}
-                    className={`w-10 h-6 rounded-full relative cursor-pointer shadow-inner transition-colors ${addon.status === 'Active' ? 'bg-slate-900' : 'bg-slate-200'}`}
-                  >
-                    <div className={`w-4 h-4 bg-white rounded-full absolute top-1 shadow-sm transition-all ${addon.status === 'Active' ? 'right-1' : 'left-1'}`}></div>
-                  </div>
-                </div>
               </div>
             </div>
           </div>
         ))}
       </div>
 
-      {showAddModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full animate-in zoom-in-95 duration-200 overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h3 className="text-xl font-black text-slate-900">Add Memory Item</h3>
-              <button onClick={() => setShowAddModal(false)} className="p-2 bg-white rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition shadow-sm border border-slate-200 cursor-pointer">
-                <X size={16} />
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-5">
-              <div 
-                className="h-32 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-400 hover:border-slate-400 transition cursor-pointer relative overflow-hidden"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {formData.image ? (
-                  <img src={formData.image} className="w-full h-full object-cover" alt="Preview" />
-                ) : (
-                  <>
-                    <Plus size={24} className="mb-2" />
-                    <span className="text-xs font-bold text-slate-500">Upload Item Image</span>
-                  </>
-                )}
-                <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleImageUpload} />
-              </div>
+      {/* The item dropdown, as an action sheet. */}
+      <ActionSheet
+        open={!!dropdownAddon}
+        onClose={() => setActiveDropdown(null)}
+        title={dropdownAddon?.name}
+        actions={dropdownAddon ? [
+          {
+            key: 'edit',
+            label: 'Edit Item',
+            icon: Pencil,
+            onClick: () => {
+              setEditFormData({...dropdownAddon, price: dropdownAddon.price.replace('₹', '')});
+              setShowEditModal(true);
+              setActiveDropdown(null);
+            },
+          },
+          {
+            key: 'delete',
+            label: 'Delete Item',
+            icon: Trash2,
+            danger: true,
+            onClick: () => {
+              removeAddon(dropdownAddon.id);
+              setActiveDropdown(null);
+            },
+          },
+        ] : []}
+      />
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Item Name</label>
-                <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} placeholder="e.g., Memory Stone" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-              </div>
-              
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Price (₹)</label>
-                <input type="number" value={formData.price} onChange={e => setFormData({...formData, price: e.target.value})} placeholder="1200" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Description</label>
-                <textarea rows="2" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} placeholder="Brief description of the item..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"></textarea>
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-slate-100 flex gap-3 bg-slate-50/50">
-              <button onClick={() => setShowAddModal(false)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 transition cursor-pointer">
-                Cancel
-              </button>
-              <button 
-                onClick={() => {
-                  if (formData.name) {
-                    addAddon({ ...formData, price: `₹${formData.price}` });
-                    setShowAddModal(false);
-                    setFormData({ name: '', price: '', description: '', image: null });
-                  }
-                }} 
-                className="flex-1 py-3 bg-slate-900 hover:bg-black text-white text-sm font-bold rounded-xl transition shadow-lg cursor-pointer"
-              >
-                Save Item
-              </button>
-            </div>
+      <BottomSheet
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        title="Add Memory Item"
+        footer={(
+          <div className="flex gap-2">
+            <PrimaryButton tone="soft" onClick={() => setShowAddModal(false)}>Cancel</PrimaryButton>
+            <PrimaryButton
+              tone="dark"
+              onClick={() => {
+                if (formData.name) {
+                  addAddon({ ...formData, price: `₹${formData.price}` });
+                  setShowAddModal(false);
+                  setFormData({ name: '', price: '', description: '', image: null });
+                }
+              }}
+            >
+              Save Item
+            </PrimaryButton>
           </div>
-        </div>
-      )}
+        )}
+      >
+        <AddonFields data={formData} setData={setFormData} inputRef={fileInputRef} onImage={handleImageUpload} withPlaceholders />
+      </BottomSheet>
 
-      {/* Edit Modal */}
-      {showEditModal && editFormData && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] shadow-2xl max-w-md w-full animate-in zoom-in-95 duration-200 overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h3 className="text-xl font-black text-slate-900">Edit Memory Item</h3>
-              <button onClick={() => setShowEditModal(false)} className="p-2 bg-white rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition shadow-sm border border-slate-200 cursor-pointer">
-                <X size={16} />
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-5">
-              <div 
-                className="h-32 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center text-slate-400 hover:border-slate-400 transition cursor-pointer relative overflow-hidden"
-                onClick={() => editFileInputRef.current?.click()}
-              >
-                {editFormData.image ? (
-                  <img src={editFormData.image} className="w-full h-full object-cover" alt="Preview" />
-                ) : (
-                  <>
-                    <Plus size={24} className="mb-2" />
-                    <span className="text-xs font-bold text-slate-500">Upload Item Image</span>
-                  </>
-                )}
-                <input type="file" accept="image/*" className="hidden" ref={editFileInputRef} onChange={handleEditImageUpload} />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Item Name</label>
-                <input type="text" value={editFormData.name} onChange={e => setEditFormData({...editFormData, name: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-              </div>
-              
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Price (₹)</label>
-                <input type="number" value={editFormData.price} onChange={e => setEditFormData({...editFormData, price: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Description</label>
-                <textarea rows="2" value={editFormData.description} onChange={e => setEditFormData({...editFormData, description: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"></textarea>
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-slate-100 flex gap-3 bg-slate-50/50">
-              <button onClick={() => setShowEditModal(false)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 transition cursor-pointer">
-                Cancel
-              </button>
-              <button 
-                onClick={() => {
-                  if (editFormData.name) {
-                    updateAddon(editFormData.id, { ...editFormData, price: `₹${editFormData.price}` });
-                    setShowEditModal(false);
-                  }
-                }} 
-                className="flex-1 py-3 bg-slate-900 hover:bg-black text-white text-sm font-bold rounded-xl transition shadow-lg cursor-pointer"
-              >
-                Save Changes
-              </button>
-            </div>
+      {/* Edit sheet */}
+      <BottomSheet
+        open={showEditModal && !!editFormData}
+        onClose={() => setShowEditModal(false)}
+        title="Edit Memory Item"
+        footer={(
+          <div className="flex gap-2">
+            <PrimaryButton tone="soft" onClick={() => setShowEditModal(false)}>Cancel</PrimaryButton>
+            <PrimaryButton
+              tone="dark"
+              onClick={() => {
+                if (editFormData.name) {
+                  updateAddon(editFormData.id, { ...editFormData, price: `₹${editFormData.price}` });
+                  setShowEditModal(false);
+                }
+              }}
+            >
+              Save Changes
+            </PrimaryButton>
           </div>
-        </div>
-      )}
+        )}
+      >
+        {editFormData && (
+          <AddonFields data={editFormData} setData={setEditFormData} inputRef={editFileInputRef} onImage={handleEditImageUpload} />
+        )}
+      </BottomSheet>
     </div>
   );
 }

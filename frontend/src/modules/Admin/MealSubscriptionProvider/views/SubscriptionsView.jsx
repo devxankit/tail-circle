@@ -2,11 +2,14 @@ import React, { useState } from 'react';
 import { useMealProvider } from '../context/MealProviderContext';
 import { DataTable } from '../../components/DataTable';
 import { Play, Pause, XCircle, Activity } from 'lucide-react';
-import { cn } from '../../../user/utils/cn';
+import { StatusBadge, InlineError, CardAction, useConfirm } from '../../vendor/mobile';
+
+const SUB_TONE = { Active: 'success', Expired: 'error', Paused: 'warning' };
 
 export function SubscriptionsView() {
   const { subscriptions, pauseSubscription, cancelSubscription } = useMealProvider();
   const [error, setError] = useState('');
+  const confirm = useConfirm();
 
   const handlePauseToggle = async (sub) => {
     try {
@@ -17,7 +20,7 @@ export function SubscriptionsView() {
   };
 
   const handleCancel = async (subId) => {
-    if (!window.confirm('Are you sure you want to completely cancel this subscription? This cannot be undone.')) return;
+    if (!(await confirm({ title: 'Are you sure you want to completely cancel this subscription?', message: 'This cannot be undone.', confirmLabel: 'Cancel Subscription', cancelLabel: 'Keep', danger: true }))) return;
     try {
       await cancelSubscription(subId);
     } catch (err) {
@@ -42,57 +45,48 @@ export function SubscriptionsView() {
     { key: 'id', label: 'SUB ID', sortable: true },
     { key: 'customer', label: 'Customer', sortable: true, render: (row) => (
       <div className="flex items-center gap-2">
-        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 font-bold shrink-0">
+        <div className="w-8 h-8 rounded-full bg-bg-secondary flex items-center justify-center text-text-primary font-bold shrink-0">
           {row.customer.charAt(0)}
         </div>
-        <div className="font-bold text-gray-900">{row.customer}</div>
+        <div className="font-bold text-text-primary">{row.customer}</div>
       </div>
     )},
     { key: 'pet', label: 'Pet Details' },
     { key: 'plan', label: 'Subscribed Plan' },
     { key: 'endDate', label: 'Renewal Date', sortable: true },
     { key: 'status', label: 'Status', render: (row) => (
-      <span className={cn(
-        "px-2.5 py-1 text-[10px] font-black uppercase tracking-wider rounded-md border",
-        row.status === 'Active' ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
-        row.status === 'Expired' ? "bg-red-50 text-red-700 border-red-100" :
-        row.status === 'Paused' ? "bg-amber-50 text-amber-700 border-amber-100" :
-        "bg-gray-100 text-gray-600 border-gray-200"
-      )}>
-        {row.status}
-      </span>
+      <StatusBadge label={row.status} tone={SUB_TONE[row.status] || 'neutral'} />
     )},
     { key: 'actions', label: 'Actions', render: (row) => (
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2 w-full">
         {(row.status === 'Active' || row.status === 'Paused') && (
-          <button onClick={() => handlePauseToggle(row)} className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-orange-600 hover:bg-orange-50 transition cursor-pointer" title={row.status === 'Paused' ? 'Resume' : 'Pause'}>
-            {row.status === 'Paused' ? <Play size={14} /> : <Pause size={14} />}
-          </button>
+          <CardAction className="flex-1" icon={row.status === 'Paused' ? Play : Pause} onClick={() => handlePauseToggle(row)}>
+            {row.status === 'Paused' ? 'Resume' : 'Pause'}
+          </CardAction>
         )}
-        <button onClick={() => handleCancel(row.id)} disabled={row.status === 'Expired'} className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-red-600 hover:bg-red-50 transition cursor-pointer disabled:opacity-40" title="Cancel Subscription">
-          <XCircle size={14} />
-        </button>
+        <CardAction className="flex-1" tone="danger" icon={XCircle} onClick={() => handleCancel(row.id)} disabled={row.status === 'Expired'}>
+          Cancel
+        </CardAction>
       </div>
     )}
   ];
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 h-full flex flex-col">
-      {error && <div className="bg-red-50 border border-red-100 text-red-700 text-sm font-semibold rounded-2xl p-4">{error}</div>}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-3xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.02)] shrink-0">
-        <div>
-          <h2 className="text-xl font-black text-gray-900 tracking-tight">Active Subscriptions</h2>
-          <p className="text-sm font-semibold text-gray-500 mt-0.5">Manage recurring meal deliveries and customers.</p>
+    <div className="space-y-4">
+      <InlineError>{error}</InlineError>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-bold text-text-primary leading-tight">Active Subscriptions</h2>
+          <p className="text-xs text-text-secondary mt-1">Manage recurring meal deliveries and customers.</p>
         </div>
-        <div className="flex items-center gap-3">
-          <button onClick={handleExportCSV} className="px-4 py-2 bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-700 text-sm font-bold rounded-xl transition cursor-pointer flex items-center gap-2">
-            <Activity size={16} /> Export CSV
-          </button>
-        </div>
+        <button onClick={handleExportCSV} className="h-11 px-4 bg-white border border-border-light text-text-primary text-sm font-bold rounded-full transition cursor-pointer flex items-center gap-1.5 shrink-0">
+          <Activity size={16} /> Export CSV
+        </button>
       </div>
 
-      <div className="flex-1 min-h-[400px]">
+      <div>
         <DataTable
+          forceMobile
           columns={columns}
           data={subscriptions}
           searchKey="customer"

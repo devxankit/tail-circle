@@ -25,7 +25,7 @@ import { cn } from '../../user/utils/cn';
 
 const NOTE_MS = 4000;
 
-export function VendorAvailabilityToggle({ className = '' }) {
+export function VendorAvailabilityToggle({ className = '', compact = false }) {
   const [online, setOnline] = useState(null); // null until we know
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState(null); // { text, tone } | null
@@ -82,7 +82,61 @@ export function VendorAvailabilityToggle({ className = '' }) {
 
   // Same footprint as the real control, so the header never resizes on load.
   if (online === null) {
-    return <div className={cn('h-9 w-[8.5rem] rounded-full bg-slate-100 animate-pulse', className)} />;
+    return compact
+      ? <div className={cn('h-10 w-[5.75rem] rounded-full bg-bg-secondary animate-pulse', className)} />
+      : <div className={cn('h-9 w-[8.5rem] rounded-full bg-slate-100 animate-pulse', className)} />;
+  }
+
+  /*
+   * The partner app's app-bar size: the same switch and the same note, drawn
+   * as a small pill. The note wraps inside the phone column instead of running
+   * off its edge.
+   */
+  if (compact) {
+    return (
+      <div className={cn('relative shrink-0', className)}>
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={busy}
+          aria-pressed={online}
+          aria-label={online ? 'You are online. Go offline.' : 'You are offline. Go back online.'}
+          className={cn(
+            'h-10 w-[5.75rem] flex items-center gap-1.5 pl-1.5 pr-2.5 rounded-full border transition-colors select-none',
+            busy && 'cursor-wait',
+            online ? 'bg-success/10 border-success/30' : 'bg-error/10 border-error/30'
+          )}
+        >
+          <span className="w-7 h-7 rounded-full bg-white shadow-sm flex items-center justify-center shrink-0">
+            {busy ? (
+              <Loader2 size={14} className={cn('animate-spin', online ? 'text-success' : 'text-error')} />
+            ) : online ? (
+              <Power size={14} strokeWidth={3} className="text-success" />
+            ) : (
+              <AlertTriangle size={14} strokeWidth={2.75} className="text-error" />
+            )}
+          </span>
+          <span className={cn('text-[12px] font-black tracking-tight', online ? 'text-success' : 'text-error')}>
+            {online ? 'Online' : 'Offline'}
+          </span>
+        </button>
+
+        {note && (
+          <span
+            role="status"
+            className={cn(
+              'absolute top-full right-0 mt-2 z-50 pointer-events-none w-max max-w-[min(260px,calc(100vw-2rem))] whitespace-normal',
+              'px-3 py-2 rounded-xl border text-[12px] font-bold shadow-lg leading-snug',
+              note.tone === 'ok' && 'bg-white border-success/30 text-success',
+              note.tone === 'warn' && 'bg-white border-error/30 text-error',
+              note.tone === 'error' && 'bg-white border-warning/40 text-warning'
+            )}
+          >
+            {note.text}
+          </span>
+        )}
+      </div>
+    );
   }
 
   return (

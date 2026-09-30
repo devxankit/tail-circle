@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Save, Clock,
-  ClipboardList, LayoutDashboard, User, IndianRupee, Star, CalendarCheck,
-  Home, Sparkles, MapPin, Phone, X, Eye, ChevronLeft, ChevronRight, Users,
-  ImagePlus, Upload, ArrowLeft, ArrowRight,
+  AlertCircle, CheckCircle2, Plus, Trash2, Save, Clock,
+  ClipboardList, IndianRupee, Star, CalendarCheck,
+  Home, MapPin, Phone, X, Eye, ChevronRight, Users,
+  ImagePlus, Pencil,
 } from 'lucide-react';
 import {
   fetchProviderSummary, fetchProviderProfile, updateProviderProfile,
@@ -18,6 +18,13 @@ import {
 import { dedupePhotos } from '../../../services/groomingApi';
 import VerificationBanner from '../components/VerificationBanner';
 import { PendingBookingRequests } from '../components/PendingBookingRequests';
+import {
+  StatGrid, StatusBadge, SegmentedTabs, BottomSheet, StickyActionBar, PrimaryButton,
+  FormSection, ScreenHeader, SectionLabel, Input as KitInput, Select, Textarea, Toggle,
+  ChipPicker as KitChipPicker, FieldPair, ImageTiles, EmptyState, SkeletonList, ScreenError,
+  InlineError, CardAction, useConfirm, fieldClass, DayStrip, DateNav, FilterChips,
+  KycDocumentsBlock, PhotoUrlInput,
+} from '../vendor/mobile';
 
 /**
  * Daycare centre vendor portal.
@@ -33,20 +40,15 @@ import { PendingBookingRequests } from '../components/PendingBookingRequests';
  * The generic Provider portal it replaced offered a grooming-style "time slot"
  * editor that daycare has no use for, and no way at all to set the daily
  * capacity, the per-day rates, or the fees the price summary shows.
+ *
+ * In the partner app the views are reached from the bottom nav (Home,
+ * Bookings, Plans → Plans / Add-ons / Capacity & rates) and More (Centre
+ * profile); the `?view=` values are the ones the old sidebar used.
  */
 
 const pad = (n) => String(n).padStart(2, '0');
 const YMD = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const rupees = (paise) => `₹${((paise || 0) / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
-
-const TABS = [
-  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { key: 'bookings', label: 'Bookings', icon: ClipboardList },
-  { key: 'plans', label: 'Plans', icon: Home },
-  { key: 'addons', label: 'Add-ons', icon: Sparkles },
-  { key: 'capacity', label: 'Capacity & Rates', icon: Users },
-  { key: 'profile', label: 'Centre Profile', icon: User },
-];
 
 export function DaycareVendorPortal() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -73,61 +75,28 @@ export function DaycareVendorPortal() {
   const go = (v) => setSearchParams(v === 'dashboard' ? {} : { view: v });
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 size={28} className="animate-spin text-gray-400" />
-      </div>
-    );
+    return <SkeletonList rows={4} />;
   }
 
   if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3 text-center px-8">
-        <AlertCircle size={32} className="text-amber-500" />
-        <p className="font-bold text-gray-800">{error}</p>
-        <button onClick={load} className="px-5 h-10 rounded-xl bg-gray-900 text-white text-sm font-bold">Retry</button>
-      </div>
-    );
+    return <ScreenError message={error} onRetry={load} />;
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <VerificationBanner
         approvalStatus={summary?.approvalStatus || 'pending'}
         onOpenKyc={() => go('profile')}
       />
 
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900">{summary?.providerName || 'Day Care Partner'}</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {summary?.listedPublicly
-              ? 'Live — pet parents can find and book you.'
-              : `Not listed yet — approval status: ${summary?.approvalStatus || 'pending'}.`}
-          </p>
+      {summary?.listedPublicly && !summary?.acceptingBookings && (
+        <div className="flex items-start gap-2.5 px-4 py-3 rounded-[20px] bg-white border border-warning/30 text-warning text-xs font-bold shadow-sm">
+          <AlertCircle size={16} className="shrink-0 mt-0.5" />
+          Bookings paused — turn "Currently accepting bookings" back on in your profile.
         </div>
-        {summary?.listedPublicly && !summary?.acceptingBookings && (
-          <span className="px-3 py-1.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-xs font-bold">
-            Bookings paused — turn "Currently accepting bookings" back on in your profile.
-          </span>
-        )}
-      </div>
+      )}
 
-      <div className="flex gap-2 flex-wrap border-b border-gray-200 pb-3">
-        {TABS.map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => go(key)}
-            className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition ${
-              view === key ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 border border-gray-200'
-            }`}
-          >
-            <Icon size={15} /> {label}
-          </button>
-        ))}
-      </div>
-
-      {(view === 'dashboard' || view === 'bookings') && <PendingBookingRequests onChange={load} />}
+      {(view === 'dashboard' || view === 'bookings') && <PendingBookingRequests compact onChange={load} />}
       {view === 'dashboard' && <Dashboard summary={summary} onGo={go} />}
       {view === 'bookings' && <Bookings onChanged={load} />}
       {view === 'plans' && <Catalogue kind="plan" onChanged={load} />}
@@ -146,9 +115,9 @@ function Dashboard({ summary, onGo }) {
   const pct = capacity ? Math.min(100, Math.round((occupied / capacity) * 100)) : 0;
 
   const stats = [
-    { label: 'In today', value: summary.todaysBookings, icon: Clock },
-    { label: 'Upcoming stays', value: summary.upcomingBookings, icon: CalendarCheck },
-    { label: 'Places free today', value: summary.placesFreeToday ?? 0, icon: Users },
+    { label: 'In today', value: summary.todaysBookings, icon: Clock, tone: 'primary' },
+    { label: 'Upcoming stays', value: summary.upcomingBookings, icon: CalendarCheck, tone: 'teal' },
+    { label: 'Places free today', value: summary.placesFreeToday ?? 0, icon: Users, tone: 'teal' },
     { label: 'Total bookings', value: summary.totalBookings, icon: ClipboardList },
   ];
 
@@ -175,88 +144,77 @@ function Dashboard({ summary, onGo }) {
   ];
 
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map(({ label, value, icon: Icon }) => (
-          <div key={label} className="bg-white rounded-2xl border border-gray-200 p-5">
-            <Icon size={18} className="text-gray-400 mb-3" />
-            <p className="text-2xl font-black text-gray-900">{value ?? 0}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{label}</p>
-          </div>
-        ))}
+    <div className="space-y-4">
+      <div className="bg-gradient-to-tr from-[#4C8684] to-[#80C1BF] text-white p-5 rounded-[28px] shadow-lg relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl translate-x-10 -translate-y-10" />
+        <p className="text-lg font-black leading-tight">{summary?.providerName || 'Day Care Partner'}</p>
+        <p className="text-xs font-medium opacity-90 mt-1">
+          {summary?.listedPublicly
+            ? 'Live — pet parents can find and book you.'
+            : `Not listed yet — approval status: ${summary?.approvalStatus || 'pending'}.`}
+        </p>
+        <div className="mt-5 flex items-center gap-2 opacity-85">
+          <IndianRupee size={14} />
+          <span className="text-xs font-bold uppercase tracking-wide">Gross revenue</span>
+        </div>
+        <p className="text-[32px] font-black leading-none mt-1">{rupees(summary.grossRevenue)}</p>
+        <p className="text-[11px] opacity-85 mt-2">
+          Across {summary.completedBookings} completed and {summary.upcomingBookings} upcoming stays.
+        </p>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-200 p-5">
+      <div className="bg-white rounded-[20px] border border-border-light shadow-sm p-4">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="font-bold text-gray-900">Today's occupancy</h2>
-          <span className="text-sm font-bold text-gray-500">{occupied} of {capacity}</span>
+          <h2 className="text-[15px] font-bold text-text-primary">Today's occupancy</h2>
+          <span className="text-sm font-black text-text-primary">{occupied} of {capacity}</span>
         </div>
-        <div className="h-3 rounded-full bg-gray-100 overflow-hidden">
+        <div className="h-3 rounded-full bg-bg-secondary overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-[#40716F]'}`}
+            className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-error' : pct >= 80 ? 'bg-warning' : 'bg-[#4C8684]'}`}
             style={{ width: `${pct}%` }}
           />
         </div>
-        <p className="text-xs text-gray-500 mt-2">
+        <p className="text-xs text-text-secondary mt-2">
           {pct >= 100
             ? 'Full — today no longer appears on the booking calendar.'
             : `${summary.placesFreeToday ?? 0} place${(summary.placesFreeToday ?? 0) === 1 ? '' : 's'} still bookable today.`}
         </p>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-200 p-5">
-        <div className="flex items-center gap-2 mb-1">
-          <Eye size={16} className="text-gray-400" />
-          <h2 className="font-bold text-gray-900">Booking readiness</h2>
-        </div>
-        <p className="text-xs text-gray-500 mb-4">
-          Each item is a step of the customer's booking screen. An empty one stops the booking there.
-        </p>
-        <div className="space-y-2">
+      <StatGrid tiles={stats} />
+
+      <StatGrid
+        tiles={[
+          { label: `Rating · ${summary.ratingCount ?? 0} reviews`, value: summary.rating ?? 0, icon: Star, tone: 'warning' },
+          { label: 'Day rate', value: `₹${summary.pricePerDay || 0}`, icon: Home, hint: 'The "starts at" figure on your listing card.' },
+        ]}
+      />
+
+      <div>
+        <SectionLabel>Booking readiness</SectionLabel>
+        <div className="bg-white rounded-[20px] border border-border-light shadow-sm overflow-hidden">
+          <div className="flex items-start gap-2 px-4 pt-4 pb-2">
+            <Eye size={16} className="text-text-secondary mt-0.5 shrink-0" />
+            <p className="text-xs text-text-secondary leading-snug">
+              Each item is a step of the customer's booking screen. An empty one stops the booking there.
+            </p>
+          </div>
           {checklist.map((c) => (
             <button
               key={c.label}
               onClick={() => onGo(c.tab)}
-              className="w-full flex items-start gap-3 text-left p-3 rounded-xl border border-gray-100 hover:border-gray-300 transition"
+              className="w-full flex items-start gap-3 text-left px-4 py-3.5 border-t border-border-light active:bg-bg-primary"
             >
-              <span className={`mt-0.5 shrink-0 ${c.done ? 'text-emerald-600' : c.optional ? 'text-gray-300' : 'text-amber-500'}`}>
-                {c.done ? <CheckCircle2 size={17} /> : <AlertCircle size={17} />}
+              <span className={`mt-0.5 shrink-0 ${c.done ? 'text-success' : c.optional ? 'text-text-disabled' : 'text-warning'}`}>
+                {c.done ? <CheckCircle2 size={18} /> : <AlertCircle size={18} />}
               </span>
-              <span>
-                <span className="block text-sm font-bold text-gray-900">{c.label}</span>
-                <span className="block text-xs text-gray-500 mt-0.5">{c.hint}</span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-bold text-text-primary">{c.label}</span>
+                <span className="block text-xs text-text-secondary mt-0.5">{c.hint}</span>
               </span>
+              <ChevronRight size={18} className="text-text-disabled shrink-0 self-center" />
             </button>
           ))}
-        </div>
-      </div>
-
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl border border-gray-200 p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <IndianRupee size={16} className="text-emerald-600" />
-            <h2 className="font-bold text-gray-900">Gross revenue</h2>
-          </div>
-          <p className="text-3xl font-black text-gray-900">{rupees(summary.grossRevenue)}</p>
-          <p className="text-xs text-gray-500 mt-1">
-            Across {summary.completedBookings} completed and {summary.upcomingBookings} upcoming stays.
-          </p>
-        </div>
-        <div className="bg-white rounded-2xl border border-gray-200 p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <Star size={16} className="text-amber-500" />
-            <h2 className="font-bold text-gray-900">Rating</h2>
-          </div>
-          <p className="text-3xl font-black text-gray-900">{summary.rating ?? 0}</p>
-          <p className="text-xs text-gray-500 mt-1">{summary.ratingCount ?? 0} reviews</p>
-        </div>
-        <div className="bg-white rounded-2xl border border-gray-200 p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <Home size={16} className="text-gray-400" />
-            <h2 className="font-bold text-gray-900">Day rate</h2>
-          </div>
-          <p className="text-3xl font-black text-gray-900">₹{summary.pricePerDay || 0}</p>
-          <p className="text-xs text-gray-500 mt-1">The "starts at" figure on your listing card.</p>
         </div>
       </div>
     </div>
@@ -272,15 +230,6 @@ const NEXT_STATUS = {
   completed: [],
   cancelled: [],
   no_show: [],
-};
-
-const STATUS_STYLE = {
-  confirmed: 'bg-blue-50 text-blue-700 border-blue-200',
-  in_progress: 'bg-amber-50 text-amber-700 border-amber-200',
-  completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  cancelled: 'bg-red-50 text-red-600 border-red-200',
-  no_show: 'bg-gray-100 text-gray-500 border-gray-200',
-  pending_payment: 'bg-purple-50 text-purple-700 border-purple-200',
 };
 
 function Bookings({ onChanged }) {
@@ -325,66 +274,38 @@ function Bookings({ onChanged }) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-2xl border border-gray-200 p-4 flex flex-wrap items-center gap-3">
-        <div className="flex rounded-xl border border-gray-200 overflow-hidden">
-          {[['day', "Who's in"], ['all', 'All bookings']].map(([key, label]) => (
-            <button
-              key={key}
-              onClick={() => setMode(key)}
-              className={`px-4 h-9 text-sm font-bold transition ${
-                mode === key ? 'bg-gray-900 text-white' : 'bg-white text-gray-600'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+      <SegmentedTabs
+        items={[{ key: 'day', label: "Who's in" }, { key: 'all', label: 'All bookings' }]}
+        activeKey={mode}
+        onSelect={setMode}
+      />
+
+      {mode === 'day' ? (
+        <div className="space-y-3">
+          <DateNav value={date} onChange={setDate} onShift={shiftDay} onToday={() => setDate(YMD(new Date()))} />
+          <DayStrip value={date} onChange={setDate} />
+          <p className="text-xs text-text-secondary px-1">
+            Shows every stay that covers this day, including multi-day boardings that started earlier.
+          </p>
         </div>
-
-        {mode === 'day' ? (
-          <div className="flex items-center gap-2">
-            <button onClick={() => shiftDay(-1)} className="w-9 h-9 rounded-xl border border-gray-200 flex items-center justify-center text-gray-600">
-              <ChevronLeft size={16} />
-            </button>
-            <input
-              type="date" value={date} onChange={(e) => setDate(e.target.value)}
-              className="border border-gray-200 rounded-xl px-3 h-9 text-sm font-medium"
-            />
-            <button onClick={() => shiftDay(1)} className="w-9 h-9 rounded-xl border border-gray-200 flex items-center justify-center text-gray-600">
-              <ChevronRight size={16} />
-            </button>
-            <button onClick={() => setDate(YMD(new Date()))} className="px-3 h-9 rounded-xl bg-gray-100 text-gray-700 text-xs font-bold">
-              Today
-            </button>
-          </div>
-        ) : (
-          <select
-            value={status} onChange={(e) => setStatus(e.target.value)}
-            className="border border-gray-200 rounded-xl px-3 h-9 text-sm font-medium"
-          >
-            <option value="">Every status</option>
-            {Object.keys(NEXT_STATUS).map((s) => (
-              <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
-            ))}
-          </select>
-        )}
-
-        <span className="ml-auto text-sm font-bold text-gray-500">
-          {loading ? '…' : `${rows.length} ${mode === 'day' ? 'pet' : 'booking'}${rows.length === 1 ? '' : 's'}`}
-        </span>
-      </div>
-
-      {mode === 'day' && (
-        <p className="text-xs text-gray-500 -mt-2">
-          Shows every stay that covers this day, including multi-day boardings that started earlier.
-        </p>
+      ) : (
+        <FilterChips
+          value={status}
+          onChange={setStatus}
+          options={[{ value: '', label: 'Every status' }, ...Object.keys(NEXT_STATUS).map((s) => ({ value: s, label: s.replace(/_/g, ' ') }))]}
+        />
       )}
 
-      {err && <p className="text-sm text-red-600">{err}</p>}
+      <p className="text-xs font-bold text-text-secondary px-1">
+        {loading ? '…' : `${rows.length} ${mode === 'day' ? 'pet' : 'booking'}${rows.length === 1 ? '' : 's'}`}
+      </p>
+
+      <InlineError>{err}</InlineError>
 
       {loading ? (
-        <Loader2 size={22} className="animate-spin text-gray-400" />
+        <SkeletonList rows={3} />
       ) : !rows.length ? (
-        <Empty text={mode === 'day' ? `No pets booked in for ${date}.` : 'No bookings yet.'} />
+        <EmptyState icon={CalendarCheck} text={mode === 'day' ? `No pets booked in for ${date}.` : 'No bookings yet.'} />
       ) : (
         <div className="space-y-3">
           {rows.map((b) => <BookingCard key={b._id} b={b} busy={busy === b._id} onMove={move} />)}
@@ -401,92 +322,87 @@ function BookingCard({ b, busy, onMove }) {
   const addr = b.addressSnapshot;
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-4">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-bold text-gray-900">
+    <div className="bg-white rounded-[20px] border border-border-light shadow-sm overflow-hidden">
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[15px] font-bold text-text-primary leading-snug">
               {b.petSnapshot?.name || b.petId?.name || 'Pet'}
-              <span className="font-medium text-gray-500"> · {b.userId?.name || 'Customer'}</span>
+              <span className="font-medium text-text-secondary"> · {b.userId?.name || 'Customer'}</span>
             </p>
-            <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border bg-violet-50 text-violet-700 border-violet-200">
-              {days} day{days === 1 ? '' : 's'}
-            </span>
+            <p className="text-xs text-text-secondary mt-0.5">
+              {b.bookingNo} • {b.schedule?.startDate || '—'}
+              {b.schedule?.endDate ? ` → ${b.schedule.endDate}` : ''}
+            </p>
+            <p className="text-xs text-text-secondary mt-0.5">
+              Drop-off {b.meta?.dropoffTime || b.schedule?.time || '—'} · Pick-up {b.meta?.pickupTime || '—'}
+              {b.meta?.visitOption ? ` · ${b.meta.visitOption}` : ''}
+            </p>
+            {(b.petSnapshot?.breed || b.petId?.breed) && (
+              <p className="text-xs text-text-secondary mt-0.5">
+                {b.petSnapshot?.breed || b.petId?.breed}
+                {b.petSnapshot?.age ? ` · ${b.petSnapshot.age}` : ''}
+                {b.meta?.petAnswers?.vaccinated === false ? ' · ⚠ not vaccinated' : ''}
+              </p>
+            )}
           </div>
-
-          <p className="text-xs text-gray-500 mt-1">
-            {b.bookingNo} • {b.schedule?.startDate || '—'}
-            {b.schedule?.endDate ? ` → ${b.schedule.endDate}` : ''}
-          </p>
-
-          <p className="text-xs text-gray-500 mt-0.5">
-            Drop-off {b.meta?.dropoffTime || b.schedule?.time || '—'} · Pick-up {b.meta?.pickupTime || '—'}
-            {b.meta?.visitOption ? ` · ${b.meta.visitOption}` : ''}
-          </p>
-
-          {(b.petSnapshot?.breed || b.petId?.breed) && (
-            <p className="text-xs text-gray-500 mt-0.5">
-              {b.petSnapshot?.breed || b.petId?.breed}
-              {b.petSnapshot?.age ? ` · ${b.petSnapshot.age}` : ''}
-              {b.meta?.petAnswers?.vaccinated === false ? ' · ⚠ not vaccinated' : ''}
+          <div className="text-right shrink-0">
+            <StatusBadge status={b.status} />
+            <p className="text-[15px] font-black text-text-primary mt-1.5">{rupees(b.amounts?.total)}</p>
+            <p className="text-[10px] text-text-secondary mt-0.5">
+              {b.paymentMethod === 'pay_later' ? 'Collect at drop-off' : b.paymentMethod === 'free' ? 'No charge' : 'Paid online'}
             </p>
-          )}
-
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {priced.map((i, idx) => (
-              <span key={idx} className="text-[11px] font-bold px-2 py-1 rounded-lg bg-gray-100 text-gray-700">
-                {i.name}{i.qty > 1 ? ` ×${i.qty}` : ''} · ₹{i.price}
-              </span>
-            ))}
-            {fees.map((i, idx) => (
-              <span key={`f${idx}`} className="text-[11px] font-bold px-2 py-1 rounded-lg bg-amber-50 text-amber-700">
-                {i.name} · ₹{i.price}
-              </span>
-            ))}
           </div>
-
-          {b.meta?.petAnswers?.instructions && (
-            <p className="mt-2 text-xs text-gray-600 bg-gray-50 border border-gray-100 rounded-xl p-2.5">
-              “{b.meta.petAnswers.instructions}”
-            </p>
-          )}
-
-          {addr && (
-            <div className="mt-2 flex items-start gap-2 text-xs text-gray-600 bg-violet-50/60 border border-violet-100 rounded-xl p-2.5">
-              <MapPin size={14} className="text-violet-500 shrink-0 mt-0.5" />
-              <span>{[addr.line1, addr.locality, addr.city, addr.pincode].filter(Boolean).join(', ')}</span>
-            </div>
-          )}
-
-          {b.userId?.phone && (
-            <a href={`tel:${b.userId.phone}`} className="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-[#40716F]">
-              <Phone size={13} /> {b.userId.phone}
-            </a>
-          )}
         </div>
 
-        <div className="text-right shrink-0">
-          <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded-full border ${STATUS_STYLE[b.status] || ''}`}>
-            {(b.status || '').replace(/_/g, ' ')}
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <span className="text-[10px] uppercase font-bold px-2 py-1 rounded-lg bg-accent-teal/10 text-[#4C8684]">
+            {days} day{days === 1 ? '' : 's'}
           </span>
-          <p className="font-black text-gray-900 mt-2">{rupees(b.amounts?.total)}</p>
-          <p className="text-[11px] text-gray-500 mt-0.5">
-            {b.paymentMethod === 'pay_later' ? 'Collect at drop-off' : b.paymentMethod === 'free' ? 'No charge' : 'Paid online'}
-          </p>
+          {priced.map((i, idx) => (
+            <span key={idx} className="text-[11px] font-bold px-2 py-1 rounded-lg bg-bg-primary border border-border-light text-text-primary">
+              {i.name}{i.qty > 1 ? ` ×${i.qty}` : ''} · ₹{i.price}
+            </span>
+          ))}
+          {fees.map((i, idx) => (
+            <span key={`f${idx}`} className="text-[11px] font-bold px-2 py-1 rounded-lg bg-warning/10 text-warning">
+              {i.name} · ₹{i.price}
+            </span>
+          ))}
         </div>
+
+        {b.meta?.petAnswers?.instructions && (
+          <p className="mt-3 text-xs text-text-primary bg-bg-primary border border-border-light rounded-xl p-3">
+            “{b.meta.petAnswers.instructions}”
+          </p>
+        )}
+
+        {addr && (
+          <div className="mt-3 flex items-start gap-2 text-xs text-text-primary bg-accent-teal/5 border border-accent-teal/20 rounded-xl p-3">
+            <MapPin size={14} className="text-[#4C8684] shrink-0 mt-0.5" />
+            <span>{[addr.line1, addr.locality, addr.city, addr.pincode].filter(Boolean).join(', ')}</span>
+          </div>
+        )}
+
+        {b.userId?.phone && (
+          <a href={`tel:${b.userId.phone}`} className="mt-3 min-h-[40px] inline-flex items-center gap-1.5 px-3 rounded-xl bg-accent-teal/10 text-xs font-bold text-[#4C8684]">
+            <Phone size={14} /> {b.userId.phone}
+          </a>
+        )}
       </div>
 
       {NEXT_STATUS[b.status]?.length > 0 && (
-        <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100 flex-wrap">
+        <div className="flex gap-2 px-4 pb-4 pt-3 border-t border-border-light flex-wrap">
           {NEXT_STATUS[b.status].map((s) => (
-            <button
+            <CardAction
               key={s}
               onClick={() => onMove(b._id, s)}
               disabled={busy}
-              className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-xs font-bold disabled:opacity-50"
+              tone={s === 'in_progress' || s === 'completed' ? 'teal' : 'neutral'}
+              className="flex-1 capitalize"
             >
               {busy ? '…' : `Mark ${s.replace(/_/g, ' ')}`}
-            </button>
+            </CardAction>
           ))}
         </div>
       )}
@@ -517,6 +433,7 @@ const blank = (kind) => ({ name: '', description: '', price: 0, kind, unit: 'day
 
 function Catalogue({ kind, onChanged }) {
   const copy = CATALOGUE_COPY[kind];
+  const confirm = useConfirm();
   const [all, setAll] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(null);
@@ -561,7 +478,12 @@ function Catalogue({ kind, onChanged }) {
   };
 
   const remove = async (id) => {
-    if (!window.confirm(`Remove this ${copy.noun}? Customers will stop seeing it immediately.`)) return;
+    if (!(await confirm({
+      title: `Remove this ${copy.noun}?`,
+      message: 'Customers will stop seeing it immediately.',
+      confirmLabel: 'Remove',
+      danger: true,
+    }))) return;
     try {
       await deleteProviderService('daycare', id);
       load();
@@ -571,107 +493,103 @@ function Catalogue({ kind, onChanged }) {
     }
   };
 
-  if (loading) return <Loader2 size={22} className="animate-spin text-gray-400" />;
+  if (loading) return <SkeletonList rows={3} />;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h2 className="font-bold text-gray-900">{copy.title}</h2>
-          <p className="text-sm text-gray-500 mt-0.5">{copy.blurb}</p>
-        </div>
-        <button
-          onClick={() => setForm(blank(copy.kinds[0]))}
-          className="px-4 h-10 rounded-xl bg-[#40716F] text-white text-sm font-bold flex items-center gap-2 shrink-0"
-        >
-          <Plus size={15} /> Add {copy.noun}
-        </button>
-      </div>
+      <ScreenHeader
+        title={copy.title}
+        subtitle={copy.blurb}
+        action={(
+          <button
+            onClick={() => setForm(blank(copy.kinds[0]))}
+            className="h-11 px-4 rounded-full bg-primary-main text-white text-sm font-bold flex items-center gap-1.5 shadow-md shadow-primary-main/25"
+          >
+            <Plus size={16} /> Add {copy.noun}
+          </button>
+        )}
+      />
 
-      {err && <p className="text-sm text-red-600">{err}</p>}
+      {!form && <InlineError>{err}</InlineError>}
 
-      {form && (
-        <div className="bg-white rounded-2xl border-2 border-[#40716F] p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-gray-900">{form._id ? 'Edit' : 'New'} {copy.noun}</h3>
-            <button onClick={() => setForm(null)} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-3">
-            <Input label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
-            <Input label="Price (₹)" type="number" value={form.price} onChange={(v) => setForm({ ...form, price: v })} />
-            <div>
-              <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Billed</label>
-              <select
-                value={form.unit || ''}
-                onChange={(e) => setForm({ ...form, unit: e.target.value || null })}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-              >
-                {copy.units.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-              <p className="text-xs text-gray-500 mt-1">
-                {form.unit === 'day'
-                  ? 'Charged once for each day of the stay.'
-                  : 'Charged once for the whole stay.'}
-              </p>
-            </div>
-            {kind === 'plan' && (
-              <Input label="Badge (optional)" value={form.badge} onChange={(v) => setForm({ ...form, badge: v })} />
-            )}
-            <Input
-              label="Description" value={form.description}
-              onChange={(v) => setForm({ ...form, description: v })} className="md:col-span-2"
-            />
-          </div>
-
-          {kind === 'plan' && (
-            <IncludesEditor value={form.includes || []} onChange={(includes) => setForm({ ...form, includes })} />
-          )}
-
+      <BottomSheet
+        open={!!form}
+        onClose={() => setForm(null)}
+        fullScreen
+        title={`${form?._id ? 'Edit' : 'New'} ${copy.noun}`}
+        footer={(
           <div className="flex gap-2">
-            <button onClick={() => setForm(null)} className="px-4 h-10 rounded-xl bg-gray-100 text-gray-700 text-sm font-bold">Cancel</button>
-            <button
+            <PrimaryButton tone="soft" onClick={() => setForm(null)}>Cancel</PrimaryButton>
+            <PrimaryButton
               onClick={save}
-              disabled={busy || form.name.trim().length < 2}
-              className="px-4 h-10 rounded-xl bg-gray-900 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-50"
+              disabled={busy || !form || form.name.trim().length < 2}
+              loading={busy}
+              icon={Save}
             >
-              {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save
-            </button>
+              Save
+            </PrimaryButton>
           </div>
-        </div>
-      )}
+        )}
+      >
+        {form && (
+          <div className="space-y-4 pb-4">
+            <InlineError>{err}</InlineError>
+            <KitInput label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
+            <KitInput label="Price (₹)" type="number" inputMode="decimal" value={form.price} onChange={(v) => setForm({ ...form, price: v })} />
+            <Select
+              label="Billed"
+              value={form.unit || ''}
+              onChange={(v) => setForm({ ...form, unit: v || null })}
+              options={copy.units.map(([value, label]) => ({ value, label }))}
+              hint={form.unit === 'day'
+                ? 'Charged once for each day of the stay.'
+                : 'Charged once for the whole stay.'}
+            />
+            {kind === 'plan' && (
+              <KitInput label="Badge (optional)" value={form.badge} onChange={(v) => setForm({ ...form, badge: v })} />
+            )}
+            <Textarea
+              label="Description"
+              rows={2}
+              value={form.description}
+              onChange={(v) => setForm({ ...form, description: v })}
+            />
+            {kind === 'plan' && (
+              <IncludesEditor value={form.includes || []} onChange={(includes) => setForm({ ...form, includes })} />
+            )}
+          </div>
+        )}
+      </BottomSheet>
 
       {!rows.length ? (
-        <Empty text={`No ${copy.noun}s yet — add one so customers can book.`} />
+        <EmptyState text={`No ${copy.noun}s yet — add one so customers can book.`} />
       ) : (
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="space-y-3">
           {rows.map((s) => (
-            <div key={s._id} className="bg-white rounded-2xl border border-gray-200 p-4">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-bold text-gray-900">{s.name}</p>
-                    {s.badge && (
-                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">{s.badge}</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5">{s.unit ? `per ${s.unit}` : 'one-off'}</p>
-                  {s.description && <p className="text-xs text-gray-500 mt-1">{s.description}</p>}
-                  {(s.includes || []).length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {s.includes.map((inc) => (
-                        <span key={inc} className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-[#EAF3F1] text-[#40716F]">{inc}</span>
-                      ))}
+            <div key={s._id} className="bg-white rounded-[20px] border border-border-light shadow-sm overflow-hidden">
+              <div className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-[15px] font-bold text-text-primary">{s.name}</p>
+                      {s.badge && <StatusBadge label={s.badge} tone="primary" />}
                     </div>
-                  )}
-                </div>
-                <div className="flex flex-col items-end gap-2 shrink-0">
-                  <span className="font-black text-gray-900">₹{s.price}</span>
-                  <div className="flex gap-2">
-                    <button onClick={() => setForm({ ...s, includes: s.includes || [], badge: s.badge || '' })} className="text-xs font-bold text-[#40716F] hover:underline">Edit</button>
-                    <button onClick={() => remove(s._id)} className="text-gray-400 hover:text-red-500"><Trash2 size={14} /></button>
+                    <p className="text-xs text-text-secondary mt-0.5">{s.unit ? `per ${s.unit}` : 'one-off'}</p>
+                    {s.description && <p className="text-xs text-text-secondary mt-1">{s.description}</p>}
                   </div>
+                  <span className="text-[15px] font-black text-text-primary shrink-0">₹{s.price}</span>
                 </div>
+                {(s.includes || []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-3">
+                    {s.includes.map((inc) => (
+                      <span key={inc} className="text-[11px] font-semibold px-2 py-1 rounded-lg bg-accent-teal/10 text-[#4C8684]">{inc}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-2 px-4 pb-4 pt-3 border-t border-border-light">
+                <CardAction icon={Pencil} className="flex-1" onClick={() => setForm({ ...s, includes: s.includes || [], badge: s.badge || '' })}>Edit</CardAction>
+                <CardAction icon={Trash2} tone="danger" onClick={() => remove(s._id)}>Remove</CardAction>
               </div>
             </div>
           ))}
@@ -694,20 +612,20 @@ function IncludesEditor({ value, onChange }) {
 
   return (
     <div>
-      <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">What's included</label>
-      <p className="text-xs text-gray-500 mb-2">
+      <label className="block text-xs font-bold text-text-secondary mb-1">What's included</label>
+      <p className="text-xs text-text-secondary mb-2">
         Listed under the plan name on the customer's booking screen — "Playtime", "Rest Area", "Priority Slots".
       </p>
-      <div className="flex flex-wrap gap-1.5 mb-2">
+      <div className="flex flex-wrap gap-2 mb-2">
         {value.map((inc) => (
-          <span key={inc} className="inline-flex items-center gap-1 text-[12px] font-medium px-2.5 py-1 rounded-lg bg-[#EAF3F1] text-[#40716F]">
+          <span key={inc} className="inline-flex items-center gap-1 text-[13px] font-semibold pl-3 pr-1 min-h-[36px] rounded-full bg-accent-teal/10 text-[#4C8684]">
             {inc}
-            <button type="button" onClick={() => onChange(value.filter((x) => x !== inc))} className="hover:text-red-500">
-              <X size={11} />
+            <button type="button" aria-label={`Remove ${inc}`} onClick={() => onChange(value.filter((x) => x !== inc))} className="w-8 h-8 rounded-full flex items-center justify-center">
+              <X size={14} />
             </button>
           </span>
         ))}
-        {!value.length && <span className="text-xs text-gray-400">Nothing listed yet.</span>}
+        {!value.length && <span className="text-xs text-text-disabled">Nothing listed yet.</span>}
       </div>
       <div className="flex gap-2">
         <input
@@ -715,9 +633,9 @@ function IncludesEditor({ value, onChange }) {
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
           placeholder="e.g. Supervised Playtime"
-          className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+          className={`${fieldClass} flex-1 min-w-0`}
         />
-        <button type="button" onClick={add} className="px-3 h-9 rounded-lg bg-gray-100 text-gray-700 text-sm font-bold">Add</button>
+        <button type="button" onClick={add} className="h-12 px-4 rounded-xl bg-bg-secondary text-text-primary text-sm font-bold shrink-0">Add</button>
       </div>
     </div>
   );
@@ -773,62 +691,55 @@ function CapacityAndRates({ onChanged }) {
     }
   };
 
-  if (loading) return <Loader2 size={22} className="animate-spin text-gray-400" />;
-  if (!p) return <Empty text={err || 'Profile unavailable'} />;
+  if (loading) return <SkeletonList rows={3} />;
+  if (!p) return <EmptyState text={err || 'Profile unavailable'} />;
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-bold text-gray-900">Daily capacity</h2>
-            <p className="text-sm text-gray-500 mt-0.5">
-              How many pets you can board on any one day. Once a day reaches this number it stops appearing on
-              the customer's calendar — a stay that crosses a full day is refused outright rather than half-booked.
-            </p>
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            {saved && <span className="text-emerald-600 text-sm font-bold flex items-center gap-1"><CheckCircle2 size={15} /> Saved</span>}
-            <button onClick={save} disabled={busy} className="px-4 h-10 rounded-xl bg-[#40716F] text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">
-              {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save
-            </button>
-          </div>
-        </div>
+      <InlineError>{err}</InlineError>
 
-        {err && <p className="text-sm text-red-600">{err}</p>}
+      <FormSection
+        icon={Users}
+        title="Daily capacity"
+        description="How many pets you can board on any one day. Once a day reaches this number it stops appearing on the customer's calendar — a stay that crosses a full day is refused outright rather than half-booked."
+      >
+        <KitInput
+          label="Pets per day"
+          type="number"
+          inputMode="numeric"
+          value={details.dailyCapacity ?? 20}
+          onChange={(v) => setDetail('dailyCapacity', Number(v))}
+        />
+      </FormSection>
 
-        <div className="max-w-xs">
-          <Input
-            label="Pets per day"
-            type="number"
-            value={details.dailyCapacity ?? 20}
-            onChange={(v) => setDetail('dailyCapacity', Number(v))}
-          />
-        </div>
-      </div>
+      <FormSection
+        title="Headline rates"
+        description="Shown on your listing card. The prices actually charged come from your care plans — keep these in step with them."
+      >
+        <KitInput label="Per day (₹)" type="number" inputMode="decimal" value={details.pricePerDay ?? 0} onChange={(v) => setDetail('pricePerDay', Number(v))} />
+        <FieldPair>
+          <KitInput label="Per week (₹)" type="number" inputMode="decimal" value={details.pricePerWeek ?? 0} onChange={(v) => setDetail('pricePerWeek', Number(v))} />
+          <KitInput label="Per month (₹)" type="number" inputMode="decimal" value={details.pricePerMonth ?? 0} onChange={(v) => setDetail('pricePerMonth', Number(v))} />
+        </FieldPair>
+      </FormSection>
 
-      <div className="bg-white rounded-2xl border border-gray-200 p-5">
-        <h3 className="font-bold text-gray-900">Headline rates</h3>
-        <p className="text-sm text-gray-500 mt-0.5 mb-4">
-          Shown on your listing card. The prices actually charged come from your care plans — keep these in step
-          with them.
-        </p>
-        <div className="grid md:grid-cols-3 gap-4">
-          <Input label="Per day (₹)" type="number" value={details.pricePerDay ?? 0} onChange={(v) => setDetail('pricePerDay', Number(v))} />
-          <Input label="Per week (₹)" type="number" value={details.pricePerWeek ?? 0} onChange={(v) => setDetail('pricePerWeek', Number(v))} />
-          <Input label="Per month (₹)" type="number" value={details.pricePerMonth ?? 0} onChange={(v) => setDetail('pricePerMonth', Number(v))} />
-        </div>
-      </div>
+      <FormSection
+        title="Fees & discount"
+        description="Both appear as their own line on the customer's price summary, and both are what actually gets charged."
+      >
+        <KitInput label="Platform fee (₹)" type="number" inputMode="decimal" value={fees.platformFee ?? 49} onChange={(v) => setFee('platformFee', Number(v))} />
+        <KitInput label="Promo discount off every booking (₹)" type="number" inputMode="decimal" value={fees.discount ?? 300} onChange={(v) => setFee('discount', Number(v))} />
+      </FormSection>
 
-      <div className="bg-white rounded-2xl border border-gray-200 p-5">
-        <h3 className="font-bold text-gray-900">Fees &amp; discount</h3>
-        <p className="text-sm text-gray-500 mt-0.5 mb-4">
-          Both appear as their own line on the customer's price summary, and both are what actually gets charged.
-        </p>
-        <div className="grid md:grid-cols-2 gap-4">
-          <Input label="Platform fee (₹)" type="number" value={fees.platformFee ?? 49} onChange={(v) => setFee('platformFee', Number(v))} />
-          <Input label="Promo discount off every booking (₹)" type="number" value={fees.discount ?? 300} onChange={(v) => setFee('discount', Number(v))} />
-        </div>
+      <div className="flex items-center gap-2">
+        <PrimaryButton onClick={save} disabled={busy} loading={busy} icon={Save} tone="teal">
+          Save capacity & rates
+        </PrimaryButton>
+        {saved && (
+          <span className="text-success text-sm font-bold flex items-center gap-1 shrink-0">
+            <CheckCircle2 size={16} /> Saved
+          </span>
+        )}
       </div>
     </div>
   );
@@ -896,59 +807,37 @@ function Profile({ onChanged }) {
     }
   };
 
-  if (loading) return <Loader2 size={22} className="animate-spin text-gray-400" />;
-  if (!p) return <Empty text={err || 'Profile unavailable'} />;
+  if (loading) return <SkeletonList rows={4} />;
+  if (!p) return <EmptyState text={err || 'Profile unavailable'} />;
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-bold text-gray-900">Centre profile</h2>
-            <p className="text-sm text-gray-500 mt-0.5">This is the card and header pet parents see in the app.</p>
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            {saved && <span className="text-emerald-600 text-sm font-bold flex items-center gap-1"><CheckCircle2 size={15} /> Saved</span>}
-            <button onClick={save} disabled={busy} className="px-4 h-10 rounded-xl bg-[#40716F] text-white text-sm font-bold flex items-center gap-2 disabled:opacity-60">
-              {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save
-            </button>
-          </div>
-        </div>
-        {err && <p className="text-sm text-red-600">{err}</p>}
+      <p className="text-xs text-text-secondary px-1">This is the card and header pet parents see in the app.</p>
+      <InlineError>{err}</InlineError>
 
-        <div className="grid md:grid-cols-2 gap-4">
-          <Input label="Centre name" value={p.name} onChange={(v) => setP({ ...p, name: v })} />
-          <Input label="Area / locality" value={p.distanceText} onChange={(v) => setP({ ...p, distanceText: v })} />
-          <Input label="Opens at" value={p.openTime} onChange={(v) => setP({ ...p, openTime: v })} />
-          <Input label="Closes at" value={p.closeTime} onChange={(v) => setP({ ...p, closeTime: v })} />
-          <div className="md:col-span-2">
-            <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">About</label>
-            <textarea
-              rows={3} value={p.about || ''} onChange={(e) => setP({ ...p, about: e.target.value })}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-y"
-            />
-          </div>
-          <ChipPicker
-            label="Pets you board"
-            options={PET_TYPES}
-            value={p.supportedPets || []}
-            onChange={(supportedPets) => setP({ ...p, supportedPets })}
-          />
-        </div>
-
-        <p className="text-xs text-gray-500">
+      <FormSection title="Centre profile">
+        <KitInput label="Centre name" value={p.name} onChange={(v) => setP({ ...p, name: v })} />
+        <KitInput label="Area / locality" value={p.distanceText} onChange={(v) => setP({ ...p, distanceText: v })} />
+        <FieldPair>
+          <KitInput label="Opens at" value={p.openTime} onChange={(v) => setP({ ...p, openTime: v })} />
+          <KitInput label="Closes at" value={p.closeTime} onChange={(v) => setP({ ...p, closeTime: v })} />
+        </FieldPair>
+        <Textarea label="About" rows={3} value={p.about || ''} onChange={(v) => setP({ ...p, about: v })} />
+        <KitChipPicker
+          label="Pets you board"
+          options={PET_TYPES}
+          value={p.supportedPets || []}
+          onChange={(supportedPets) => setP({ ...p, supportedPets })}
+        />
+        <p className="text-xs text-text-secondary">
           Drop-off and pick-up times offered to customers are generated from your opening hours above.
         </p>
-
-        <label className="flex items-center gap-2 text-sm font-medium text-gray-700">
-          <input
-            type="checkbox" checked={p.isOpen ?? true}
-            onChange={(e) => setP({ ...p, isOpen: e.target.checked })}
-            className="rounded"
-          />
-          Currently accepting bookings
-        </label>
-      </div>
+        <Toggle
+          label="Currently accepting bookings"
+          checked={p.isOpen ?? true}
+          onChange={(v) => setP({ ...p, isOpen: v })}
+        />
+      </FormSection>
 
       <PhotoManager
         cover={p.image}
@@ -956,17 +845,23 @@ function Profile({ onChanged }) {
         onChange={(next) => setP({ ...p, ...next })}
       />
 
-      <div className="bg-white rounded-2xl border border-gray-200 p-5">
-        <h3 className="font-bold text-gray-900 text-sm mb-1">Bank account &amp; payout details</h3>
-        <p className="text-xs text-gray-500 mb-3">Required to receive payouts for bookings.</p>
-        <div className="grid md:grid-cols-2 gap-3">
-          <Input label="Bank name" value={bankData.bankName} onChange={(v) => setBankData({ ...bankData, bankName: v })} />
-          <Input label="Account holder name" value={bankData.accountHolder} onChange={(v) => setBankData({ ...bankData, accountHolder: v })} />
-          <Input label="Account number" value={bankData.accountNumber} onChange={(v) => setBankData({ ...bankData, accountNumber: v })} />
-          <Input label="IFSC code" value={bankData.ifsc} onChange={(v) => setBankData({ ...bankData, ifsc: v.toUpperCase() })} />
-        </div>
+      <FormSection title="Bank account & payout details" description="Required to receive payouts for bookings.">
+        <KitInput label="Bank name" value={bankData.bankName} onChange={(v) => setBankData({ ...bankData, bankName: v })} />
+        <KitInput label="Account holder name" value={bankData.accountHolder} onChange={(v) => setBankData({ ...bankData, accountHolder: v })} />
+        <KitInput label="Account number" inputMode="numeric" value={bankData.accountNumber} onChange={(v) => setBankData({ ...bankData, accountNumber: v })} />
+        <KitInput label="IFSC code" value={bankData.ifsc} onChange={(v) => setBankData({ ...bankData, ifsc: v.toUpperCase() })} />
         <VendorDocuments />
-      </div>
+      </FormSection>
+
+      <StickyActionBar
+        note={saved ? (
+          <span className="text-success text-xs font-bold inline-flex items-center gap-1"><CheckCircle2 size={14} /> Saved</span>
+        ) : null}
+      >
+        <PrimaryButton onClick={save} disabled={busy} loading={busy} icon={Save}>
+          Save profile
+        </PrimaryButton>
+      </StickyActionBar>
     </div>
   );
 }
@@ -1021,78 +916,33 @@ function PhotoManager({ cover, gallery, onChange }) {
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-5">
-      <div className="flex items-center gap-2 mb-1">
-        <ImagePlus size={16} className="text-gray-400" />
-        <h3 className="font-bold text-gray-900">Centre photos</h3>
-      </div>
-      <p className="text-sm text-gray-500 mb-4">
-        Customers swipe through these at the top of your page. The first one is your cover — it is also the
-        thumbnail on the search results card. Up to 20 photos.
-      </p>
+    <FormSection
+      icon={ImagePlus}
+      title="Centre photos"
+      description="Customers swipe through these at the top of your page. The first one is your cover — it is also the thumbnail on the search results card. Up to 20 photos."
+    >
+      <InlineError>{err}</InlineError>
 
-      {err && <p className="text-sm text-red-600 mb-3">{err}</p>}
-
-      {!photos.length ? (
-        <div className="text-center py-8 text-sm text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200 mb-4">
+      {!photos.length && (
+        <p className="text-center py-3 text-xs text-text-secondary">
           No photos yet — your page shows an empty grey banner.
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-4">
-          {photos.map((src, i) => (
-            <div key={src} className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
-              <img src={src} alt={`Centre photo ${i + 1}`} className="w-full h-28 object-cover" />
-              {i === 0 && (
-                <span className="absolute top-1.5 left-1.5 bg-[#40716F] text-white text-[10px] font-bold px-2 py-0.5 rounded-full">Cover</span>
-              )}
-              <button
-                type="button" onClick={() => commit(photos.filter((x) => x !== src))} title="Remove"
-                className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/55 text-white flex items-center justify-center"
-              >
-                <X size={12} />
-              </button>
-              <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between">
-                <button
-                  type="button" onClick={() => move(i, i - 1)} disabled={i === 0} title="Move earlier"
-                  className="w-6 h-6 rounded-full bg-black/55 text-white flex items-center justify-center disabled:opacity-30"
-                >
-                  <ArrowLeft size={12} />
-                </button>
-                <span className="text-[10px] font-bold text-white bg-black/55 px-1.5 rounded-full">{i + 1}</span>
-                <button
-                  type="button" onClick={() => move(i, i + 1)} disabled={i === photos.length - 1} title="Move later"
-                  className="w-6 h-6 rounded-full bg-black/55 text-white flex items-center justify-center disabled:opacity-30"
-                >
-                  <ArrowRight size={12} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+        </p>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        <input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addUrl(); } }}
-          placeholder="Paste an image URL…"
-          className="flex-1 min-w-[200px] border border-gray-200 rounded-lg px-3 py-2 text-sm"
-        />
-        <button type="button" onClick={addUrl} className="px-4 h-[38px] rounded-lg bg-gray-100 text-gray-700 text-sm font-bold">Add URL</button>
-        <input type="file" id="daycarePhotoUpload" accept="image/*" multiple className="hidden" onChange={handleFiles} />
-        <button
-          type="button"
-          onClick={() => document.getElementById('daycarePhotoUpload').click()}
-          disabled={uploading}
-          className="px-4 h-[38px] rounded-lg bg-gray-900 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-50"
-        >
-          {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-          {uploading ? 'Uploading…' : 'Upload photos'}
-        </button>
-      </div>
-      <p className="text-xs text-gray-400 mt-2">Photos save when you hit Save at the top of this page.</p>
-    </div>
+      <ImageTiles
+        photos={photos}
+        showCover
+        onRemove={(i) => commit(photos.filter((x) => x !== photos[i]))}
+        onMove={move}
+        onFiles={handleFiles}
+        uploading={uploading}
+        addLabel="Upload photos"
+        max={20}
+      />
+
+      <PhotoUrlInput value={url} onChange={setUrl} onAdd={addUrl} />
+      <p className="text-xs text-text-secondary">Photos save when you tap Save profile.</p>
+    </FormSection>
   );
 }
 
@@ -1137,90 +987,17 @@ function VendorDocuments() {
   if (!profile) return null;
 
   return (
-    <div className="border-t border-gray-100 pt-4 mt-4">
-      <h3 className="font-bold text-gray-900 text-sm mb-3">Compliance documents</h3>
-      {err && <p className="text-sm text-red-600 mb-2">{err}</p>}
-      <div className="space-y-2 mb-3">
-        {(profile.documents || []).map((d, i) => (
-          <div key={i} className="flex items-center justify-between p-2.5 bg-gray-50 border border-gray-100 rounded-lg text-sm">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="font-semibold text-gray-800 shrink-0">{DOC_KINDS.find((k) => k.value === d.kind)?.label || d.kind}</span>
-              <a href={d.url} target="_blank" rel="noreferrer" className="text-blue-600 truncate">{d.url}</a>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
-                d.status === 'Verified' ? 'bg-emerald-100 text-emerald-700'
-                  : d.status === 'Rejected' ? 'bg-red-100 text-red-700'
-                    : 'bg-amber-100 text-amber-700'
-              }`}>{d.status}</span>
-              <button onClick={() => handleRemove(i)} className="text-gray-400 hover:text-red-500"><Trash2 size={14} /></button>
-            </div>
-          </div>
-        ))}
-        {!(profile.documents || []).length && <p className="text-sm text-gray-400">No documents uploaded yet.</p>}
-      </div>
-      <div className="flex gap-2 items-center flex-wrap">
-        <select value={docKind} onChange={(e) => setDocKind(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
-          {DOC_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
-        </select>
-        <input type="file" id="daycareDocUpload" accept="image/*,application/pdf" className="hidden" onChange={handleFile} />
-        <button
-          onClick={() => document.getElementById('daycareDocUpload').click()}
-          disabled={uploading}
-          className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-40"
-        >
-          {uploading ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} {uploading ? 'Uploading…' : 'Upload document'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/* ── Primitives ───────────────────────────────────────────── */
-
-function ChipPicker({ label, hint, options, value, onChange }) {
-  return (
-    <div>
-      <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">{label}</label>
-      {hint && <p className="text-xs text-gray-500 mb-2">{hint}</p>}
-      <div className="flex flex-wrap gap-2">
-        {options.map((opt) => {
-          const on = (value || []).includes(opt);
-          return (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => onChange(on ? value.filter((x) => x !== opt) : [...(value || []), opt])}
-              className={`px-3 py-1.5 rounded-lg text-sm font-bold border transition ${
-                on ? 'bg-[#40716F] border-[#40716F] text-white' : 'bg-white border-gray-200 text-gray-600'
-              }`}
-            >
-              {opt}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function Input({ label, value, onChange, type = 'text', className = '' }) {
-  return (
-    <div className={className}>
-      <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">{label}</label>
-      <input
-        type={type} value={value ?? ''} onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-      />
-    </div>
-  );
-}
-
-function Empty({ text }) {
-  return (
-    <div className="text-center py-10 text-sm text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-      {text}
-    </div>
+    <KycDocumentsBlock
+      documents={profile.documents || []}
+      docKinds={DOC_KINDS}
+      docKind={docKind}
+      onDocKind={setDocKind}
+      onRemove={handleRemove}
+      onFile={handleFile}
+      uploading={uploading}
+      err={err}
+      inputId="daycareDocUpload"
+    />
   );
 }
 

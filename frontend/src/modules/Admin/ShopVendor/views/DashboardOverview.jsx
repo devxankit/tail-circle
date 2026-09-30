@@ -1,11 +1,15 @@
 import React, { useMemo } from 'react';
 import { useShopVendor } from '../context/ShopVendorContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import {
   ShoppingBag, Clock, AlertTriangle, RefreshCcw,
-  Wallet, Star, ChevronRight, Package, ShoppingCart
+  Wallet, Star, ChevronRight, Package, ShoppingCart, Plus, Store, Loader2
 } from 'lucide-react';
 import { cn } from '../../../user/utils/cn';
+import { StatGrid, StatusBadge, SectionLabel, ListCard } from '../../vendor/mobile';
+
+const ORDER_TONE = { New: 'warning', Delivered: 'success', Cancelled: 'error' };
+const FEED_TONE = { New: 'warning', Requested: 'warning', Delivered: 'success', Approved: 'success' };
 
 const rupees = (paise) => Math.round((paise || 0) / 100);
 
@@ -18,6 +22,8 @@ const rupees = (paise) => Math.round((paise || 0) / 100);
 export function DashboardOverview() {
   const { profile, orders, products, returns, feedback, dashboard } = useShopVendor();
   const navigate = useNavigate();
+  // The store switch and the verified gate belong to the layout.
+  const { storeOpen, toggleStoreOpen, togglingStore, isVerified } = useOutletContext() || {};
 
   const stats = useMemo(() => {
     const pendingOrders = orders.filter(o => o.status === 'New').length;
@@ -25,12 +31,12 @@ export function DashboardOverview() {
     const pendingReturns = returns.filter(r => r.status === 'Requested').length;
 
     return [
-      { label: 'Total Orders', value: dashboard?.totalOrders ?? orders.length, icon: ShoppingBag, color: 'text-blue-600', bg: 'bg-blue-50', path: '/vendor/shop-provider/orders' },
-      { label: 'Pending Orders', value: pendingOrders, icon: Clock, color: 'text-orange-600', bg: 'bg-orange-50', path: '/vendor/shop-provider/orders' },
-      { label: 'Low Stock Alerts', value: lowStock, icon: AlertTriangle, color: 'text-red-600', bg: 'bg-red-50', path: '/vendor/shop-provider/inventory' },
-      { label: 'Return Requests', value: pendingReturns, icon: RefreshCcw, color: 'text-rose-600', bg: 'bg-rose-50', path: '/vendor/shop-provider/returns' },
-      { label: 'Lifetime Earnings', value: `₹${rupees(dashboard?.lifetimeEarnings).toLocaleString('en-IN')}`, icon: Wallet, color: 'text-indigo-600', bg: 'bg-indigo-50', path: '/vendor/shop-provider/finance' },
-      { label: 'Customer Rating', value: (dashboard?.avgRating || profile?.rating) ? `${(dashboard?.avgRating || profile?.rating).toFixed(1)}/5` : (feedback.length > 0 ? `${(feedback.reduce((a, f) => a + (f.rating || 0), 0) / feedback.length).toFixed(1)}/5` : 'No ratings yet'), icon: Star, color: 'text-yellow-600', bg: 'bg-yellow-50', path: '/vendor/shop-provider/feedback' },
+      { label: 'Total Orders', value: dashboard?.totalOrders ?? orders.length, icon: ShoppingBag, tone: 'teal', path: '/vendor/shop-provider/orders' },
+      { label: 'Pending Orders', value: pendingOrders, icon: Clock, tone: 'warning', path: '/vendor/shop-provider/orders' },
+      { label: 'Low Stock Alerts', value: lowStock, icon: AlertTriangle, tone: 'error', path: '/vendor/shop-provider/inventory' },
+      { label: 'Return Requests', value: pendingReturns, icon: RefreshCcw, tone: 'primary', path: '/vendor/shop-provider/returns' },
+      { label: 'Lifetime Earnings', value: `₹${rupees(dashboard?.lifetimeEarnings).toLocaleString('en-IN')}`, icon: Wallet, tone: 'teal', path: '/vendor/shop-provider/finance' },
+      { label: 'Customer Rating', value: (dashboard?.avgRating || profile?.rating) ? `${(dashboard?.avgRating || profile?.rating).toFixed(1)}/5` : (feedback.length > 0 ? `${(feedback.reduce((a, f) => a + (f.rating || 0), 0) / feedback.length).toFixed(1)}/5` : 'No ratings yet'), icon: Star, tone: 'warning', path: '/vendor/shop-provider/feedback' },
     ];
   }, [orders, products, returns, feedback, dashboard, profile]);
 
@@ -47,178 +53,161 @@ export function DashboardOverview() {
       .slice(0, 8);
   }, [orders, returns, feedback]);
 
+  const lowStockProducts = products.filter(p => p.stock <= p.alertLimit);
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
+    <div className="space-y-5">
 
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="px-1">
+        <h2 className="text-lg font-bold text-text-primary leading-tight">Shop Dashboard</h2>
+        <p className="text-xs text-text-secondary mt-1">Here's what's happening at {profile?.businessName || 'your store'} today.</p>
+      </div>
+
+      {/* The storefront's open/closed sign (the profile's own flag). The
+          Online switch in the top bar is separate: it hides the whole
+          business from customers. */}
+      {toggleStoreOpen && (
+        <button
+          type="button"
+          onClick={toggleStoreOpen}
+          disabled={togglingStore}
+          aria-pressed={storeOpen}
+          className="w-full bg-white rounded-[20px] border border-border-light shadow-sm p-4 flex items-center gap-3 text-left"
+        >
+          <span className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0', storeOpen ? 'bg-success/10 text-success' : 'bg-bg-secondary text-text-secondary')}>
+            {togglingStore ? <Loader2 size={20} className="animate-spin" /> : <Store size={20} />}
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-[15px] font-bold text-text-primary">{storeOpen ? 'Store is Open' : 'Store is Closed'}</span>
+            <span className="block text-xs text-text-secondary mt-0.5">Your storefront's open/closed sign</span>
+          </span>
+          <span className={cn('relative w-12 h-7 rounded-full transition-colors shrink-0', storeOpen ? 'bg-success' : 'bg-text-disabled')}>
+            <span className={cn('absolute top-0.5 w-6 h-6 rounded-full bg-white shadow transition-all', storeOpen ? 'left-[22px]' : 'left-0.5')} />
+          </span>
+        </button>
+      )}
+
+      {/* The header's "+ Quick Action" menu, as a row. */}
+      {isVerified && (
         <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Shop Dashboard</h2>
-          <p className="text-sm font-semibold text-slate-500 mt-1">Here's what's happening at {profile?.businessName || 'your store'} today.</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-        {stats.map((stat, idx) => (
-          <div
-            key={idx}
-            onClick={() => navigate(stat.path)}
-            className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm hover:shadow-md hover:border-slate-300 hover:-translate-y-0.5 transition-all group cursor-pointer"
-          >
-            <div className="flex justify-between items-start mb-4">
-              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110", stat.bg, stat.color)}>
-                <stat.icon size={20} />
-              </div>
-            </div>
-            <h3 className="text-2xl font-black text-slate-900 mb-1">{stat.value}</h3>
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{stat.label}</p>
-              <ChevronRight size={14} className="text-slate-300 group-hover:text-slate-500 transition" />
-            </div>
+          <SectionLabel>Quick Actions</SectionLabel>
+          <div className="flex justify-around bg-white p-4 rounded-[24px] shadow-sm border border-border-light">
+            <button onClick={() => navigate('/vendor/shop-provider/products', { state: { openAdd: true } })} className="flex flex-col items-center gap-2 min-w-[72px] cursor-pointer">
+              <span className="w-12 h-12 rounded-full bg-primary-light/30 text-primary-main flex items-center justify-center"><Plus size={22} /></span>
+              <span className="text-xs font-semibold text-text-primary">Add Product</span>
+            </button>
+            <button onClick={() => navigate('/vendor/shop-provider/inventory')} className="flex flex-col items-center gap-2 min-w-[72px] cursor-pointer">
+              <span className="w-12 h-12 rounded-full bg-accent-teal/15 text-[#4C8684] flex items-center justify-center"><Package size={20} /></span>
+              <span className="text-xs font-semibold text-text-primary">Update Stock</span>
+            </button>
+            <button onClick={() => navigate('/vendor/shop-provider/orders')} className="flex flex-col items-center gap-2 min-w-[72px] cursor-pointer">
+              <span className="w-12 h-12 rounded-full bg-success/10 text-success flex items-center justify-center"><ShoppingCart size={20} /></span>
+              <span className="text-xs font-semibold text-text-primary">View New Orders</span>
+            </button>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+      <StatGrid tiles={stats.map((stat) => ({ ...stat, onClick: () => navigate(stat.path) }))} />
 
-        <div className="lg:col-span-2 space-y-6">
-
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col h-[400px]">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center shrink-0 bg-slate-50/50">
-              <h3 className="text-base font-black text-slate-900">Recent Orders</h3>
-              <button
+      <div>
+        <SectionLabel
+          action={(
+            <button
+              onClick={() => navigate('/vendor/shop-provider/orders')}
+              className="min-h-[36px] text-xs font-bold text-primary-main flex items-center gap-0.5 cursor-pointer"
+            >
+              View All <ChevronRight size={14} />
+            </button>
+          )}
+        >
+          Recent Orders
+        </SectionLabel>
+        {recentOrders.length === 0 ? (
+          <div className="bg-white rounded-[20px] border border-border-light p-8 text-center text-text-secondary text-sm font-semibold">No orders yet</div>
+        ) : (
+          <div className="space-y-3">
+            {recentOrders.map((order, idx) => (
+              <ListCard
+                key={idx}
+                title={order.id}
+                subtitle={`${new Date(order.date).toLocaleDateString('en-IN')} · ${order.customer} · ${order.products} items`}
+                badge={<StatusBadge label={order.status} tone={ORDER_TONE[order.status] || 'info'} />}
+                amount={`₹${order.total.toLocaleString()}`}
                 onClick={() => navigate('/vendor/shop-provider/orders')}
-                className="text-xs font-bold text-[#F87B68] hover:text-orange-600 transition flex items-center gap-1 cursor-pointer"
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <SectionLabel
+          action={(
+            <button onClick={() => navigate('/vendor/shop-provider/inventory')} className="min-h-[36px] text-xs font-bold text-primary-main flex items-center gap-0.5 cursor-pointer">
+              Manage <ChevronRight size={14} />
+            </button>
+          )}
+        >
+          <span className="inline-flex items-center gap-1.5"><AlertTriangle size={14} className="text-error" /> Low Stock</span>
+        </SectionLabel>
+        {lowStockProducts.length === 0 ? (
+          <div className="bg-white rounded-[20px] border border-border-light flex flex-col items-center justify-center text-center p-6">
+            <div className="w-14 h-14 rounded-full bg-success/10 flex items-center justify-center mb-3">
+              <Package size={26} className="text-success" />
+            </div>
+            <p className="text-sm font-bold text-text-primary">Inventory is healthy!</p>
+            <p className="text-[11px] text-text-secondary mt-1">No low stock alerts at the moment.</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-[20px] border border-border-light shadow-sm overflow-hidden">
+            {lowStockProducts.map((product, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => navigate('/vendor/shop-provider/inventory')}
+                className={cn('w-full p-3 flex items-center gap-3 text-left active:bg-bg-primary', idx > 0 && 'border-t border-border-light')}
               >
-                View All <ChevronRight size={14} />
+                <div className="w-12 h-12 rounded-xl bg-bg-primary overflow-hidden shrink-0 border border-border-light">
+                  <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <p className="text-sm font-bold text-text-primary truncate">{product.name}</p>
+                  <p className="text-[10px] font-semibold text-text-secondary">{product.sku}</p>
+                </div>
+                <div className="text-center shrink-0 bg-bg-primary border border-border-light rounded-xl p-1.5 min-w-[44px]">
+                  <p className={cn("text-base font-black leading-none", product.stock === 0 ? 'text-error' : 'text-warning')}>{product.stock}</p>
+                  <p className="text-[8px] font-bold uppercase text-text-secondary mt-1">Left</p>
+                </div>
               </button>
-            </div>
-            <div className="flex-1 overflow-auto custom-scrollbar">
-              <table className="w-full text-left border-collapse">
-                <thead className="sticky top-0 bg-white shadow-sm z-10">
-                  <tr>
-                    <th className="py-3 px-5 text-[10px] font-black uppercase tracking-wider text-slate-500">Order ID & Date</th>
-                    <th className="py-3 px-5 text-[10px] font-black uppercase tracking-wider text-slate-500">Customer</th>
-                    <th className="py-3 px-5 text-[10px] font-black uppercase tracking-wider text-slate-500">Amount</th>
-                    <th className="py-3 px-5 text-[10px] font-black uppercase tracking-wider text-slate-500">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {recentOrders.map((order, idx) => (
-                    <tr
-                      key={idx}
-                      onClick={() => navigate('/vendor/shop-provider/orders')}
-                      className="hover:bg-slate-50/80 transition group cursor-pointer"
-                    >
-                      <td className="py-4 px-5">
-                        <p className="text-sm font-bold text-slate-900">{order.id}</p>
-                        <p className="text-[11px] font-medium text-slate-500">{new Date(order.date).toLocaleDateString('en-IN')}</p>
-                      </td>
-                      <td className="py-4 px-5">
-                        <p className="text-sm font-semibold text-slate-800">{order.customer}</p>
-                        <p className="text-[11px] text-slate-500">{order.products} items</p>
-                      </td>
-                      <td className="py-4 px-5 text-sm font-bold text-slate-900">₹{order.total.toLocaleString()}</td>
-                      <td className="py-4 px-5">
-                        <span className={cn("px-3 py-1 rounded-full text-[11px] font-bold tracking-wide",
-                          order.status === 'New' ? "bg-amber-100 text-amber-700" :
-                          order.status === 'Delivered' ? "bg-emerald-100 text-emerald-700" :
-                          order.status === 'Cancelled' ? "bg-red-100 text-red-700" :
-                          "bg-blue-100 text-blue-700"
-                        )}>
-                          {order.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {recentOrders.length === 0 && (
-                <div className="h-full flex items-center justify-center text-slate-400 text-sm font-semibold">No orders yet</div>
-              )}
-            </div>
+            ))}
           </div>
+        )}
+      </div>
 
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h3 className="text-base font-black text-slate-900">Activity Feed</h3>
+      <div>
+        <SectionLabel>Activity Feed</SectionLabel>
+        <div className="bg-white rounded-[20px] border border-border-light shadow-sm overflow-hidden">
+          {activityFeed.map((item, i) => (
+            <div key={i} className={cn('flex items-center gap-3 px-4 py-3', i > 0 && 'border-t border-border-light')}>
+              <div className={cn(
+                "w-9 h-9 rounded-xl flex items-center justify-center shrink-0",
+                item.type === 'order' ? 'bg-accent-teal/10 text-[#4C8684]' :
+                item.type === 'feedback' ? 'bg-warning/10 text-warning' :
+                'bg-primary-light/30 text-primary-main'
+              )}>
+                {item.type === 'order' ? <ShoppingCart size={15} /> : item.type === 'feedback' ? <Star size={15} /> : <RefreshCcw size={15} />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-text-primary truncate">{item.label}</p>
+                <p className="text-[11px] font-semibold text-text-secondary truncate">{item.sub}</p>
+              </div>
+              <StatusBadge size="xs" label={item.status} tone={FEED_TONE[item.status] || 'info'} />
             </div>
-            <div className="divide-y divide-slate-50">
-              {activityFeed.map((item, i) => (
-                <div key={i} className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50 transition">
-                  <div className={cn(
-                    "w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm",
-                    item.type === 'order' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
-                    item.type === 'feedback' ? 'bg-indigo-50 text-indigo-600 border border-indigo-100' :
-                    'bg-rose-50 text-rose-600 border border-rose-100'
-                  )}>
-                    {item.type === 'order' ? <ShoppingCart size={14} /> : item.type === 'feedback' ? <Star size={14} /> : <RefreshCcw size={14} />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-900 truncate">{item.label}</p>
-                    <p className="text-[11px] font-semibold text-slate-500 truncate">{item.sub}</p>
-                  </div>
-                  <div className="text-right">
-                    <span className={cn("text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded shrink-0",
-                      item.status === 'New' || item.status === 'Requested' ? 'bg-amber-100 text-amber-700' :
-                      item.status === 'Delivered' || item.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' :
-                      'bg-blue-100 text-blue-700'
-                    )}>
-                      {item.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
-              {activityFeed.length === 0 && (
-                <div className="p-8 text-center text-slate-400 text-sm font-semibold">No activity yet</div>
-              )}
-            </div>
-          </div>
-
-        </div>
-
-        <div className="space-y-6">
-
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col" style={{ maxHeight: '400px' }}>
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center shrink-0 bg-slate-50/50">
-              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                <AlertTriangle size={18} className="text-red-500" /> Low Stock
-              </h3>
-              <button onClick={() => navigate('/vendor/shop-provider/inventory')} className="text-xs font-bold text-[#F87B68] hover:text-orange-600 flex items-center gap-1 cursor-pointer transition bg-orange-50 px-2 py-1 rounded-md">
-                Manage <ChevronRight size={14} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto custom-scrollbar p-2">
-              {products.filter(p => p.stock <= p.alertLimit).map((product, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => navigate('/vendor/shop-provider/inventory')}
-                  className="p-3 mb-2 rounded-xl border border-slate-100 flex items-center gap-3 hover:border-red-200 hover:bg-red-50/50 transition cursor-pointer group"
-                >
-                  <div className="w-12 h-12 rounded-lg bg-slate-100 overflow-hidden shrink-0 border border-slate-200">
-                    <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
-                  </div>
-                  <div className="flex-1 overflow-hidden">
-                    <p className="text-sm font-bold text-slate-900 truncate">{product.name}</p>
-                    <p className="text-[10px] font-semibold text-slate-500">{product.sku}</p>
-                  </div>
-                  <div className="text-center shrink-0 bg-white shadow-sm border border-slate-100 rounded-lg p-1.5 min-w-[40px]">
-                    <p className={cn("text-base font-black leading-none", product.stock === 0 ? 'text-red-600' : 'text-amber-600')}>{product.stock}</p>
-                    <p className="text-[8px] font-bold uppercase text-slate-400 mt-1">Left</p>
-                  </div>
-                </div>
-              ))}
-              {products.filter(p => p.stock <= p.alertLimit).length === 0 && (
-                <div className="h-full flex flex-col items-center justify-center text-slate-400 p-6 text-center">
-                  <div className="w-16 h-16 rounded-full bg-emerald-50 flex items-center justify-center mb-3">
-                    <Package size={28} className="text-emerald-500" />
-                  </div>
-                  <p className="text-sm font-bold text-slate-700">Inventory is healthy!</p>
-                  <p className="text-[11px] mt-1">No low stock alerts at the moment.</p>
-                </div>
-              )}
-            </div>
-          </div>
-
+          ))}
+          {activityFeed.length === 0 && (
+            <div className="p-8 text-center text-text-secondary text-sm font-semibold">No activity yet</div>
+          )}
         </div>
       </div>
     </div>

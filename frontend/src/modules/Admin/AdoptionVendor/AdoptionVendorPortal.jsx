@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Loader2, AlertCircle, CheckCircle2, Plus, Trash2, Save, X,
-  LayoutDashboard, ClipboardList, PawPrint, Phone, Home,
-  HeartHandshake, IndianRupee, Eye, CalendarCheck,
+  CheckCircle2, Plus, Trash2, Save,
+  ClipboardList, PawPrint, Phone, Home,
+  HeartHandshake, IndianRupee, Eye, CalendarCheck, Pencil,
 } from 'lucide-react';
 import {
   fetchAdoptionSummary, fetchAdoptionListings, createAdoptionListing,
@@ -11,6 +11,11 @@ import {
   fetchAdoptionApplications, reviewAdoptionApplication, declineAdoptionApplication,
 } from '../../../services/vendor';
 import VerificationBanner from '../components/VerificationBanner';
+import {
+  StatGrid, StatusBadge, BottomSheet, PrimaryButton, ScreenHeader, SectionLabel,
+  Input as KitInput, Select as KitSelect, Textarea, Checkbox, FieldPair, EmptyState, SkeletonList,
+  ScreenError, InlineError, CardAction, useConfirm, useNavBadge,
+} from '../vendor/mobile';
 
 /**
  * Adoption partner portal — shelters, rescues and breeders.
@@ -20,13 +25,10 @@ import VerificationBanner from '../components/VerificationBanner';
  * approved their own adoption; whoever was rehoming the animal was never told
  * an application existed. The vetting steps live here now, and the adopter
  * keeps only what is genuinely theirs: applying, signing, and paying.
+ *
+ * In the partner app: Home, Applications (with the awaiting-review count on
+ * its tab) and Pets are bottom-nav tabs on the same `?view=` values.
  */
-
-const TABS = [
-  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { key: 'applications', label: 'Applications', icon: ClipboardList },
-  { key: 'listings', label: 'Pets', icon: PawPrint },
-];
 
 /** The pipeline as the shelter experiences it. */
 const STEP_LABEL = {
@@ -46,22 +48,23 @@ const STEP_ACTION = {
   meet_scheduled: 'Schedule meet & greet',
 };
 
-const STATUS_STYLE = {
-  submitted: 'bg-blue-50 text-blue-700 border-blue-200',
-  home_check_scheduled: 'bg-amber-50 text-amber-700 border-amber-200',
-  approved: 'bg-violet-50 text-violet-700 border-violet-200',
-  meet_scheduled: 'bg-amber-50 text-amber-700 border-amber-200',
-  agreement_signed: 'bg-teal-50 text-teal-700 border-teal-200',
-  completed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  rejected: 'bg-red-50 text-red-600 border-red-200',
-  cancelled: 'bg-gray-100 text-gray-500 border-gray-200',
+/** Pipeline stage → badge tone. */
+const STATUS_TONE = {
+  submitted: 'warning',
+  home_check_scheduled: 'info',
+  approved: 'primary',
+  meet_scheduled: 'info',
+  agreement_signed: 'info',
+  completed: 'success',
+  rejected: 'error',
+  cancelled: 'neutral',
 };
 
-const LISTING_STATUS_STYLE = {
-  Available: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  Pending: 'bg-violet-50 text-violet-700 border-violet-200',
-  Adopted: 'bg-gray-100 text-gray-600 border-gray-200',
-  Withdrawn: 'bg-gray-100 text-gray-400 border-gray-200',
+const LISTING_TONE = {
+  Available: 'success',
+  Pending: 'primary',
+  Adopted: 'neutral',
+  Withdrawn: 'neutral',
 };
 
 export function AdoptionVendorPortal() {
@@ -86,55 +89,22 @@ export function AdoptionVendorPortal() {
 
   useEffect(() => { load(); }, [load]);
 
+  // The count the Applications tab used to carry, now on the bottom nav.
+  useNavBadge('applications', summary?.awaitingYourReview || 0);
+
   const go = (v) => setSearchParams(v === 'dashboard' ? {} : { view: v });
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 size={28} className="animate-spin text-gray-400" />
-      </div>
-    );
+    return <SkeletonList rows={4} />;
   }
 
   if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3 text-center px-8">
-        <AlertCircle size={32} className="text-amber-500" />
-        <p className="font-bold text-gray-800">{error}</p>
-        <button onClick={load} className="px-5 h-10 rounded-xl bg-gray-900 text-white text-sm font-bold">Retry</button>
-      </div>
-    );
+    return <ScreenError message={error} onRetry={load} />;
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <VerificationBanner approvalStatus="approved" onOpenKyc={() => go('dashboard')} />
-
-      <div>
-        <h1 className="text-2xl font-black text-gray-900">Adoption Partner</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          List pets, review who applies for them, and decide who takes them home.
-        </p>
-      </div>
-
-      <div className="flex gap-2 flex-wrap border-b border-gray-200 pb-3">
-        {TABS.map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => go(key)}
-            className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition ${
-              view === key ? 'bg-gray-900 text-white' : 'bg-white text-gray-600 border border-gray-200'
-            }`}
-          >
-            <Icon size={15} /> {label}
-            {key === 'applications' && summary?.awaitingYourReview > 0 && (
-              <span className="ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#F87B68] text-white text-[10px] font-black flex items-center justify-center">
-                {summary.awaitingYourReview}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
 
       {view === 'dashboard' && <Dashboard summary={summary} onGo={go} />}
       {view === 'applications' && <Applications onChanged={load} />}
@@ -154,49 +124,49 @@ function Dashboard({ summary, onGo }) {
   ];
 
   return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map(({ label, value, icon: Icon, urgent }) => (
-          <button
-            key={label}
-            onClick={() => onGo(urgent ? 'applications' : 'listings')}
-            className={`text-left bg-white rounded-2xl border p-5 transition hover:border-gray-300 ${
-              urgent && value > 0 ? 'border-[#F87B68]/40' : 'border-gray-200'
-            }`}
-          >
-            <Icon size={18} className={urgent && value > 0 ? 'text-[#F87B68] mb-3' : 'text-gray-400 mb-3'} />
-            <p className="text-2xl font-black text-gray-900">{value ?? 0}</p>
-            <p className="text-xs text-gray-500 mt-0.5">{label}</p>
-          </button>
-        ))}
+    <div className="space-y-4">
+      <div className="bg-gradient-to-tr from-[#4C8684] to-[#80C1BF] text-white p-5 rounded-[28px] shadow-lg relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl translate-x-10 -translate-y-10" />
+        <p className="text-lg font-black leading-tight">Adoption Partner</p>
+        <p className="text-xs font-medium opacity-90 mt-1">
+          List pets, review who applies for them, and decide who takes them home.
+        </p>
+        <div className="mt-5 flex items-center gap-2 opacity-85">
+          <IndianRupee size={14} />
+          <span className="text-xs font-bold uppercase tracking-wide">Adoption fees collected</span>
+        </div>
+        <p className="text-[32px] font-black leading-none mt-1">
+          ₹{((summary.feesCollected || 0) / 100).toLocaleString('en-IN')}
+        </p>
+        <p className="text-[11px] opacity-85 mt-2">
+          Across {summary.completedAdoptions} completed adoption{summary.completedAdoptions === 1 ? '' : 's'}.
+        </p>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        <div className="bg-white rounded-2xl border border-gray-200 p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <IndianRupee size={16} className="text-emerald-600" />
-            <h2 className="font-bold text-gray-900">Adoption fees collected</h2>
+      <StatGrid
+        tiles={stats.map(({ label, value, icon, urgent }) => ({
+          label,
+          value,
+          icon,
+          tone: urgent && value > 0 ? 'primary' : 'neutral',
+          onClick: () => onGo(urgent ? 'applications' : 'listings'),
+        }))}
+      />
+
+      <div>
+        <SectionLabel>How adoption works here</SectionLabel>
+        <div className="bg-white rounded-[20px] border border-border-light shadow-sm p-4">
+          <div className="flex items-start gap-2">
+            <Eye size={16} className="text-text-secondary mt-0.5 shrink-0" />
+            <ol className="text-xs text-text-primary space-y-2 list-decimal list-inside leading-relaxed">
+              <li>You list a pet — it appears in the app straight away.</li>
+              <li>Adopters apply with a questionnaire; every one lands in your inbox.</li>
+              <li>You schedule a home check, then approve or decline.</li>
+              <li>Approving reserves the pet — no one else can be approved for it.</li>
+              <li>You schedule the meet &amp; greet.</li>
+              <li>The adopter signs the agreement and pays the fee. Everyone else is closed out automatically.</li>
+            </ol>
           </div>
-          <p className="text-3xl font-black text-gray-900">
-            ₹{((summary.feesCollected || 0) / 100).toLocaleString('en-IN')}
-          </p>
-          <p className="text-xs text-gray-500 mt-1">
-            Across {summary.completedAdoptions} completed adoption{summary.completedAdoptions === 1 ? '' : 's'}.
-          </p>
-        </div>
-        <div className="bg-white rounded-2xl border border-gray-200 p-5">
-          <div className="flex items-center gap-2 mb-2">
-            <Eye size={16} className="text-gray-400" />
-            <h2 className="font-bold text-gray-900">How adoption works here</h2>
-          </div>
-          <ol className="text-xs text-gray-600 space-y-1.5 mt-2 list-decimal list-inside leading-relaxed">
-            <li>You list a pet — it appears in the app straight away.</li>
-            <li>Adopters apply with a questionnaire; every one lands in your inbox.</li>
-            <li>You schedule a home check, then approve or decline.</li>
-            <li>Approving reserves the pet — no one else can be approved for it.</li>
-            <li>You schedule the meet &amp; greet.</li>
-            <li>The adopter signs the agreement and pays the fee. Everyone else is closed out automatically.</li>
-          </ol>
         </div>
       </div>
     </div>
@@ -258,153 +228,159 @@ function Applications({ onChanged }) {
     }
   };
 
-  if (loading) return <Loader2 size={22} className="animate-spin text-gray-400" />;
+  if (loading) return <SkeletonList rows={3} />;
+
+  const schedulingRow = scheduling ? rows.find((r) => r._id === scheduling.id) : null;
+  const decliningRow = declining ? rows.find((r) => r._id === declining) : null;
 
   return (
     <div className="space-y-3">
-      {err && <p className="text-sm text-red-600">{err}</p>}
+      <InlineError>{err}</InlineError>
       {!rows.length ? (
-        <Empty text="No applications yet. They appear here the moment someone applies for one of your pets." />
+        <EmptyState icon={ClipboardList} text="No applications yet. They appear here the moment someone applies for one of your pets." />
       ) : rows.map((a) => (
-        <div key={a._id} className="bg-white rounded-2xl border border-gray-200 p-4">
-          <div className="flex items-start justify-between gap-3 flex-wrap">
-            <div className="min-w-0">
-              <p className="font-bold text-gray-900">
-                {a.applicant}
-                <span className="font-medium text-gray-500"> — applying for {a.pet || 'a pet'}</span>
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {a.applicationNo} · {a.petBreed} · applied {new Date(a.submittedAt).toLocaleDateString('en-IN')}
-              </p>
-              {a.applicantPhone && (
-                <a href={`tel:${a.applicantPhone}`} className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-bold text-[#40716F]">
-                  <Phone size={13} /> {a.applicantPhone}
-                </a>
-              )}
-
-              {Object.keys(a.form || {}).length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {Object.entries(a.form).slice(0, 6).map(([k, v]) => (
-                    <span key={k} className="text-[11px] font-medium px-2 py-1 rounded-lg bg-gray-100 text-gray-700">
-                      <span className="text-gray-500">{k}:</span> {String(v)}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {a.homeCheck?.scheduledAt && (
-                <p className="mt-2 text-xs text-gray-600 flex items-center gap-1.5">
-                  <Home size={13} className="text-gray-400" /> Home check {a.homeCheck.scheduledAt}
-                  {a.homeCheck.notes ? ` — ${a.homeCheck.notes}` : ''}
+        <div key={a._id} className="bg-white rounded-[20px] border border-border-light shadow-sm overflow-hidden">
+          <div className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[15px] font-bold text-text-primary leading-snug">
+                  {a.applicant}
+                  <span className="font-medium text-text-secondary"> — applying for {a.pet || 'a pet'}</span>
                 </p>
-              )}
-              {a.meet?.scheduledAt && (
-                <p className="mt-1 text-xs text-gray-600 flex items-center gap-1.5">
-                  <CalendarCheck size={13} className="text-gray-400" /> Meet &amp; greet {a.meet.scheduledAt}
+                <p className="text-xs text-text-secondary mt-0.5">
+                  {a.applicationNo} · {a.petBreed} · applied {new Date(a.submittedAt).toLocaleDateString('en-IN')}
                 </p>
-              )}
-              {a.status === 'rejected' && a.decisionReason && (
-                <p className="mt-2 text-xs text-red-600">Declined — {a.decisionReason}</p>
-              )}
+              </div>
+              <div className="text-right shrink-0">
+                <StatusBadge label={STEP_LABEL[a.status] || a.status} tone={STATUS_TONE[a.status] || 'neutral'} />
+                {a.fee > 0 && <p className="text-[15px] font-black text-text-primary mt-1.5">₹{a.fee}</p>}
+              </div>
             </div>
 
-            <div className="text-right shrink-0">
-              <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded-full border ${STATUS_STYLE[a.status] || ''}`}>
-                {STEP_LABEL[a.status] || a.status}
-              </span>
-              {a.fee > 0 && <p className="font-black text-gray-900 mt-2">₹{a.fee}</p>}
-            </div>
+            {a.applicantPhone && (
+              <a href={`tel:${a.applicantPhone}`} className="mt-3 min-h-[40px] inline-flex items-center gap-1.5 px-3 rounded-xl bg-accent-teal/10 text-xs font-bold text-[#4C8684]">
+                <Phone size={14} /> {a.applicantPhone}
+              </a>
+            )}
+
+            {Object.keys(a.form || {}).length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {Object.entries(a.form).slice(0, 6).map(([k, v]) => (
+                  <span key={k} className="text-[11px] font-medium px-2 py-1 rounded-lg bg-bg-primary border border-border-light text-text-primary">
+                    <span className="text-text-secondary">{k}:</span> {String(v)}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {a.homeCheck?.scheduledAt && (
+              <p className="mt-3 text-xs text-text-primary flex items-center gap-1.5">
+                <Home size={14} className="text-text-secondary shrink-0" /> Home check {a.homeCheck.scheduledAt}
+                {a.homeCheck.notes ? ` — ${a.homeCheck.notes}` : ''}
+              </p>
+            )}
+            {a.meet?.scheduledAt && (
+              <p className="mt-1.5 text-xs text-text-primary flex items-center gap-1.5">
+                <CalendarCheck size={14} className="text-text-secondary shrink-0" /> Meet &amp; greet {a.meet.scheduledAt}
+              </p>
+            )}
+            {a.status === 'rejected' && a.decisionReason && (
+              <p className="mt-2 text-xs text-error">Declined — {a.decisionReason}</p>
+            )}
           </div>
 
           {/* Whose turn it is. The server refuses anything else, so the portal
               only ever offers the step it will actually accept. */}
           {(a.nextStep || a.canDecline) && (
-            <div className="flex gap-2 mt-3 pt-3 border-t border-gray-100 flex-wrap items-center">
-              {a.nextStep && (
-                <button
-                  onClick={() => (
-                    a.nextStep === 'approved'
-                      ? runStep(a._id, 'approved')
-                      : setScheduling({ id: a._id, step: a.nextStep })
-                  )}
-                  disabled={busy === a._id}
-                  className="px-3 py-1.5 rounded-lg bg-[#40716F] text-white text-xs font-bold disabled:opacity-50"
-                >
-                  {busy === a._id ? '…' : STEP_ACTION[a.nextStep]}
-                </button>
-              )}
+            <div className="px-4 pb-4 pt-3 border-t border-border-light space-y-2">
               {!a.nextStep && a.canDecline && (
-                <span className="text-xs text-gray-500 font-medium">
+                <p className="text-xs text-text-secondary font-medium">
                   Waiting on the adopter to {a.status === 'meet_scheduled' ? 'sign the agreement' : 'pay the fee'}.
-                </span>
+                </p>
               )}
-              {a.canDecline && (
-                <button
-                  onClick={() => { setDeclining(a._id); setNote(''); }}
-                  disabled={busy === a._id}
-                  className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-xs font-bold disabled:opacity-50"
-                >
-                  Decline
-                </button>
-              )}
-            </div>
-          )}
-
-          {scheduling?.id === a._id && (
-            <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-              <label className="block text-[11px] font-bold text-gray-500 uppercase">
-                {scheduling.step === 'home_check_scheduled' ? 'Home check date' : 'Meet & greet date'}
-              </label>
-              <div className="flex gap-2 flex-wrap">
-                <input
-                  type="date" value={when} onChange={(e) => setWhen(e.target.value)}
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                />
-                <input
-                  value={note} onChange={(e) => setNote(e.target.value)}
-                  placeholder="Note for the adopter (optional)"
-                  className="flex-1 min-w-[180px] border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                />
-                <button
-                  onClick={() => runStep(a._id, scheduling.step, { scheduledAt: when, notes: note })}
-                  disabled={!when || busy === a._id}
-                  className="px-4 rounded-lg bg-gray-900 text-white text-sm font-bold disabled:opacity-50"
-                >
-                  Confirm
-                </button>
-                <button onClick={() => setScheduling(null)} className="px-3 text-gray-400 hover:text-gray-700">
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {declining === a._id && (
-            <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
-              <label className="block text-[11px] font-bold text-gray-500 uppercase">
-                Why are you declining? The adopter is told.
-              </label>
-              <div className="flex gap-2 flex-wrap">
-                <input
-                  value={note} onChange={(e) => setNote(e.target.value)}
-                  placeholder="e.g. Home not suitable for a high-energy dog"
-                  className="flex-1 min-w-[220px] border border-gray-200 rounded-lg px-3 py-2 text-sm"
-                />
-                <button
-                  onClick={() => decline(a._id)}
-                  disabled={busy === a._id}
-                  className="px-4 rounded-lg bg-[#F87B68] text-white text-sm font-bold disabled:opacity-50"
-                >
-                  Decline
-                </button>
-                <button onClick={() => setDeclining(null)} className="px-3 text-gray-400 hover:text-gray-700">
-                  <X size={16} />
-                </button>
+              <div className="flex gap-2">
+                {a.nextStep && (
+                  <CardAction
+                    tone="teal"
+                    className="flex-1"
+                    onClick={() => (
+                      a.nextStep === 'approved'
+                        ? runStep(a._id, 'approved')
+                        : setScheduling({ id: a._id, step: a.nextStep })
+                    )}
+                    disabled={busy === a._id}
+                  >
+                    {busy === a._id ? '…' : STEP_ACTION[a.nextStep]}
+                  </CardAction>
+                )}
+                {a.canDecline && (
+                  <CardAction
+                    onClick={() => { setDeclining(a._id); setNote(''); }}
+                    disabled={busy === a._id}
+                    className={a.nextStep ? '' : 'flex-1'}
+                  >
+                    Decline
+                  </CardAction>
+                )}
               </div>
             </div>
           )}
         </div>
       ))}
+
+      <BottomSheet
+        open={!!scheduling}
+        onClose={() => setScheduling(null)}
+        title={scheduling?.step === 'home_check_scheduled' ? 'Schedule home check' : 'Schedule meet & greet'}
+        subtitle={schedulingRow ? `${schedulingRow.applicant} — ${schedulingRow.pet || 'a pet'}` : undefined}
+        footer={(
+          <PrimaryButton
+            tone="teal"
+            onClick={() => runStep(scheduling.id, scheduling.step, { scheduledAt: when, notes: note })}
+            disabled={!when || busy === scheduling?.id}
+            loading={busy === scheduling?.id}
+          >
+            Confirm
+          </PrimaryButton>
+        )}
+      >
+        <div className="space-y-4 pb-2">
+          <KitInput
+            label={scheduling?.step === 'home_check_scheduled' ? 'Home check date' : 'Meet & greet date'}
+            type="date"
+            value={when}
+            onChange={setWhen}
+          />
+          <KitInput
+            label="Note for the adopter (optional)"
+            value={note}
+            onChange={setNote}
+            placeholder="Note for the adopter (optional)"
+          />
+        </div>
+      </BottomSheet>
+
+      <BottomSheet
+        open={!!declining}
+        onClose={() => setDeclining(null)}
+        title="Decline application"
+        subtitle={decliningRow ? `${decliningRow.applicant} — ${decliningRow.pet || 'a pet'}` : undefined}
+        footer={(
+          <PrimaryButton tone="danger" onClick={() => decline(declining)} disabled={busy === declining} loading={busy === declining}>
+            Decline
+          </PrimaryButton>
+        )}
+      >
+        <div className="pb-2">
+          <Textarea
+            label="Why are you declining? The adopter is told."
+            rows={3}
+            value={note}
+            onChange={setNote}
+            placeholder="e.g. Home not suitable for a high-energy dog"
+          />
+        </div>
+      </BottomSheet>
     </div>
   );
 }
@@ -418,6 +394,7 @@ const blankPet = () => ({
 });
 
 function Listings({ onChanged }) {
+  const confirm = useConfirm();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(null);
@@ -465,7 +442,7 @@ function Listings({ onChanged }) {
   };
 
   const withdraw = async (row) => {
-    if (!window.confirm(`Take ${row.name} off the app?`)) return;
+    if (!(await confirm({ title: `Take ${row.name} off the app?`, confirmLabel: 'Withdraw', danger: true }))) return;
     setErr('');
     try {
       await withdrawAdoptionListing(row._id);
@@ -476,119 +453,111 @@ function Listings({ onChanged }) {
     }
   };
 
-  if (loading) return <Loader2 size={22} className="animate-spin text-gray-400" />;
+  if (loading) return <SkeletonList rows={3} withMedia />;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h2 className="font-bold text-gray-900">Pets you are rehoming</h2>
-          <p className="text-sm text-gray-500 mt-0.5">
-            A pet goes live the moment you add it. Approving an application reserves it automatically.
-          </p>
-        </div>
-        <button
-          onClick={() => setForm(blankPet())}
-          className="px-4 h-10 rounded-xl bg-[#40716F] text-white text-sm font-bold flex items-center gap-2 shrink-0"
-        >
-          <Plus size={15} /> Add a pet
-        </button>
-      </div>
+      <ScreenHeader
+        title="Pets you are rehoming"
+        subtitle="A pet goes live the moment you add it. Approving an application reserves it automatically."
+        action={(
+          <button
+            onClick={() => setForm(blankPet())}
+            className="h-11 px-4 rounded-full bg-primary-main text-white text-sm font-bold flex items-center gap-1.5 shadow-md shadow-primary-main/25"
+          >
+            <Plus size={16} /> Add a pet
+          </button>
+        )}
+      />
 
-      {err && <p className="text-sm text-red-600">{err}</p>}
+      {!form && <InlineError>{err}</InlineError>}
 
-      {form && (
-        <div className="bg-white rounded-2xl border-2 border-[#40716F] p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-gray-900">{form._id ? 'Edit' : 'New'} pet</h3>
-            <button onClick={() => setForm(null)} className="text-gray-400 hover:text-gray-700"><X size={16} /></button>
+      <BottomSheet
+        open={!!form}
+        onClose={() => setForm(null)}
+        fullScreen
+        title={`${form?._id ? 'Edit' : 'New'} pet`}
+        footer={(
+          <div className="flex gap-2">
+            <PrimaryButton tone="soft" onClick={() => setForm(null)}>Cancel</PrimaryButton>
+            <PrimaryButton
+              onClick={save}
+              disabled={busy || !form || !form.name.trim() || !form.breed.trim()}
+              loading={busy}
+              icon={Save}
+            >
+              Save
+            </PrimaryButton>
           </div>
-
-          <div className="grid md:grid-cols-2 gap-3">
-            <Input label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
-            <Input label="Breed" value={form.breed} onChange={(v) => setForm({ ...form, breed: v })} />
-            <Select
+        )}
+      >
+        {form && (
+          <div className="space-y-4 pb-4">
+            <InlineError>{err}</InlineError>
+            <KitInput label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
+            <KitInput label="Breed" value={form.breed} onChange={(v) => setForm({ ...form, breed: v })} />
+            <KitSelect
               label="Species" value={form.type} onChange={(v) => setForm({ ...form, type: v })}
               options={['Dog', 'Cat', 'Rabbit', 'Bird']}
             />
-            <Select
-              label="Age" value={form.age} onChange={(v) => setForm({ ...form, age: v })}
-              options={['Baby', 'Young', 'Adult', 'Senior']}
-            />
-            <Select
-              label="Gender" value={form.gender} onChange={(v) => setForm({ ...form, gender: v })}
-              options={['Male', 'Female']}
-            />
-            <Input
+            <FieldPair>
+              <KitSelect
+                label="Age" value={form.age} onChange={(v) => setForm({ ...form, age: v })}
+                options={['Baby', 'Young', 'Adult', 'Senior']}
+              />
+              <KitSelect
+                label="Gender" value={form.gender} onChange={(v) => setForm({ ...form, gender: v })}
+                options={['Male', 'Female']}
+              />
+            </FieldPair>
+            <KitInput
               label="Adoption fee (₹) — 0 for free"
-              type="number" value={form.price} onChange={(v) => setForm({ ...form, price: v })}
+              type="number" inputMode="decimal" value={form.price} onChange={(v) => setForm({ ...form, price: v })}
             />
-            <Input label="Location" value={form.location} onChange={(v) => setForm({ ...form, location: v })} />
-            <Input
+            <KitInput label="Location" value={form.location} onChange={(v) => setForm({ ...form, location: v })} />
+            <KitInput
               label="Photo URL"
               value={form.images?.[0] || ''}
               onChange={(v) => setForm({ ...form, images: v ? [v] : [] })}
             />
-            <div className="md:col-span-2">
-              <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">About this pet</label>
-              <textarea
-                rows={3} value={form.about} onChange={(e) => setForm({ ...form, about: e.target.value })}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-y"
-              />
+            <Textarea label="About this pet" rows={3} value={form.about} onChange={(v) => setForm({ ...form, about: v })} />
+            <div className="bg-bg-primary rounded-2xl border border-border-light px-3">
+              {[['vaccinated', 'Vaccinated'], ['dewormed', 'Dewormed'], ['neutered', 'Neutered']].map(([key, label]) => (
+                <Checkbox
+                  key={key}
+                  label={label}
+                  checked={Boolean(form[key])}
+                  onChange={(v) => setForm({ ...form, [key]: v })}
+                />
+              ))}
             </div>
           </div>
-
-          <div className="flex flex-wrap gap-4">
-            {[['vaccinated', 'Vaccinated'], ['dewormed', 'Dewormed'], ['neutered', 'Neutered']].map(([key, label]) => (
-              <label key={key} className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <input
-                  type="checkbox" checked={Boolean(form[key])}
-                  onChange={(e) => setForm({ ...form, [key]: e.target.checked })}
-                  className="rounded"
-                />
-                {label}
-              </label>
-            ))}
-          </div>
-
-          <div className="flex gap-2">
-            <button onClick={() => setForm(null)} className="px-4 h-10 rounded-xl bg-gray-100 text-gray-700 text-sm font-bold">Cancel</button>
-            <button
-              onClick={save}
-              disabled={busy || !form.name.trim() || !form.breed.trim()}
-              className="px-4 h-10 rounded-xl bg-gray-900 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-50"
-            >
-              {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save
-            </button>
-          </div>
-        </div>
-      )}
+        )}
+      </BottomSheet>
 
       {!rows.length ? (
-        <Empty text="No pets listed yet — add one so adopters can find them." />
+        <EmptyState icon={PawPrint} text="No pets listed yet — add one so adopters can find them." />
       ) : (
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="space-y-3">
           {rows.map((p) => (
-            <div key={p._id} className="bg-white rounded-2xl border border-gray-200 p-4">
-              <div className="flex items-start gap-3">
+            <div key={p._id} className="bg-white rounded-[20px] border border-border-light shadow-sm overflow-hidden">
+              <div className="p-4 flex items-start gap-3">
                 {p.images?.[0] ? (
-                  <img src={p.images[0]} alt="" className="w-16 h-16 rounded-xl object-cover shrink-0" />
+                  <img src={p.images[0]} alt="" className="w-20 h-20 rounded-2xl object-cover shrink-0" />
                 ) : (
-                  <div className="w-16 h-16 rounded-xl bg-gray-100 flex items-center justify-center shrink-0">
-                    <PawPrint size={20} className="text-gray-400" />
+                  <div className="w-20 h-20 rounded-2xl bg-bg-primary flex items-center justify-center shrink-0">
+                    <PawPrint size={24} className="text-text-disabled" />
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-bold text-gray-900">{p.name}</p>
-                    <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${LISTING_STATUS_STYLE[p.status] || ''}`}>
-                      {p.status}
-                    </span>
+                    <p className="text-[15px] font-bold text-text-primary">{p.name}</p>
+                    <StatusBadge label={p.status} tone={LISTING_TONE[p.status] || 'neutral'} />
                   </div>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                  <p className="text-xs text-text-secondary mt-0.5">
                     {p.breed} · {p.age} · {p.gender}
                   </p>
-                  <p className="text-xs text-gray-500 mt-0.5">
+                  <p className="text-xs font-bold text-text-primary mt-0.5">
                     {p.price > 0 ? `₹${p.price} adoption fee` : 'Free to a good home'}
                   </p>
                   <div className="flex flex-wrap gap-1.5 mt-2">
@@ -597,18 +566,18 @@ function Listings({ onChanged }) {
                     {p.neutered && <Tag>Neutered</Tag>}
                   </div>
                 </div>
-                <div className="flex flex-col items-end gap-2 shrink-0">
-                  <button onClick={() => setForm({ ...p })} className="text-xs font-bold text-[#40716F] hover:underline">Edit</button>
-                  {p.status !== 'Withdrawn' && p.status !== 'Adopted' && (
-                    <button onClick={() => withdraw(p)} className="text-gray-400 hover:text-red-500"><Trash2 size={14} /></button>
-                  )}
-                </div>
               </div>
               {p.status === 'Pending' && (
-                <p className="mt-3 pt-3 border-t border-gray-100 text-[11px] font-semibold text-violet-700 flex items-center gap-1.5">
-                  <CheckCircle2 size={13} /> Reserved for an approved applicant.
+                <p className="mx-4 mb-3 text-[11px] font-semibold text-primary-dark flex items-center gap-1.5">
+                  <CheckCircle2 size={14} /> Reserved for an approved applicant.
                 </p>
               )}
+              <div className="flex gap-2 px-4 pb-4 pt-3 border-t border-border-light">
+                <CardAction icon={Pencil} className="flex-1" onClick={() => setForm({ ...p })}>Edit</CardAction>
+                {p.status !== 'Withdrawn' && p.status !== 'Adopted' && (
+                  <CardAction icon={Trash2} tone="danger" onClick={() => withdraw(p)}>Withdraw</CardAction>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -620,41 +589,7 @@ function Listings({ onChanged }) {
 /* ── Primitives ───────────────────────────────────────────── */
 
 const Tag = ({ children }) => (
-  <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-[#EAF3F1] text-[#40716F]">{children}</span>
+  <span className="text-[11px] font-semibold px-2 py-1 rounded-lg bg-accent-teal/10 text-[#4C8684]">{children}</span>
 );
-
-function Input({ label, value, onChange, type = 'text', className = '' }) {
-  return (
-    <div className={className}>
-      <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">{label}</label>
-      <input
-        type={type} value={value ?? ''} onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-      />
-    </div>
-  );
-}
-
-function Select({ label, value, onChange, options }) {
-  return (
-    <div>
-      <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">{label}</label>
-      <select
-        value={value} onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-      >
-        {options.map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
-    </div>
-  );
-}
-
-function Empty({ text }) {
-  return (
-    <div className="text-center py-10 text-sm text-gray-400 bg-gray-50 rounded-xl border border-dashed border-gray-200">
-      {text}
-    </div>
-  );
-}
 
 export default AdoptionVendorPortal;

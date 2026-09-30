@@ -1,10 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Save, User, Plus, Check, ShieldAlert, Loader2, Send, Info } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Save, User, Plus, Check, ShieldAlert, Send, Info, Wallet, ChevronRight, MessageSquare, KeyRound } from 'lucide-react';
 import { fetchVendorLedger, fetchVendorPayouts, requestVendorPayout, changeVendorPassword, getVendorLines } from '../../../services/vendor';
 import { VENDOR_TYPE_LABEL } from '../../../constants/vendorTypes';
 import { fetchMyTickets, createSupportTicket, replySupportTicket } from '../../../services/support';
 import { DataTable } from '../components/DataTable';
 import { Modal } from '../components/Modal';
+import {
+  StatGrid, StatusBadge, StickyActionBar, PrimaryButton, SectionLabel, SearchBar, ListCard,
+  EmptyState, SkeletonList, InlineError, FilterChips, Toggle as KitToggle, Select, Input,
+  Textarea, fieldClass, textareaClass, useSubScreen,
+} from './mobile';
 
 const rupees = (paise) => Math.round((paise || 0) / 100);
 
@@ -65,55 +70,41 @@ export function VendorPayouts() {
     {
       key: 'status',
       label: 'State',
-      render: (row) => {
-        let style = "bg-gray-50 text-gray-600 border-gray-200";
-        if (row.status === 'paid') style = "bg-emerald-50 text-emerald-600 border-emerald-100";
-        if (row.status === 'pending') style = "bg-amber-50 text-amber-600 border-amber-100";
-        return (
-          <span className={`px-2 py-0.5 border rounded text-[10px] font-bold uppercase flex items-center gap-1 self-start max-w-max ${style}`}>
-            <Check size={10} /> {row.status}
-          </span>
-        );
-      }
+      render: (row) => (
+        <StatusBadge
+          status={row.status}
+          label={<span className="inline-flex items-center gap-1"><Check size={10} /> {row.status}</span>}
+        />
+      ),
     },
     { key: 'utr', label: 'UTR', render: (row) => row.utr || '—' },
   ];
 
-  if (loading) return <div className="flex items-center justify-center py-24"><Loader2 size={26} className="animate-spin text-gray-400" /></div>;
+  if (loading) return <SkeletonList rows={4} />;
 
   return (
-    <div className="space-y-6">
-      {error && <div className="bg-red-50 border border-red-100 text-red-700 text-sm font-semibold rounded-xl p-4">{error}</div>}
+    <div className="space-y-5">
+      <InlineError>{error}</InlineError>
 
-      {/* Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Settled</p>
-          <h3 className="text-2xl font-bold text-gray-800 mt-1">₹{rupees(grossPaid).toLocaleString('en-IN')}</h3>
-        </div>
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Pending Payout</p>
-          <h3 className="text-2xl font-bold text-gray-800 mt-1">₹{rupees(pendingNet).toLocaleString('en-IN')}</h3>
-          <p className="text-[11px] text-gray-400 mt-1">{unsettled.length} unsettled {unsettled.length === 1 ? 'entry' : 'entries'}</p>
-        </div>
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Platform Commission</p>
-          <h3 className="text-2xl font-bold text-purple-600 mt-1">{commissionPct}%</h3>
-        </div>
+      {/* Balance card — the Wallet screen's hero. */}
+      <div className="bg-gradient-to-tr from-[#4C8684] to-[#80C1BF] text-white p-5 rounded-[28px] shadow-lg relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl translate-x-10 -translate-y-10" />
+        <p className="text-xs font-bold uppercase tracking-wide opacity-85">Pending Payout</p>
+        <p className="text-[34px] font-black leading-none mt-1.5">₹{rupees(pendingNet).toLocaleString('en-IN')}</p>
+        <p className="text-[11px] opacity-85 mt-2">{unsettled.length} unsettled {unsettled.length === 1 ? 'entry' : 'entries'}</p>
       </div>
 
-      <button
-        onClick={handleRequestPayout}
-        disabled={requesting || unsettled.length === 0}
-        className="flex items-center gap-2 px-5 py-2.5 bg-gray-900 hover:bg-black disabled:bg-gray-200 disabled:text-gray-400 text-white text-sm font-bold rounded-xl transition cursor-pointer"
-      >
-        {requesting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-        {unsettled.length === 0 ? 'Nothing to settle' : 'Request Payout'}
-      </button>
+      <StatGrid
+        tiles={[
+          { label: 'Total Settled', value: `₹${rupees(grossPaid).toLocaleString('en-IN')}`, icon: Wallet, tone: 'teal' },
+          { label: 'Platform Commission', value: `${commissionPct}%`, icon: Info, tone: 'primary' },
+        ]}
+      />
 
-      <div className="space-y-3">
-        <h4 className="text-sm font-bold text-gray-800 uppercase tracking-wider">Payout History</h4>
+      <div>
+        <SectionLabel>Payout History</SectionLabel>
         <DataTable
+          forceMobile
           columns={payoutColumns}
           data={payouts}
           emptyMessage="No payouts requested yet."
@@ -121,32 +112,23 @@ export function VendorPayouts() {
       </div>
 
       <div className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h4 className="text-sm font-bold text-gray-800 uppercase tracking-wider">Ledger (Unsettled + Settled)</h4>
+        <SectionLabel className="mb-0">Ledger (Unsettled + Settled)</SectionLabel>
 
-          {/* Only shown to a vendor who runs more than one business — for
-              everyone else there is nothing to filter between. */}
-          {isMultiLine && (
-            <div className="flex flex-wrap gap-1.5">
-              {[{ vendorType: 'all' }, ...lines].map(({ vendorType }) => (
-                <button
-                  key={vendorType}
-                  type="button"
-                  onClick={() => setLineFilter(vendorType)}
-                  className={
-                    lineFilter === vendorType
-                      ? 'px-3 py-1.5 text-xs font-bold rounded-lg bg-gray-900 text-white cursor-pointer transition'
-                      : 'px-3 py-1.5 text-xs font-bold rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 cursor-pointer transition'
-                  }
-                >
-                  {vendorType === 'all' ? 'All businesses' : VENDOR_TYPE_LABEL[vendorType] || vendorType}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Only shown to a vendor who runs more than one business — for
+            everyone else there is nothing to filter between. */}
+        {isMultiLine && (
+          <FilterChips
+            value={lineFilter}
+            onChange={setLineFilter}
+            options={[{ vendorType: 'all' }, ...lines].map(({ vendorType }) => ({
+              value: vendorType,
+              label: vendorType === 'all' ? 'All businesses' : VENDOR_TYPE_LABEL[vendorType] || vendorType,
+            }))}
+          />
+        )}
 
         <DataTable
+          forceMobile
           columns={[
             { key: 'createdAt', label: 'Date', render: (row) => new Date(row.createdAt).toLocaleDateString('en-IN') },
             ...(isMultiLine
@@ -160,12 +142,24 @@ export function VendorPayouts() {
             { key: 'refType', label: 'Source' },
             { key: 'gross', label: 'Gross', render: (row) => `₹${rupees(row.gross).toLocaleString('en-IN')}` },
             { key: 'net', label: 'Net', render: (row) => `₹${rupees(row.net).toLocaleString('en-IN')}` },
-            { key: 'status', label: 'Status' },
+            { key: 'status', label: 'Status', render: (row) => <StatusBadge status={row.status} /> },
           ]}
           data={visibleLedger}
           emptyMessage="No ledger entries yet."
         />
       </div>
+
+      <StickyActionBar aboveNav>
+        <PrimaryButton
+          onClick={handleRequestPayout}
+          disabled={requesting || unsettled.length === 0}
+          loading={requesting}
+          icon={Send}
+          tone="dark"
+        >
+          {unsettled.length === 0 ? 'Nothing to settle' : 'Request Payout'}
+        </PrimaryButton>
+      </StickyActionBar>
     </div>
   );
 }
@@ -184,6 +178,7 @@ export function VendorSupport() {
   const [replyText, setReplyText] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
   const load = () => {
     setLoading(true);
@@ -194,6 +189,9 @@ export function VendorSupport() {
   };
 
   useEffect(() => { load(); }, []);
+
+  // An open ticket is its own screen: Back returns to the list.
+  useSubScreen(selectedTicket ? { title: selectedTicket.ticketNo, onBack: () => setSelectedTicket(null) } : null);
 
   const handleCreateTicket = async (e) => {
     e.preventDefault();
@@ -227,156 +225,146 @@ export function VendorSupport() {
     }
   };
 
-  const ticketColumns = [
-    { key: 'ticketNo', label: 'Ticket', render: (row) => <button onClick={() => setSelectedTicket(row)} className="font-bold text-purple-600 hover:underline">{row.ticketNo}</button> },
-    { key: 'subject', label: 'Subject', sortable: true },
-    { key: 'category', label: 'Category' },
-    { key: 'createdAt', label: 'Date Filed', sortable: true, render: (row) => new Date(row.createdAt).toLocaleDateString('en-IN') },
-    {
-      key: 'status',
-      label: 'Status',
-      render: (row) => (
-        <span className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase border ${
-          row.status === 'resolved' || row.status === 'closed' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'
-        }`}>
-          {row.status.replace('_', ' ')}
-        </span>
-      )
-    }
-  ];
+  // The list's search box: the same subject match the table's search did.
+  const visibleTickets = searchQuery.trim()
+    ? tickets.filter((t) => String(t.subject).toLowerCase().includes(searchQuery.toLowerCase()))
+    : tickets;
 
+  /* ── Thread ── */
+  if (selectedTicket) {
+    return (
+      <div className="space-y-3">
+        <InlineError>{error}</InlineError>
+        <div className="bg-white rounded-[20px] border border-border-light shadow-sm p-4">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-[15px] font-bold text-text-primary">{selectedTicket.subject}</p>
+            <StatusBadge status={selectedTicket.status} label={String(selectedTicket.status || '').replace('_', ' ')} />
+          </div>
+          <p className="text-xs text-text-secondary mt-1">
+            {selectedTicket.category} · {new Date(selectedTicket.createdAt).toLocaleDateString('en-IN')}
+          </p>
+        </div>
+
+        {/* The opening message and every reply, as a chat. */}
+        <div className="space-y-2.5 pt-1">
+          <div className="flex justify-end">
+            <div className="max-w-[85%] rounded-[20px] rounded-br-md bg-primary-main text-white px-4 py-3 text-sm leading-relaxed">
+              {selectedTicket.message}
+            </div>
+          </div>
+          {(selectedTicket.replies || []).map((r, i) => (
+            <div key={i} className={`flex ${r.by === 'support' ? 'justify-start' : 'justify-end'}`}>
+              <div className={`max-w-[85%] rounded-[20px] px-4 py-3 text-sm leading-relaxed ${
+                r.by === 'support'
+                  ? 'rounded-bl-md bg-white border border-border-light text-text-primary'
+                  : 'rounded-br-md bg-primary-main text-white'
+              }`}>
+                <span className="font-bold uppercase text-[10px] tracking-wider block mb-0.5 opacity-80">{r.by === 'support' ? 'Support' : 'You'}</span>
+                {r.message}
+              </div>
+            </div>
+          ))}
+          {!(selectedTicket.replies || []).length && <p className="text-xs text-text-secondary text-center py-2">No replies yet.</p>}
+        </div>
+
+        <StickyActionBar>
+          <textarea
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+            placeholder="Add a reply..."
+            rows={1}
+            className={`${textareaClass} flex-1 min-h-[48px] max-h-32 resize-none py-3`}
+          />
+          <button
+            type="button"
+            onClick={handleReplySubmit}
+            disabled={saving || !replyText}
+            aria-label="Send Reply"
+            className="w-12 h-12 rounded-full bg-primary-main text-white flex items-center justify-center shrink-0 disabled:opacity-50"
+          >
+            <Send size={18} />
+          </button>
+        </StickyActionBar>
+      </div>
+    );
+  }
+
+  /* ── List ── */
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 pb-2">
-        <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider">Support Tickets</h3>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <SectionLabel className="mb-0">Support Tickets</SectionLabel>
         <button
           onClick={() => setModalOpen(true)}
-          className="flex items-center gap-1.5 px-4 py-2 bg-purple-600 text-white text-xs font-bold rounded-lg hover:bg-purple-700 transition shadow-xs self-start sm:self-auto cursor-pointer"
+          className="h-11 px-4 rounded-full bg-primary-main text-white text-sm font-bold flex items-center gap-1.5 shadow-md shadow-primary-main/25"
         >
-          <Plus size={14} />
+          <Plus size={16} />
           <span>Open Ticket</span>
         </button>
       </div>
 
-      {error && <div className="bg-red-50 border border-red-100 text-red-700 text-sm font-semibold rounded-xl p-4">{error}</div>}
+      <InlineError>{error}</InlineError>
+
+      <SearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search tickets..." />
 
       {loading ? (
-        <div className="flex items-center justify-center py-16"><Loader2 size={26} className="animate-spin text-gray-400" /></div>
+        <SkeletonList rows={3} />
+      ) : !visibleTickets.length ? (
+        <EmptyState icon={MessageSquare} text="No support tickets yet." />
       ) : (
-        <DataTable
-          columns={ticketColumns}
-          data={tickets}
-          searchKey="subject"
-          searchPlaceholder="Search tickets..."
-          emptyMessage="No support tickets yet."
-        />
+        <div className="space-y-3">
+          {visibleTickets.map((row) => (
+            <ListCard
+              key={row._id || row.ticketNo}
+              title={row.subject}
+              subtitle={`${row.ticketNo} · ${row.category} · ${new Date(row.createdAt).toLocaleDateString('en-IN')}`}
+              badge={<StatusBadge status={row.status} label={row.status.replace('_', ' ')} />}
+              onClick={() => setSelectedTicket(row)}
+            />
+          ))}
+        </div>
       )}
 
-      {/* New Ticket Modal */}
+      {/* New Ticket sheet */}
       <Modal
+        forceSheet
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         title="Open Support Ticket"
         footer={(
-          <>
-            <button
-              onClick={() => setModalOpen(false)}
-              className="px-4 py-2 border border-gray-200 text-xs font-bold rounded-lg text-gray-500 hover:bg-gray-50 transition cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleCreateTicket}
-              disabled={saving}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white text-xs font-bold rounded-lg transition cursor-pointer"
-            >
-              Submit Ticket
-            </button>
-          </>
+          <div className="flex gap-2">
+            <PrimaryButton tone="soft" onClick={() => setModalOpen(false)}>Cancel</PrimaryButton>
+            <PrimaryButton onClick={handleCreateTicket} disabled={saving} loading={saving}>Submit Ticket</PrimaryButton>
+          </div>
         )}
       >
         <form onSubmit={handleCreateTicket} className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Category *</label>
-            <select
-              value={newTicket.category}
-              onChange={(e) => setNewTicket(prev => ({ ...prev, category: e.target.value }))}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 bg-white"
-            >
-              <option value="payment">Payouts & Settlements</option>
-              <option value="account">KYC / Compliance</option>
-              <option value="other">Technical Issue</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Subject *</label>
-            <input
-              required
-              value={newTicket.subject}
-              onChange={(e) => setNewTicket(prev => ({ ...prev, subject: e.target.value }))}
-              placeholder="Short summary"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 bg-white"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">Issue Description * (min 10 chars)</label>
-            <textarea
-              required
-              value={newTicket.message}
-              onChange={(e) => setNewTicket(prev => ({ ...prev, message: e.target.value }))}
-              placeholder="Describe the issue, including transaction or account details."
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 min-h-[90px] bg-white"
-            />
-          </div>
+          <Select
+            label="Category *"
+            value={newTicket.category}
+            onChange={(v) => setNewTicket(prev => ({ ...prev, category: v }))}
+            options={[
+              { value: 'payment', label: 'Payouts & Settlements' },
+              { value: 'account', label: 'KYC / Compliance' },
+              { value: 'other', label: 'Technical Issue' },
+            ]}
+          />
+          <Input
+            label="Subject *"
+            required
+            value={newTicket.subject}
+            onChange={(v) => setNewTicket(prev => ({ ...prev, subject: v }))}
+            placeholder="Short summary"
+          />
+          <Textarea
+            label="Issue Description * (min 10 chars)"
+            required
+            rows={4}
+            value={newTicket.message}
+            onChange={(v) => setNewTicket(prev => ({ ...prev, message: v }))}
+            placeholder="Describe the issue, including transaction or account details."
+          />
         </form>
-      </Modal>
-
-      {/* Ticket Detail / Reply Modal */}
-      <Modal
-        isOpen={!!selectedTicket}
-        onClose={() => setSelectedTicket(null)}
-        title={selectedTicket?.ticketNo}
-        footer={(
-          <>
-            <button
-              onClick={() => setSelectedTicket(null)}
-              className="px-4 py-2 border border-gray-200 text-xs font-bold rounded-lg text-gray-500 hover:bg-gray-50 transition cursor-pointer"
-            >
-              Close
-            </button>
-            <button
-              onClick={handleReplySubmit}
-              disabled={saving || !replyText}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white text-xs font-bold rounded-lg transition cursor-pointer"
-            >
-              Send Reply
-            </button>
-          </>
-        )}
-      >
-        {selectedTicket && (
-          <div className="space-y-4">
-            <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
-              <p className="text-xs font-bold text-gray-800">{selectedTicket.subject}</p>
-              <p className="text-xs text-gray-600 mt-1">{selectedTicket.message}</p>
-            </div>
-            <div className="space-y-2 max-h-52 overflow-y-auto">
-              {(selectedTicket.replies || []).map((r, i) => (
-                <div key={i} className={`p-2.5 rounded-lg text-xs ${r.by === 'support' ? 'bg-purple-50 text-purple-800' : 'bg-gray-100 text-gray-700'}`}>
-                  <span className="font-bold uppercase text-[10px] tracking-wider block mb-0.5">{r.by === 'support' ? 'Support' : 'You'}</span>
-                  {r.message}
-                </div>
-              ))}
-              {!(selectedTicket.replies || []).length && <p className="text-xs text-gray-400">No replies yet.</p>}
-            </div>
-            <textarea
-              value={replyText}
-              onChange={(e) => setReplyText(e.target.value)}
-              placeholder="Add a reply..."
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 min-h-[70px] bg-white"
-            />
-          </div>
-        )}
       </Modal>
     </div>
   );
@@ -398,6 +386,10 @@ export function VendorSettings() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [passwordDone, setPasswordDone] = useState(false);
+  // Which screen is showing: the grouped settings, or the password sub-screen.
+  const [passwordOpen, setPasswordOpen] = useState(false);
+
+  useSubScreen(passwordOpen ? { title: 'Security & Login', onBack: () => setPasswordOpen(false) } : null);
 
   const toggleSetting = (key) => {
     setSettings(prev => ({ ...prev, [key]: !prev[key] }));
@@ -427,117 +419,117 @@ export function VendorSettings() {
     }
   };
 
-  const Toggle = ({ label, description, checked, onChange }) => (
-    <div className="flex items-start justify-between py-4 border-b border-gray-100 last:border-0">
-      <div className="pr-8">
-        <h4 className="text-sm font-bold text-gray-900">{label}</h4>
-        <p className="text-xs text-gray-500 mt-1">{description}</p>
-      </div>
-      <button 
-        onClick={onChange}
-        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#F3AB9D]/20 focus:ring-offset-2 ${checked ? 'bg-[#F87B68]' : 'bg-gray-200'}`}
-      >
-        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${checked ? 'translate-x-6' : 'translate-x-1'}`} />
-      </button>
-    </div>
-  );
+  /* ── Password sub-screen ── */
+  if (passwordOpen) {
+    return (
+      <div className="space-y-4">
+        <div className="bg-white rounded-[20px] border border-border-light shadow-sm p-4 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-accent-teal/10 flex items-center justify-center text-[#4C8684]">
+              <ShieldAlert size={20} />
+            </div>
+            <h3 className="text-[15px] font-bold text-text-primary">Change password</h3>
+          </div>
 
-  return (
-    <div className="max-w-4xl mx-auto pb-12 animate-in fade-in duration-500">
-      
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h2 className="text-2xl font-black text-gray-900 tracking-tight">Account Settings</h2>
-          <p className="text-sm text-gray-500 font-medium mt-1">Manage your security, notifications, and privacy preferences.</p>
+          {passwordDone && (
+            <div className="p-3 bg-success/10 text-success border border-success/20 rounded-xl text-xs font-semibold flex items-center gap-2">
+              <Check size={14} /> Password updated.
+            </div>
+          )}
+          <InlineError>{passwordError}</InlineError>
+
+          <input
+            type="password"
+            placeholder="Current password"
+            autoComplete="current-password"
+            value={passwords.current}
+            onChange={(e) => setPasswords(p => ({ ...p, current: e.target.value }))}
+            className={fieldClass}
+          />
+          <input
+            type="password"
+            placeholder="New password (min 8 chars)"
+            autoComplete="new-password"
+            value={passwords.next}
+            onChange={(e) => setPasswords(p => ({ ...p, next: e.target.value }))}
+            className={fieldClass}
+          />
         </div>
-        <button
-          onClick={handleSave}
-          className="px-6 py-2.5 bg-gray-900 hover:bg-black text-white text-sm font-bold rounded-xl transition shadow-lg shadow-gray-900/20 cursor-pointer flex items-center gap-2"
-        >
-          <Save size={16} /> Save Draft
-        </button>
+
+        <StickyActionBar>
+          <PrimaryButton onClick={handleChangePassword} disabled={changingPassword} loading={changingPassword} icon={KeyRound}>
+            Change Password
+          </PrimaryButton>
+        </StickyActionBar>
+      </div>
+    );
+  }
+
+  /* ── Grouped settings ── */
+  return (
+    <div className="space-y-5">
+      <div className="px-1">
+        <h2 className="text-lg font-bold text-text-primary">Account Settings</h2>
+        <p className="text-xs text-text-secondary mt-0.5">Manage your security, notifications, and privacy preferences.</p>
       </div>
 
       {saved && (
-        <div className="mb-6 p-4 bg-emerald-50 text-emerald-800 border border-emerald-100 rounded-2xl text-sm font-semibold flex items-center gap-3 shadow-sm animate-in slide-in-from-top-2">
-          <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0"><Check size={16} className="text-emerald-600" /></div>
+        <div className="p-4 bg-success/10 text-text-primary border border-success/20 rounded-[20px] text-sm font-semibold flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-success/15 flex items-center justify-center shrink-0"><Check size={16} className="text-success" /></div>
           Saved to this screen only — see the notice below, these preferences aren't backed by the server yet.
         </div>
       )}
 
-      <div className="space-y-6">
-        {/* Security Section */}
-        <div className="bg-white rounded-3xl border border-gray-200 p-8 shadow-sm">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
-              <ShieldAlert size={20} />
-            </div>
-            <h3 className="text-base font-bold text-gray-900">Security & Login</h3>
-          </div>
-
-          {passwordDone && (
-            <div className="mb-4 p-3 bg-emerald-50 text-emerald-800 border border-emerald-100 rounded-xl text-xs font-semibold flex items-center gap-2">
-              <Check size={14} /> Password updated.
-            </div>
-          )}
-          {passwordError && (
-            <div className="mb-4 p-3 bg-red-50 text-red-700 border border-red-100 rounded-xl text-xs font-semibold">{passwordError}</div>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <input
-              type="password"
-              placeholder="Current password"
-              value={passwords.current}
-              onChange={(e) => setPasswords(p => ({ ...p, current: e.target.value }))}
-              className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#F3AB9D]/20 focus:border-[#F87B68] bg-white"
-            />
-            <input
-              type="password"
-              placeholder="New password (min 8 chars)"
-              value={passwords.next}
-              onChange={(e) => setPasswords(p => ({ ...p, next: e.target.value }))}
-              className="px-3 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#F3AB9D]/20 focus:border-[#F87B68] bg-white"
-            />
-          </div>
+      <div>
+        <SectionLabel>Security</SectionLabel>
+        <div className="bg-white rounded-[24px] border border-border-light overflow-hidden shadow-sm">
           <button
-            onClick={handleChangePassword}
-            disabled={changingPassword}
-            className="mt-3 px-4 py-2 bg-gray-900 hover:bg-black disabled:opacity-60 text-white text-xs font-bold rounded-lg transition cursor-pointer flex items-center gap-2"
+            type="button"
+            onClick={() => setPasswordOpen(true)}
+            className="w-full flex items-center p-4 min-h-[56px] active:bg-bg-primary"
           >
-            {changingPassword && <Loader2 size={12} className="animate-spin" />} Change Password
+            <ShieldAlert size={20} className="text-text-secondary mr-3" />
+            <span className="flex-1 text-left">
+              <span className="block text-sm font-semibold text-text-primary">Security & Login</span>
+              <span className="block text-xs text-text-secondary">Change your password</span>
+            </span>
+            <ChevronRight size={20} className="text-text-disabled" />
           </button>
         </div>
+      </div>
 
-        {/* Privacy Section */}
-        <div className="bg-white rounded-3xl border border-gray-200 p-8 shadow-sm">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl bg-purple-50 flex items-center justify-center text-purple-600">
-              <User size={20} />
+      <div>
+        <SectionLabel>Privacy & Data</SectionLabel>
+        <div className="bg-white rounded-[24px] border border-border-light overflow-hidden shadow-sm">
+          <div className="m-4 mb-1 p-3 bg-warning/10 border border-warning/25 rounded-xl text-xs text-text-primary flex gap-2">
+            <Info size={14} className="shrink-0 mt-0.5 text-warning" /> Not persisted yet — local draft only.
+          </div>
+          <div className="px-4 divide-y divide-border-light">
+            <div className="flex items-center gap-3 py-2">
+              <User size={20} className="text-text-secondary shrink-0" />
+              <KitToggle
+                label="Public Profile Visibility"
+                hint="Allow pet parents to find you in the Tail Circle global directory and book appointments."
+                checked={settings.publicProfile}
+                onChange={() => toggleSetting('publicProfile')}
+              />
             </div>
-            <h3 className="text-base font-bold text-gray-900">Privacy & Data</h3>
-          </div>
-
-          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex gap-2">
-            <Info size={14} className="shrink-0 mt-0.5" /> Not persisted yet — local draft only.
-          </div>
-
-          <div className="space-y-2">
-            <Toggle 
-              label="Public Profile Visibility" 
-              description="Allow pet parents to find you in the Tail Circle global directory and book appointments."
-              checked={settings.publicProfile}
-              onChange={() => toggleSetting('publicProfile')}
-            />
-            <Toggle 
-              label="Marketing & Promos" 
-              description="Receive occasional offers, partner discounts, and feature announcements."
-              checked={settings.marketingEmails}
-              onChange={() => toggleSetting('marketingEmails')}
-            />
+            <div className="flex items-center gap-3 py-2">
+              <MessageSquare size={20} className="text-text-secondary shrink-0" />
+              <KitToggle
+                label="Marketing & Promos"
+                hint="Receive occasional offers, partner discounts, and feature announcements."
+                checked={settings.marketingEmails}
+                onChange={() => toggleSetting('marketingEmails')}
+              />
+            </div>
           </div>
         </div>
       </div>
+
+      <StickyActionBar>
+        <PrimaryButton onClick={handleSave} icon={Save} tone="dark">Save Draft</PrimaryButton>
+      </StickyActionBar>
     </div>
   );
 }

@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ChevronLeft, ChevronRight, Calendar, Loader2, AlertCircle, CalendarOff,
+  ChevronLeft, ChevronRight, Loader2, AlertCircle, CalendarOff,
   CheckCircle2, Plane,
 } from 'lucide-react';
 import {
   fetchVetCalendar, fetchVetSlotPreview, addVetBlackout, removeVetBlackout,
 } from '../../../../services/vendor';
+import { BottomSheet, PrimaryButton, SkeletonList, InlineError, useVendorToast, fieldClass, labelClass } from '../../vendor/mobile';
+import { useVetSelection, VetSelector } from '../components/VetSelector';
 
 /**
  * Availability calendar — a read-and-mark view over the real schedule.
@@ -15,7 +17,11 @@ import {
  * out, and how many slots are genuinely free versus already booked.
  *
  * The weekly pattern itself is edited on the Clinic Schedule screen; this one
- * is for seeing the outcome and marking individual days off.
+ * is for seeing the outcome and marking individual days off. On a phone a
+ * tapped day opens its slots in a sheet.
+ *
+ * A clinic with several vets picks whose calendar this is, as on the schedule
+ * screen — without it the API refused the request ("doctorId is required").
  */
 
 const DAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -35,6 +41,7 @@ const STATE = {
 };
 
 export function AvailabilityCalendarView() {
+  const { vets, isOwner, doctorId, setDoctorId, ready, refreshVets } = useVetSelection();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -42,7 +49,7 @@ export function AvailabilityCalendarView() {
   const [calendar, setCalendar] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [toast, setToast] = useState('');
+  const { addToast } = useVendorToast();
 
   const [selected, setSelected] = useState(null);   // YYYY-MM-DD
   const [slots, setSlots] = useState(null);
@@ -52,21 +59,23 @@ export function AvailabilityCalendarView() {
   const [leave, setLeave] = useState({ from: '', to: '', reason: 'Personal leave' });
   const [showLeave, setShowLeave] = useState(false);
 
-  const pushToast = (m) => { setToast(m); setTimeout(() => setToast(''), 2500); };
+  const pushToast = (m) => { addToast({ message: m, duration: 2500 }); };
 
   const load = useCallback(async () => {
     try {
       // Capped server-side at the vet's booking horizon.
-      setCalendar(await fetchVetCalendar({ days: 90 }));
+      setCalendar(await fetchVetCalendar({ days: 90, doctorId }));
       setError('');
     } catch (e) {
       setError(e.message || 'Could not load your calendar');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [doctorId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (ready) load();
+  }, [ready, load]);
 
   const byDate = useMemo(() => new Map(calendar.map((d) => [d.date, d])), [calendar]);
 
@@ -79,7 +88,7 @@ export function AvailabilityCalendarView() {
     try {
       // includeFull so booked slots are visible, not silently hidden.
       const mode = info.modes?.includes('video') && !info.modes?.includes('inClinic') ? 'video' : 'clinic';
-      setSlots(await fetchVetSlotPreview({ date: key, visitType: mode }));
+      setSlots(await fetchVetSlotPreview({ date: key, visitType: mode, doctorId }));
     } catch (e) {
       setSlots({ slots: [], reason: e.message });
     } finally {
@@ -92,10 +101,10 @@ export function AvailabilityCalendarView() {
     setBusy(true);
     try {
       if (info?.blackedOut) {
-        await removeVetBlackout(key);
+        await removeVetBlackout(key, doctorId);
         pushToast('Day restored');
       } else {
-        await addVetBlackout({ date: key, reason: 'Day off' });
+        await addVetBlackout({ date: key, reason: 'Day off' }, doctorId);
         pushToast('Marked as a day off');
       }
       await load();
@@ -116,7 +125,7 @@ export function AvailabilityCalendarView() {
       for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
         const key = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
         // eslint-disable-next-line no-await-in-loop
-        await addVetBlackout({ date: key, reason: leave.reason || 'Leave' });
+        await addVetBlackout({ date: key, reason: leave.reason || 'Leave' }, doctorId);
       }
       await load();
       setShowLeave(false);
@@ -138,12 +147,8 @@ export function AvailabilityCalendarView() {
     return info.working ? 'working' : 'closed';
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 size={28} className="animate-spin text-gray-400" />
-      </div>
-    );
+  if (loading || !ready) {
+    return <SkeletonList rows={4} />;
   }
 
   const total = daysInMonth(year, month);
@@ -152,203 +157,190 @@ export function AvailabilityCalendarView() {
   const selectedInfo = selected ? byDate.get(selected) : null;
 
   return (
-    <div className="p-6 space-y-6">
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 bg-gray-900 text-white text-sm font-medium px-5 py-3 rounded-xl shadow-xl">
-          {toast}
-        </div>
-      )}
+    <div className="space-y-4">
+      <VetSelector vets={vets} isOwner={isOwner} doctorId={doctorId} onChange={(id) => { setSelected(null); setDoctorId(id); }} onVetAdded={refreshVets} />
 
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900">Availability Calendar</h1>
-          <p className="text-sm text-gray-500 mt-1">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 px-1">
+          <h1 className="text-lg font-bold text-text-primary">Availability Calendar</h1>
+          <p className="text-xs text-text-secondary mt-1">
             Your real bookable days. Edit the weekly pattern on{' '}
-            <span className="font-medium text-gray-700">Clinic Schedule</span>.
+            <span className="font-bold text-text-primary">Clinic Schedule</span>.
           </p>
         </div>
         <button
           onClick={() => setShowLeave(true)}
-          className="px-4 h-11 rounded-xl bg-gray-900 text-white font-bold text-sm flex items-center gap-2"
+          className="h-11 px-4 rounded-full bg-text-primary text-white font-bold text-sm flex items-center gap-1.5 shrink-0"
         >
           <Plane size={16} /> Apply leave
         </button>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm flex items-start gap-2">
-          <AlertCircle size={16} className="shrink-0 mt-0.5" /> {error}
-        </div>
+        <InlineError>
+          <span className="flex items-start gap-2"><AlertCircle size={16} className="shrink-0 mt-0.5" /> {error}</span>
+        </InlineError>
       )}
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* Month grid */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-200 p-5">
-          <div className="flex items-center justify-between mb-5">
-            <button onClick={prev} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">
-              <ChevronLeft size={18} />
-            </button>
-            <h2 className="font-bold text-gray-900">{MONTHS[month]} {year}</h2>
-            <button onClick={next} className="p-2 rounded-lg hover:bg-gray-100 text-gray-500">
-              <ChevronRight size={18} />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-7 gap-1.5 mb-2">
-            {DAYS_SHORT.map((d) => (
-              <div key={d} className="text-center text-[11px] font-bold text-gray-400 uppercase py-1">{d}</div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-7 gap-1.5">
-            {cells.map((d, i) => {
-              if (d === null) return <div key={`e${i}`} />;
-              const key = dateKey(year, month, d);
-              const st = STATE[stateOf(key)];
-              const isSel = selected === key;
-              const isToday = key === dateKey(today.getFullYear(), today.getMonth(), today.getDate());
-              return (
-                <button
-                  key={key}
-                  onClick={() => openDay(key)}
-                  className="aspect-square rounded-xl border flex flex-col items-center justify-center gap-1 transition"
-                  style={{
-                    background: st.bg,
-                    borderColor: isSel ? '#111827' : st.border,
-                    borderWidth: isSel ? 2 : 1,
-                  }}
-                >
-                  <span className="text-sm font-bold" style={{ color: st.text }}>{d}</span>
-                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: st.dot }} />
-                  {isToday && <span className="text-[8px] font-bold text-gray-400 leading-none">TODAY</span>}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="flex flex-wrap gap-3 mt-5 pt-4 border-t border-gray-100">
-            {Object.entries(STATE).map(([k, v]) => (
-              <span key={k} className="flex items-center gap-1.5 text-[11px] font-medium text-gray-500">
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: v.dot, border: `1px solid ${v.border}` }} />
-                {v.label}
-              </span>
-            ))}
-          </div>
+      {/* Month grid */}
+      <div className="bg-white rounded-[20px] border border-border-light shadow-sm p-3">
+        <div className="flex items-center justify-between mb-3">
+          <button onClick={prev} aria-label="Previous month" className="w-11 h-11 rounded-full flex items-center justify-center text-text-secondary active:bg-bg-secondary">
+            <ChevronLeft size={20} />
+          </button>
+          <h2 className="font-bold text-text-primary">{MONTHS[month]} {year}</h2>
+          <button onClick={next} aria-label="Next month" className="w-11 h-11 rounded-full flex items-center justify-center text-text-secondary active:bg-bg-secondary">
+            <ChevronRight size={20} />
+          </button>
         </div>
 
-        {/* Day detail */}
-        <div className="bg-white rounded-2xl border border-gray-200 p-5">
-          {!selected ? (
-            <div className="flex flex-col items-center justify-center h-full text-center gap-2 py-10">
-              <Calendar size={28} className="text-gray-300" />
-              <p className="text-sm text-gray-400">Pick a date to see its slots</p>
-            </div>
-          ) : (
-            <>
-              <h3 className="font-bold text-gray-900">{selected}</h3>
-              <p className="text-xs text-gray-500 mb-4">
-                {STATE[stateOf(selected)].label}
-                {selectedInfo?.reason ? ` — ${selectedInfo.reason}` : ''}
-              </p>
+        <div className="grid grid-cols-7 gap-1 mb-1">
+          {DAYS_SHORT.map((d) => (
+            <div key={d} className="text-center text-[10px] font-bold text-text-secondary uppercase py-1">{d}</div>
+          ))}
+        </div>
 
-              {selectedInfo ? (
-                <>
-                  {selectedInfo.modes?.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 mb-4">
-                      {selectedInfo.modes.map((m) => (
-                        <span key={m} className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-[10px] font-bold">
-                          {m}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+        <div className="grid grid-cols-7 gap-1">
+          {cells.map((d, i) => {
+            if (d === null) return <div key={`e${i}`} />;
+            const key = dateKey(year, month, d);
+            const st = STATE[stateOf(key)];
+            const isSel = selected === key;
+            const isToday = key === dateKey(today.getFullYear(), today.getMonth(), today.getDate());
+            return (
+              <button
+                key={key}
+                onClick={() => openDay(key)}
+                className="aspect-square min-w-0 rounded-xl border flex flex-col items-center justify-center gap-0.5 transition"
+                style={{
+                  background: st.bg,
+                  borderColor: isSel ? '#111827' : st.border,
+                  borderWidth: isSel ? 2 : 1,
+                }}
+              >
+                <span className="text-sm font-bold leading-none" style={{ color: st.text }}>{d}</span>
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: st.dot }} />
+                {isToday && <span className="text-[7px] font-bold text-text-secondary leading-none">TODAY</span>}
+              </button>
+            );
+          })}
+        </div>
 
-                  {slotsLoading ? (
-                    <Loader2 size={18} className="animate-spin text-gray-400" />
-                  ) : slots?.slots?.length ? (
-                    <div className="space-y-1.5 mb-5 max-h-64 overflow-y-auto">
-                      {slots.slots.map((s) => (
-                        <div
-                          key={s.time}
-                          className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm border ${
-                            s.available
-                              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                              : 'bg-gray-100 border-gray-200 text-gray-400'
-                          }`}
-                        >
-                          <span className="font-bold">{s.time}</span>
-                          <span className="text-[11px] font-medium">
-                            {s.available ? 'Free' : 'Booked'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-400 mb-5">
-                      No slots
-                      {slots?.reason ? ` — ${String(slots.reason).replace(/_/g, ' ')}` : ''}.
-                    </p>
-                  )}
-
-                  <button
-                    onClick={() => toggleDayOff(selected)}
-                    disabled={busy}
-                    className={`w-full h-11 rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60 ${
-                      selectedInfo.blackedOut
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-gray-100 text-gray-700'
-                    }`}
-                  >
-                    {busy ? <Loader2 size={15} className="animate-spin" />
-                      : selectedInfo.blackedOut ? <CheckCircle2 size={15} /> : <CalendarOff size={15} />}
-                    {selectedInfo.blackedOut ? 'Restore this day' : 'Mark as day off'}
-                  </button>
-                </>
-              ) : (
-                <p className="text-sm text-gray-400">
-                  This date is outside your booking window.
-                </p>
-              )}
-            </>
-          )}
+        <div className="grid grid-cols-2 gap-x-3 gap-y-2 mt-4 pt-3 border-t border-border-light">
+          {Object.entries(STATE).map(([k, v]) => (
+            <span key={k} className="flex items-center gap-1.5 text-[11px] font-medium text-text-secondary">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: v.dot, border: `1px solid ${v.border}` }} />
+              {v.label}
+            </span>
+          ))}
         </div>
       </div>
 
-      {/* Leave modal */}
-      {showLeave && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowLeave(false)}>
-          <div className="bg-white rounded-2xl p-5 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-bold text-gray-900 mb-1">Apply leave</h3>
-            <p className="text-xs text-gray-500 mb-4">Every date in the range is removed from booking.</p>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">From</label>
-                <input type="date" value={leave.from} onChange={(e) => setLeave((p) => ({ ...p, from: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">To</label>
-                <input type="date" value={leave.to} onChange={(e) => setLeave((p) => ({ ...p, to: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-              </div>
-              <div>
-                <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Reason</label>
-                <input type="text" value={leave.reason} onChange={(e) => setLeave((p) => ({ ...p, reason: e.target.value }))}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-              </div>
+      <p className="text-xs text-text-secondary text-center">Pick a date to see its slots</p>
+
+      {/* Day detail */}
+      <BottomSheet
+        open={!!selected}
+        onClose={() => setSelected(null)}
+        title={selected}
+        subtitle={selected ? `${STATE[stateOf(selected)].label}${selectedInfo?.reason ? ` — ${selectedInfo.reason}` : ''}` : undefined}
+        footer={selectedInfo ? (
+          <button
+            onClick={() => toggleDayOff(selected)}
+            disabled={busy}
+            className={`w-full h-12 rounded-2xl font-bold text-[15px] flex items-center justify-center gap-2 disabled:opacity-60 ${
+              selectedInfo.blackedOut
+                ? 'bg-success text-white'
+                : 'bg-bg-secondary text-text-primary'
+            }`}
+          >
+            {busy ? <Loader2 size={16} className="animate-spin" />
+              : selectedInfo.blackedOut ? <CheckCircle2 size={16} /> : <CalendarOff size={16} />}
+            {selectedInfo.blackedOut ? 'Restore this day' : 'Mark as day off'}
+          </button>
+        ) : null}
+      >
+        {selected && (
+          selectedInfo ? (
+            <div className="pb-2">
+              {selectedInfo.modes?.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  {selectedInfo.modes.map((m) => (
+                    <span key={m} className="px-2.5 py-1 rounded-full bg-bg-secondary text-text-secondary text-[11px] font-bold">
+                      {m}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {slotsLoading ? (
+                <Loader2 size={20} className="animate-spin text-text-secondary" />
+              ) : slots?.slots?.length ? (
+                <div className="grid grid-cols-2 gap-2">
+                  {slots.slots.map((s) => (
+                    <div
+                      key={s.time}
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-sm border ${
+                        s.available
+                          ? 'bg-success/10 border-success/20 text-text-primary'
+                          : 'bg-bg-secondary border-border-light text-text-disabled'
+                      }`}
+                    >
+                      <span className="font-bold">{s.time}</span>
+                      <span className="text-[11px] font-medium">
+                        {s.available ? 'Free' : 'Booked'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-text-secondary">
+                  No slots
+                  {slots?.reason ? ` — ${String(slots.reason).replace(/_/g, ' ')}` : ''}.
+                </p>
+              )}
             </div>
-            <div className="flex gap-2 mt-5">
-              <button onClick={() => setShowLeave(false)} className="flex-1 h-11 rounded-xl bg-gray-100 text-gray-700 font-bold text-sm">
-                Cancel
-              </button>
-              <button onClick={applyLeave} disabled={busy || !leave.from || !leave.to}
-                className="flex-1 h-11 rounded-xl bg-gray-900 text-white font-bold text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-                {busy && <Loader2 size={14} className="animate-spin" />} Apply
-              </button>
-            </div>
+          ) : (
+            <p className="text-sm text-text-secondary pb-2">
+              This date is outside your booking window.
+            </p>
+          )
+        )}
+      </BottomSheet>
+
+      {/* Leave sheet */}
+      <BottomSheet
+        open={showLeave}
+        onClose={() => setShowLeave(false)}
+        title="Apply leave"
+        subtitle="Every date in the range is removed from booking."
+        footer={(
+          <div className="flex gap-2">
+            <PrimaryButton tone="soft" onClick={() => setShowLeave(false)}>Cancel</PrimaryButton>
+            <PrimaryButton tone="dark" onClick={applyLeave} disabled={busy || !leave.from || !leave.to} loading={busy}>
+              Apply
+            </PrimaryButton>
+          </div>
+        )}
+      >
+        <div className="space-y-4 pb-2">
+          <div>
+            <label className={labelClass}>From</label>
+            <input type="date" value={leave.from} onChange={(e) => setLeave((p) => ({ ...p, from: e.target.value }))}
+              className={fieldClass} />
+          </div>
+          <div>
+            <label className={labelClass}>To</label>
+            <input type="date" value={leave.to} onChange={(e) => setLeave((p) => ({ ...p, to: e.target.value }))}
+              className={fieldClass} />
+          </div>
+          <div>
+            <label className={labelClass}>Reason</label>
+            <input type="text" value={leave.reason} onChange={(e) => setLeave((p) => ({ ...p, reason: e.target.value }))}
+              className={fieldClass} />
           </div>
         </div>
-      )}
+      </BottomSheet>
     </div>
   );
 }

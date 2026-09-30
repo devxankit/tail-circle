@@ -7,6 +7,7 @@ import {
   fetchVetProfile, updateVetProfile, addVetDocument, removeVetDocument, uploadVendorFile,
 } from '../../../../services/vendor';
 import { useVetSelection, VetSelector } from '../components/VetSelector';
+import { StickyActionBar, PrimaryButton, SkeletonList, InlineError, fieldClass, textareaClass, labelClass } from '../../vendor/mobile';
 
 /**
  * Vet profile, fees and consultation settings.
@@ -17,6 +18,8 @@ import { useVetSelection, VetSelector } from '../components/VetSelector';
  *
  * Verification status is read-only: an admin reviews the credentials, and the
  * vet is not listed publicly until they do.
+ *
+ * On a phone the sections stack as cards and Save sits in the bottom bar.
  */
 
 const MODES = [
@@ -138,19 +141,15 @@ export function VetProfileView() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 size={28} className="animate-spin text-gray-400" />
-      </div>
-    );
+    return <SkeletonList rows={5} />;
   }
 
   if (!profile) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3 text-center px-8">
-        <AlertCircle size={32} className="text-amber-500" />
-        <p className="font-bold text-gray-800">Could not load your profile</p>
-        <p className="text-sm text-gray-500">{error}</p>
+        <AlertCircle size={32} className="text-warning" />
+        <p className="font-bold text-text-primary">Could not load your profile</p>
+        <p className="text-sm text-text-secondary">{error}</p>
       </div>
     );
   }
@@ -159,66 +158,49 @@ export function VetProfileView() {
   const approved = verification.status === 'approved';
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-4">
       <VetSelector vets={vets} isOwner={isOwner} doctorId={doctorId} onChange={setDoctorId} onVetAdded={refreshVets} />
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900">Profile &amp; Fees</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            What pet parents see, and what you charge for each consultation type.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {saved && (
-            <span className="text-emerald-600 text-sm font-bold flex items-center gap-1.5">
-              <CheckCircle2 size={16} /> Saved
-            </span>
-          )}
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-5 h-11 rounded-xl bg-[#F87B68] text-white font-bold text-sm flex items-center gap-2 disabled:opacity-60"
-          >
-            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-            {saving ? 'Saving…' : 'Save profile'}
-          </button>
-        </div>
+      <div className="px-1">
+        <h1 className="text-lg font-bold text-text-primary">Profile &amp; Fees</h1>
+        <p className="text-xs text-text-secondary mt-1">
+          What pet parents see, and what you charge for each consultation type.
+        </p>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm flex items-start gap-2">
-          <AlertCircle size={16} className="shrink-0 mt-0.5" /> {error}
-        </div>
+        <InlineError>
+          <span className="flex items-start gap-2"><AlertCircle size={16} className="shrink-0 mt-0.5" /> {error}</span>
+        </InlineError>
       )}
 
       {/* Verification banner */}
-      <div className={`rounded-2xl border p-4 flex items-start gap-3 ${
-        approved ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'
+      <div className={`rounded-[20px] border p-4 flex items-start gap-3 ${
+        approved ? 'bg-success/10 border-success/20' : 'bg-warning/10 border-warning/25'
       }`}>
         {approved
-          ? <ShieldCheck size={20} className="text-emerald-600 shrink-0 mt-0.5" />
-          : <ShieldAlert size={20} className="text-amber-600 shrink-0 mt-0.5" />}
-        <div>
-          <p className={`font-bold text-sm ${approved ? 'text-emerald-800' : 'text-amber-800'}`}>
+          ? <ShieldCheck size={20} className="text-success shrink-0 mt-0.5" />
+          : <ShieldAlert size={20} className="text-warning shrink-0 mt-0.5" />}
+        <div className="min-w-0">
+          <p className="font-bold text-sm text-text-primary">
             {approved ? 'Verified — your profile is live' : `Verification ${verification.status || 'pending'}`}
           </p>
-          <p className="text-xs text-gray-600 mt-0.5">
+          <p className="text-xs text-text-secondary mt-0.5">
             {approved
               ? 'Pet parents can find and book you.'
               : 'You will not appear in the app until an admin reviews your credentials.'}
           </p>
           {verification.rejectionReason && (
-            <p className="text-xs text-red-600 mt-1 font-medium">{verification.rejectionReason}</p>
+            <p className="text-xs text-error mt-1 font-medium">{verification.rejectionReason}</p>
           )}
         </div>
       </div>
 
       {/* Identity */}
       <Card title="Public identity">
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           <Field label="Title" value={profile.identity?.title} onChange={(v) => set('identity.title', v)} placeholder="Dr." />
-          <Field label="Full name (as shown publicly)" value={profile.identity?.fullName} onChange={(v) => set('identity.fullName', v)} className="md:col-span-2" />
-          <Field label="Profile photo URL" value={profile.identity?.profilePhoto} onChange={(v) => set('identity.profilePhoto', v)} className="md:col-span-3" />
+          <Field label="Full name (as shown publicly)" value={profile.identity?.fullName} onChange={(v) => set('identity.fullName', v)} />
+          <Field label="Profile photo URL" value={profile.identity?.profilePhoto} onChange={(v) => set('identity.profilePhoto', v)} />
         </div>
       </Card>
 
@@ -227,37 +209,39 @@ export function VetProfileView() {
         title="Registration & credentials"
         subtitle="Changing your registration number or council re-opens verification."
       >
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           <Field label="Registration / licence number" value={profile.credentials?.registrationNumber} onChange={(v) => set('credentials.registrationNumber', v)} />
-          <Field label="Issuing veterinary council" value={profile.credentials?.council} onChange={(v) => set('credentials.council', v)} className="md:col-span-2" />
+          <Field label="Issuing veterinary council" value={profile.credentials?.council} onChange={(v) => set('credentials.council', v)} />
         </div>
 
         <div className="mt-5">
-          <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Verification documents</h3>
+          <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wide mb-2">Verification documents</h3>
           {profile.credentials?.documents?.length ? (
             <div className="space-y-2 mb-3">
               {profile.credentials.documents.map((d, i) => (
-                <div key={i} className="flex items-center gap-3 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                  <FileText size={15} className="text-gray-400 shrink-0" />
-                  <span className="text-sm font-medium text-gray-800">
-                    {DOC_KINDS.find((k) => k.value === d.kind)?.label || d.kind}
-                  </span>
-                  {d.verified && <CheckCircle2 size={14} className="text-emerald-500" />}
-                  <a href={d.url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 truncate ml-auto max-w-[220px]">
-                    {d.url}
-                  </a>
-                  <button onClick={() => handleRemoveDoc(i)} className="text-gray-400 hover:text-red-500 shrink-0">
-                    <Trash2 size={14} />
+                <div key={i} className="flex items-center gap-3 bg-bg-primary border border-border-light rounded-2xl pl-3 pr-1 py-1.5">
+                  <FileText size={16} className="text-text-secondary shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5 text-sm font-medium text-text-primary">
+                      {DOC_KINDS.find((k) => k.value === d.kind)?.label || d.kind}
+                      {d.verified && <CheckCircle2 size={14} className="text-success shrink-0" />}
+                    </span>
+                    <a href={d.url} target="_blank" rel="noreferrer" className="block text-xs text-[#4C8684] truncate">
+                      {d.url}
+                    </a>
+                  </div>
+                  <button onClick={() => handleRemoveDoc(i)} aria-label="Remove document" className="w-10 h-10 flex items-center justify-center text-text-secondary shrink-0">
+                    <Trash2 size={15} />
                   </button>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-gray-400 mb-3">No documents uploaded yet.</p>
+            <p className="text-sm text-text-secondary mb-3">No documents uploaded yet.</p>
           )}
 
-          <div className="flex gap-2 flex-wrap items-center">
-            <select value={docKind} onChange={(e) => setDocKind(e.target.value)} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+          <div className="space-y-2">
+            <select value={docKind} onChange={(e) => setDocKind(e.target.value)} className={fieldClass} aria-label="Document type">
               {DOC_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
             </select>
             <input
@@ -270,9 +254,9 @@ export function VetProfileView() {
             <button
               onClick={() => document.getElementById('vetDocUpload').click()}
               disabled={uploadingDoc}
-              className="px-4 py-2 rounded-lg bg-gray-900 text-white text-sm font-bold flex items-center gap-2 disabled:opacity-40"
+              className="w-full h-12 rounded-xl bg-text-primary text-white text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-40"
             >
-              {uploadingDoc ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              {uploadingDoc ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
               {uploadingDoc ? 'Uploading…' : 'Upload Document'}
             </button>
           </div>
@@ -288,38 +272,42 @@ export function VetProfileView() {
           {MODES.map(({ key, label, icon: Icon, note }) => {
             const cfg = profile.modes?.[key] || {};
             return (
-              <div key={key} className={`rounded-xl border p-4 transition ${cfg.enabled ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50'}`}>
-                <div className="flex items-center gap-3 mb-3">
+              <div key={key} className={`rounded-2xl border p-3 transition ${cfg.enabled ? 'border-border-light bg-white' : 'border-border-light bg-bg-primary'}`}>
+                <div className="flex items-center gap-3">
                   <button
                     onClick={() => set(`modes.${key}.enabled`, !cfg.enabled)}
-                    className={`w-11 h-6 rounded-full transition relative shrink-0 ${cfg.enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                    className="h-11 flex items-center shrink-0"
+                    role="switch"
+                    aria-checked={!!cfg.enabled}
                     aria-label={`Toggle ${label}`}
                   >
-                    <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${cfg.enabled ? 'left-[22px]' : 'left-0.5'}`} />
+                    <span className={`w-11 h-6 rounded-full transition relative ${cfg.enabled ? 'bg-success' : 'bg-text-disabled'}`}>
+                      <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${cfg.enabled ? 'left-[22px]' : 'left-0.5'}`} />
+                    </span>
                   </button>
-                  <Icon size={18} className={cfg.enabled ? 'text-gray-700' : 'text-gray-400'} />
-                  <div>
-                    <p className={`font-bold text-sm ${cfg.enabled ? 'text-gray-900' : 'text-gray-400'}`}>{label}</p>
-                    <p className="text-[11px] text-gray-400">{note}</p>
+                  <Icon size={18} className={`shrink-0 ${cfg.enabled ? 'text-text-primary' : 'text-text-disabled'}`} />
+                  <div className="min-w-0">
+                    <p className={`font-bold text-sm ${cfg.enabled ? 'text-text-primary' : 'text-text-secondary'}`}>{label}</p>
+                    <p className="text-[11px] text-text-secondary">{note}</p>
                   </div>
                 </div>
 
                 {cfg.enabled && (
-                  <div className="grid grid-cols-3 gap-3 md:pl-14">
+                  <div className="grid grid-cols-3 gap-2 mt-3">
                     <MoneyField label="Fee" value={cfg.fee} onChange={(v) => set(`modes.${key}.fee`, v)} />
                     <MoneyField
                       label="Follow-up fee" value={cfg.followUpFee ?? ''} placeholder="same"
                       onChange={(v) => set(`modes.${key}.followUpFee`, v === '' ? null : v)}
                     />
-                    <div>
-                      <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Duration</label>
+                    <div className="min-w-0">
+                      <label className={smallLabel}>Duration</label>
                       <div className="flex items-center gap-1.5">
                         <input
-                          type="number" min={5} max={180} value={cfg.durationMinutes ?? 15}
+                          type="number" inputMode="numeric" min={5} max={180} value={cfg.durationMinutes ?? 15}
                           onChange={(e) => set(`modes.${key}.durationMinutes`, Number(e.target.value) || 15)}
-                          className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm"
+                          className={`${smallField} min-w-0`}
                         />
-                        <span className="text-xs text-gray-400">min</span>
+                        <span className="text-xs text-text-secondary">min</span>
                       </div>
                     </div>
                   </div>
@@ -336,34 +324,34 @@ export function VetProfileView() {
           title="Video consultation overtime"
           subtitle="Charged only if the pet parent agrees to continue past the booked duration."
         >
-          <div className="grid md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-3 gap-2">
             <MoneyField label="Per extra minute" value={profile.video?.overagePerMinute} onChange={(v) => set('video.overagePerMinute', v)} />
-            <div>
-              <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Free grace</label>
+            <div className="min-w-0">
+              <label className={smallLabel}>Free grace</label>
               <div className="flex items-center gap-1.5">
-                <input type="number" min={0} max={15} value={profile.video?.graceMinutes ?? 2}
+                <input type="number" inputMode="numeric" min={0} max={15} value={profile.video?.graceMinutes ?? 2}
                   onChange={(e) => set('video.graceMinutes', Number(e.target.value) || 0)}
-                  className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" />
-                <span className="text-xs text-gray-400">min</span>
+                  className={`${smallField} min-w-0`} />
+                <span className="text-xs text-text-secondary">min</span>
               </div>
             </div>
-            <div>
-              <label className="block text-[11px] font-bold text-gray-500 uppercase mb-1">Max overtime</label>
+            <div className="min-w-0">
+              <label className={smallLabel}>Max overtime</label>
               <div className="flex items-center gap-1.5">
-                <input type="number" min={0} max={180} value={profile.video?.maxOverageMinutes ?? 30}
+                <input type="number" inputMode="numeric" min={0} max={180} value={profile.video?.maxOverageMinutes ?? 30}
                   onChange={(e) => set('video.maxOverageMinutes', Number(e.target.value) || 0)}
-                  className="w-16 border border-gray-200 rounded-lg px-2 py-1.5 text-sm" />
-                <span className="text-xs text-gray-400">min</span>
+                  className={`${smallField} min-w-0`} />
+                <span className="text-xs text-text-secondary">min</span>
               </div>
             </div>
-            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mt-5">
-              <input type="checkbox" checked={profile.video?.digitalPrescription ?? true}
-                onChange={(e) => set('video.digitalPrescription', e.target.checked)} className="rounded" />
-              Digital prescriptions
-            </label>
           </div>
+          <label className="flex items-center gap-3 min-h-[44px] text-sm font-medium text-text-primary mt-2">
+            <input type="checkbox" checked={profile.video?.digitalPrescription ?? true}
+              onChange={(e) => set('video.digitalPrescription', e.target.checked)} className="w-5 h-5 rounded accent-[#66B4B1]" />
+            Digital prescriptions
+          </label>
           {(profile.video?.overagePerMinute ?? 0) === 0 && (
-            <p className="text-xs text-gray-500 mt-3">
+            <p className="text-xs text-text-secondary mt-1">
               Rate is ₹0 — overtime will never be charged.
             </p>
           )}
@@ -372,7 +360,7 @@ export function VetProfileView() {
 
       {/* Practice */}
       <Card title="Practice">
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           <ListField label="Primary specialties" value={profile.practice?.primarySpecialties} onChange={(v) => set('practice.primarySpecialties', v)} />
           <ListField label="Secondary specialties" value={profile.practice?.secondarySpecialties} onChange={(v) => set('practice.secondarySpecialties', v)} />
           <ListField label="Species treated" value={profile.practice?.speciesTreated} onChange={(v) => set('practice.speciesTreated', v)} hint="dogs, cats, exotic_pets, livestock…" />
@@ -387,17 +375,17 @@ export function VetProfileView() {
 
       {/* Clinic */}
       <Card title="Clinic">
-        <div className="grid md:grid-cols-3 gap-4">
-          <Field label="Clinic / hospital name" value={profile.clinicInfo?.clinicName} onChange={(v) => set('clinicInfo.clinicName', v)} className="md:col-span-3" />
-          <Field label="Address" value={profile.clinicInfo?.address?.line1} onChange={(v) => set('clinicInfo.address.line1', v)} className="md:col-span-2" />
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="Clinic / hospital name" value={profile.clinicInfo?.clinicName} onChange={(v) => set('clinicInfo.clinicName', v)} className="col-span-2" />
+          <Field label="Address" value={profile.clinicInfo?.address?.line1} onChange={(v) => set('clinicInfo.address.line1', v)} className="col-span-2" />
           <Field label="Landmark" value={profile.clinicInfo?.address?.landmark} onChange={(v) => set('clinicInfo.address.landmark', v)} />
           <Field label="Locality" value={profile.clinicInfo?.address?.locality} onChange={(v) => set('clinicInfo.address.locality', v)} />
           <Field label="City" value={profile.clinicInfo?.address?.city} onChange={(v) => set('clinicInfo.address.city', v)} />
           <Field label="Pin code" value={profile.clinicInfo?.address?.pincode} onChange={(v) => set('clinicInfo.address.pincode', v)} />
-          <Field label="Google Maps link" value={profile.clinicInfo?.address?.mapsUrl} onChange={(v) => set('clinicInfo.address.mapsUrl', v)} className="md:col-span-3" />
+          <Field label="Google Maps link" value={profile.clinicInfo?.address?.mapsUrl} onChange={(v) => set('clinicInfo.address.mapsUrl', v)} className="col-span-2" />
         </div>
 
-        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mt-5 mb-2">Available at this clinic</h3>
+        <h3 className="text-xs font-bold text-text-secondary uppercase tracking-wide mt-5 mb-2">Available at this clinic</h3>
         <div className="flex flex-wrap gap-2">
           {FACILITIES.map(([key, label]) => {
             const on = profile.clinicInfo?.facilities?.[key];
@@ -405,8 +393,8 @@ export function VetProfileView() {
               <button
                 key={key}
                 onClick={() => set(`clinicInfo.facilities.${key}`, !on)}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${
-                  on ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-500 border-gray-200'
+                className={`min-h-[40px] px-4 rounded-full text-sm font-semibold border transition ${
+                  on ? 'bg-text-primary text-white border-text-primary' : 'bg-white text-text-secondary border-border-light'
                 }`}
               >
                 {label}
@@ -424,46 +412,61 @@ export function VetProfileView() {
 
       {/* Policies */}
       <Card title="Policies" subtitle="Shown to pet parents before they confirm a booking.">
-        <div className="grid md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4">
           <NumField label="Free cancellation window (hours)" value={profile.policies?.cancellationHours} onChange={(v) => set('policies.cancellationHours', v)} />
           <NumField label="Reschedule window (hours)" value={profile.policies?.rescheduleHours} onChange={(v) => set('policies.rescheduleHours', v)} />
           <NumField label="Follow-up window (days)" value={profile.policies?.followUpWindowDays} onChange={(v) => set('policies.followUpWindowDays', v)} hint="Return visits get the follow-up fee" />
         </div>
-        <div className="grid md:grid-cols-2 gap-4 mt-4">
+        <div className="mt-4">
           <TextArea label="Cancellation policy" value={profile.policies?.cancellationNote} onChange={(v) => set('policies.cancellationNote', v)} rows={2} />
           <TextArea label="Refund policy" value={profile.policies?.refundNote} onChange={(v) => set('policies.refundNote', v)} rows={2} />
           <TextArea label="Reschedule policy" value={profile.policies?.rescheduleNote} onChange={(v) => set('policies.rescheduleNote', v)} rows={2} />
           <TextArea label="No-show policy" value={profile.policies?.noShowNote} onChange={(v) => set('policies.noShowNote', v)} rows={2} />
         </div>
       </Card>
+
+      <StickyActionBar
+        note={saved ? (
+          <span className="text-success text-sm font-bold inline-flex items-center gap-1.5">
+            <CheckCircle2 size={16} /> Saved
+          </span>
+        ) : null}
+      >
+        <PrimaryButton onClick={handleSave} disabled={saving} icon={saving ? undefined : Save} loading={saving}>
+          {saving ? 'Saving…' : 'Save profile'}
+        </PrimaryButton>
+      </StickyActionBar>
     </div>
   );
 }
 
 /* ── Small form primitives ────────────────────────────────── */
 
+const smallLabel = 'block text-[10px] font-bold text-text-secondary uppercase tracking-wide mb-1';
+const smallField = 'w-full h-11 rounded-xl border border-border-light bg-white px-3 text-[16px] text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent-teal focus:ring-2 focus:ring-accent-teal/20';
+
 function Card({ title, subtitle, children }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-5">
-      <h2 className="font-bold text-gray-900">{title}</h2>
+    <section className="bg-white rounded-[20px] border border-border-light shadow-sm p-4">
+      <h2 className="text-[15px] font-bold text-text-primary">{title}</h2>
       {subtitle ? (
-        <p className="text-sm text-gray-500 mt-0.5 mb-4">{subtitle}</p>
+        <p className="text-xs text-text-secondary mt-0.5 mb-4 leading-snug">{subtitle}</p>
       ) : (
         <div className="mb-4" />
       )}
       {children}
-    </div>
+    </section>
   );
 }
 
 function Field({ label, value, onChange, placeholder, className = '' }) {
   return (
-    <div className={className}>
-      <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">{label}</label>
+    <div className={`min-w-0 ${className}`}>
+      <label className={labelClass}>{label}</label>
       <input
         type="text" value={value || ''} placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+        className={fieldClass}
       />
     </div>
   );
@@ -471,28 +474,28 @@ function Field({ label, value, onChange, placeholder, className = '' }) {
 
 function NumField({ label, value, onChange, hint }) {
   return (
-    <div>
-      <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">{label}</label>
+    <div className="min-w-0">
+      <label className={labelClass}>{label}</label>
       <input
-        type="number" min={0} value={value ?? 0}
+        type="number" inputMode="numeric" min={0} value={value ?? 0}
         onChange={(e) => onChange(Number(e.target.value) || 0)}
-        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+        className={fieldClass}
       />
-      {hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
+      {hint && <p className="text-[11px] text-text-secondary mt-1">{hint}</p>}
     </div>
   );
 }
 
 function MoneyField({ label, value, onChange, placeholder }) {
   return (
-    <div>
-      <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">{label}</label>
+    <div className="min-w-0">
+      <label className={smallLabel}>{label}</label>
       <div className="relative">
-        <IndianRupee size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+        <IndianRupee size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" />
         <input
-          type="number" min={0} value={value ?? ''} placeholder={placeholder}
+          type="number" inputMode="decimal" min={0} value={value ?? ''} placeholder={placeholder}
           onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value) || 0)}
-          className="w-full border border-gray-200 rounded-lg pl-7 pr-2 py-1.5 text-sm"
+          className={`${smallField} pl-7 pr-2`}
         />
       </div>
     </div>
@@ -502,16 +505,16 @@ function MoneyField({ label, value, onChange, placeholder }) {
 /** Comma-separated list editor — simple and predictable for tag-like fields. */
 function ListField({ label, value, onChange, hint }) {
   return (
-    <div>
-      <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">{label}</label>
+    <div className="min-w-0">
+      <label className={labelClass}>{label}</label>
       <input
         type="text"
         value={(value || []).join(', ')}
         onChange={(e) => onChange(e.target.value.split(',').map((s) => s.trim()).filter(Boolean))}
-        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+        className={fieldClass}
         placeholder="Comma separated"
       />
-      {hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
+      {hint && <p className="text-[11px] text-text-secondary mt-1">{hint}</p>}
     </div>
   );
 }
@@ -519,10 +522,10 @@ function ListField({ label, value, onChange, hint }) {
 function TextArea({ label, value, onChange, rows = 3 }) {
   return (
     <div className="mb-3">
-      <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">{label}</label>
+      <label className={labelClass}>{label}</label>
       <textarea
         rows={rows} value={value || ''} onChange={(e) => onChange(e.target.value)}
-        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-y"
+        className={textareaClass}
       />
     </div>
   );

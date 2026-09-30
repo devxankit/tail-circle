@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '../../../modules/user/utils/cn';
+import { BottomSheet } from '../vendor/mobile/BottomSheet';
 
 export function Modal({ 
   isOpen = false, 
@@ -8,11 +9,13 @@ export function Modal({
   title = '', 
   children = null, 
   footer = null,
-  size = 'md'
+  size = 'md',
+  forceSheet = false,
 }) {
   
   // Prevent body scroll when modal is open
   useEffect(() => {
+    if (forceSheet) return undefined;
     if (isOpen) {
       document.body.style.overflow = 'hidden';
     } else {
@@ -21,7 +24,25 @@ export function Modal({
     return () => {
       document.body.style.overflow = 'unset';
     };
-  }, [isOpen]);
+  }, [isOpen, forceSheet]);
+
+  /*
+   * Opt-in for the partner app: always a bottom sheet. The breakpoint switch
+   * below follows the browser window, so inside the 430px phone column on a
+   * desktop it would render the centred desktop modal.
+   */
+  if (forceSheet) {
+    return (
+      <BottomSheet
+        open={isOpen}
+        onClose={onClose}
+        title={title}
+        footer={footer ? <div className="flex flex-col gap-2 [&>button]:w-full">{footer}</div> : null}
+      >
+        <div className="text-[16px] text-text-primary pb-2">{children}</div>
+      </BottomSheet>
+    );
+  }
 
   if (!isOpen) return null;
 

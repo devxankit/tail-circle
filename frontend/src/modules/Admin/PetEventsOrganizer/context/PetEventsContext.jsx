@@ -39,6 +39,10 @@ function toPortalProfile(p) {
     status: p.online ? 'Online' : 'Offline',
     verification: vmap[p.approvalStatus] || 'Pending',
     logo: p.logo || null,
+    // The verification banner reads these; dropping them showed "pending" to
+    // every partner, approved or not.
+    approvalStatus: p.approvalStatus || 'pending',
+    documents: p.documents || [],
   };
 }
 

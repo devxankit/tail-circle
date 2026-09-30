@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useMealProvider } from '../context/MealProviderContext';
-import { Truck, Clock } from 'lucide-react';
-import { cn } from '../../../user/utils/cn';
+import { Truck, Clock, ArrowRight, CheckCircle } from 'lucide-react';
+import { SegmentedTabs, CardAction } from '../../vendor/mobile';
 
 // Matches the backend's real state machine (meal.vendor.service.js
 // DELIVERY_NEXT) exactly — there is no "Packed" status server-side, so a
@@ -13,6 +13,8 @@ const DELIVERY_NEXT = {
 
 export function DeliveryManagementView() {
   const { deliveries, updateDeliveryStatus } = useMealProvider();
+  // Which column is showing (UI only) — the board is one column at a time on a phone.
+  const [activeCol, setActiveCol] = useState('Preparing');
 
   const columns = [
     { id: 'Preparing', label: 'Preparing in Kitchen', color: 'bg-blue-100 text-blue-700 border-blue-200' },
@@ -38,75 +40,88 @@ export function DeliveryManagementView() {
     e.preventDefault();
   };
 
+  /*
+   * Drag-and-drop never fires on a touch screen, so each card also carries a
+   * button for its one allowed next step. It calls updateDeliveryStatus with
+   * exactly what a drop into that column would: (delivery.id, nextStatus).
+   */
+  const moveLabel = { 'Out for Delivery': 'Move to Out for delivery', Delivered: 'Mark delivered' };
+  const col = columns.find((c) => c.id === activeCol) || columns[0];
+  const columnDeliveries = deliveries.filter(d => d.status === col.id);
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 h-full flex flex-col">
-      <div className="flex justify-between items-end mb-4">
-        <div>
-          <h2 className="text-xl font-black text-gray-900 tracking-tight">Delivery Operations Board</h2>
-          <p className="text-sm font-semibold text-gray-500 mt-0.5">Drag and drop orders to update delivery status.</p>
-        </div>
+    <div className="space-y-4">
+      <div className="px-1">
+        <h2 className="text-lg font-bold text-text-primary leading-tight">Delivery Operations Board</h2>
+        <p className="text-xs text-text-secondary mt-1">Move orders along to update their delivery status.</p>
       </div>
 
-      <div className="flex-1 overflow-x-auto pb-4 custom-scrollbar">
-        <div className="flex gap-6 h-full min-h-[500px] min-w-[1000px]">
-          {columns.map(col => {
-            const columnDeliveries = deliveries.filter(d => d.status === col.id);
-            
-            return (
-              <div 
-                key={col.id}
-                className="flex-1 bg-gray-50/50 rounded-3xl border border-gray-100 p-4 flex flex-col"
-                onDrop={(e) => handleDrop(e, col.id)}
-                onDragOver={handleDragOver}
-              >
-                <div className="flex items-center justify-between mb-4 px-2">
-                  <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider">{col.label}</h3>
-                  <span className={cn("px-2.5 py-1 text-[10px] font-black rounded-lg border", col.color)}>
-                    {columnDeliveries.length}
-                  </span>
-                </div>
+      <SegmentedTabs
+        activeKey={col.id}
+        onSelect={setActiveCol}
+        items={columns.map((c) => ({
+          key: c.id,
+          label: c.id === 'Preparing' ? 'Preparing' : c.id === 'Out for Delivery' ? 'Out' : 'Delivered',
+          badge: deliveries.filter(d => d.status === c.id).length || null,
+        }))}
+      />
 
-                <div className="flex-1 space-y-4 overflow-y-auto custom-scrollbar pr-1">
-                  {columnDeliveries.map(delivery => (
-                    <div 
-                      key={delivery.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, delivery)}
-                      className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing transition-all group"
-                    >
-                      <div className="flex justify-between items-start mb-3">
-                        <span className="text-[10px] font-bold text-gray-400 font-mono">{delivery.orderId}</span>
-                      </div>
-                      <h4 className="text-sm font-bold text-gray-900 mb-1">{delivery.customer}</h4>
-                      <p className="text-xs text-gray-500 font-medium mb-4">{delivery.plan}</p>
+      <div
+        className="space-y-3"
+        onDrop={(e) => handleDrop(e, col.id)}
+        onDragOver={handleDragOver}
+      >
+        <h3 className="text-xs font-bold uppercase tracking-wide text-text-secondary px-1">{col.label}</h3>
 
-                      <div className="space-y-2 border-t border-gray-50 pt-3 mt-3">
-                        {delivery.deliveryTime && (
-                          <div className="flex items-start gap-2 text-xs text-gray-600">
-                            <Clock size={14} className="text-gray-400 shrink-0 mt-0.5" />
-                            <span className="leading-tight">{delivery.deliveryTime}</span>
-                          </div>
-                        )}
-                        {delivery.driver && (
-                          <div className="flex justify-between items-center text-[10px] font-bold text-gray-500 bg-gray-50 p-2 rounded-lg mt-2">
-                            <div className="flex items-center gap-1.5"><Truck size={12} className="text-purple-500" /> {delivery.driver}</div>
-                            {delivery.eta && <div className="text-purple-600">ETA: {delivery.eta}</div>}
-                          </div>
-                        )}
-                      </div>
+        {columnDeliveries.map(delivery => {
+          const next = (DELIVERY_NEXT[delivery.status] || [])[0];
+          return (
+            <div
+              key={delivery.id}
+              draggable
+              onDragStart={(e) => handleDragStart(e, delivery)}
+              className="bg-white p-4 rounded-[20px] border border-border-light shadow-sm"
+            >
+              <span className="text-[10px] font-bold text-text-secondary font-mono">{delivery.orderId}</span>
+              <h4 className="text-[15px] font-bold text-text-primary mt-1">{delivery.customer}</h4>
+              <p className="text-xs text-text-secondary font-medium">{delivery.plan}</p>
+
+              {(delivery.deliveryTime || delivery.driver) && (
+                <div className="space-y-2 border-t border-border-light pt-3 mt-3">
+                  {delivery.deliveryTime && (
+                    <div className="flex items-start gap-2 text-xs text-text-primary">
+                      <Clock size={14} className="text-text-secondary shrink-0 mt-0.5" />
+                      <span className="leading-tight">{delivery.deliveryTime}</span>
                     </div>
-                  ))}
-                  
-                  {columnDeliveries.length === 0 && (
-                    <div className="h-24 flex items-center justify-center border-2 border-dashed border-gray-200 rounded-2xl text-xs font-bold text-gray-400 uppercase tracking-widest">
-                      Drop Here
+                  )}
+                  {delivery.driver && (
+                    <div className="flex justify-between items-center text-[11px] font-bold text-text-secondary bg-bg-primary p-2 rounded-lg">
+                      <div className="flex items-center gap-1.5"><Truck size={12} className="text-accent-teal" /> {delivery.driver}</div>
+                      {delivery.eta && <div className="text-[#4C8684]">ETA: {delivery.eta}</div>}
                     </div>
                   )}
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              )}
+
+              {next && (
+                <CardAction
+                  tone={next === 'Delivered' ? 'teal' : 'primary'}
+                  icon={next === 'Delivered' ? CheckCircle : ArrowRight}
+                  className="w-full mt-3"
+                  onClick={() => updateDeliveryStatus(delivery.id, next)}
+                >
+                  {moveLabel[next]}
+                </CardAction>
+              )}
+            </div>
+          );
+        })}
+
+        {columnDeliveries.length === 0 && (
+          <div className="h-24 flex items-center justify-center border-2 border-dashed border-border-light rounded-[20px] text-xs font-bold text-text-secondary uppercase tracking-widest bg-white">
+            No orders here
+          </div>
+        )}
       </div>
     </div>
   );

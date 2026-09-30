@@ -9,6 +9,10 @@ import {
   fetchVendorComplianceUpdates,
   acknowledgeVendorCompliance,
 } from '../../../services/providerVendor';
+import { SegmentedTabs } from '../vendor/mobile/SegmentedTabs';
+import { StatusBadge } from '../vendor/mobile/StatusBadge';
+import { SkeletonList } from '../vendor/mobile/SkeletonList';
+import { ScreenError } from '../vendor/mobile/ScreenError';
 
 /**
  * A partner's own compliance page.
@@ -27,18 +31,19 @@ import {
  * `X-Vendor-Type` header the panel already sets, so nothing here is per-type.
  */
 
-const SEVERITY_STYLE = {
-  critical: 'bg-red-100 text-red-700',
-  high: 'bg-orange-100 text-orange-700',
-  medium: 'bg-amber-100 text-amber-700',
-  low: 'bg-gray-100 text-gray-700',
+// Semantic tones: the app remaps Tailwind's red/orange/amber to coral.
+const SEVERITY_TONE = {
+  critical: 'error',
+  high: 'error',
+  medium: 'warning',
+  low: 'neutral',
 };
 
 const UPDATE_STYLE = {
-  compliance_warning: { icon: AlertTriangle, tone: 'text-amber-600 bg-amber-50' },
-  compliance_forgiven: { icon: Check, tone: 'text-emerald-600 bg-emerald-50' },
-  suspended: { icon: Ban, tone: 'text-red-600 bg-red-50' },
-  reinstated: { icon: RotateCcw, tone: 'text-emerald-600 bg-emerald-50' },
+  compliance_warning: { icon: AlertTriangle, tone: 'text-warning bg-warning/10' },
+  compliance_forgiven: { icon: Check, tone: 'text-success bg-success/10' },
+  suspended: { icon: Ban, tone: 'text-error bg-error/10' },
+  reinstated: { icon: RotateCcw, tone: 'text-success bg-success/10' },
 };
 
 const TABS = [
@@ -83,14 +88,10 @@ export function VendorCompliancePage() {
   useEffect(() => { load(); }, [load]);
 
   if (loading) {
-    return <div className="p-6 text-[13px] text-gray-500">Loading your service record…</div>;
+    return <SkeletonList rows={3} />;
   }
   if (error) {
-    return (
-      <div className="p-6">
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-[13px] text-red-800">{error}</div>
-      </div>
-    );
+    return <ScreenError message={error} onRetry={load} />;
   }
 
   const { points = 0, threshold = 3, remaining = 0, windowDays = 90, breached, violations = [], profile, lines = [] } = standing || {};
@@ -99,30 +100,27 @@ export function VendorCompliancePage() {
   const suspended = profile?.suspended;
 
   return (
-    <div className="max-w-[1100px] mx-auto pb-16">
-      <div className="mb-6">
-        <h1 className="text-[22px] font-semibold text-gray-900 tracking-tight">Service Standing</h1>
-        <p className="text-[13px] text-gray-500 mt-1">
-          Your record with Tail Circle, the messages we have sent you, and the rules we all work to.
-        </p>
-      </div>
+    <div className="space-y-4">
+      <p className="text-xs text-text-secondary px-1">
+        Your record with Tail Circle, the messages we have sent you, and the rules we all work to.
+      </p>
 
       {/* Suspension notice trumps everything else on the page. */}
       {suspended && (
-        <div className="mb-5 rounded-xl border-2 border-red-300 bg-red-50 p-4">
+        <div className="rounded-[20px] border-2 border-error/40 bg-white p-4 shadow-sm">
           <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-lg bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-error/10 text-error flex items-center justify-center shrink-0">
               <Ban size={18} />
             </div>
             <div>
-              <h2 className="text-[15px] font-bold text-red-900">
+              <h2 className="text-[15px] font-bold text-error">
                 {profile.businessName || 'This business'} is suspended
               </h2>
-              <p className="text-[13px] text-red-800 mt-1">
+              <p className="text-[13px] text-text-primary mt-1">
                 You are not receiving new bookings or orders on your {profile.vendorType} business.
                 Any work you already accepted still needs to be delivered.
               </p>
-              <p className="text-[13px] text-red-800 mt-2">
+              <p className="text-[13px] text-text-primary mt-2">
                 Contact support to appeal. If a violation below is wrong, say which one and why — an
                 operator can withdraw it.
               </p>
@@ -144,26 +142,23 @@ export function VendorCompliancePage() {
 
       {/* Every business line this account runs. */}
       {lines.length > 1 && (
-        <div className="mt-5 bg-white rounded-xl border border-gray-200 p-4">
-          <h3 className="text-[14px] font-bold text-gray-900 mb-1">Your businesses</h3>
-          <p className="text-[12px] text-gray-500 mb-3">
+        <div className="bg-white rounded-[20px] border border-border-light shadow-sm p-4">
+          <h3 className="text-[15px] font-bold text-text-primary mb-1">Your businesses</h3>
+          <p className="text-xs text-text-secondary mb-3">
             Each business is scored separately — a problem on one does not affect the others.
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-2">
             {lines.map((l) => (
               <div key={l.vendorType}
-                className={`rounded-lg border p-3 ${l.suspended ? 'border-red-200 bg-red-50' : l.breached ? 'border-orange-200 bg-orange-50' : 'border-gray-200'}`}>
+                className={`rounded-xl border p-3 ${l.suspended ? 'border-error/30 bg-error/5' : l.breached ? 'border-warning/30 bg-warning/5' : 'border-border-light bg-bg-primary'}`}>
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-[13px] font-bold text-gray-900 truncate">{l.businessName || l.vendorType}</p>
-                    <p className="text-[11px] text-gray-500 capitalize">{l.vendorType}</p>
+                    <p className="text-[13px] font-bold text-text-primary truncate">{l.businessName || l.vendorType}</p>
+                    <p className="text-[11px] text-text-secondary capitalize">{l.vendorType}</p>
                   </div>
-                  <span className={`px-2 py-1 rounded-md text-[11px] font-bold capitalize shrink-0 ${
-                    l.suspended ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                    {l.approvalStatus}
-                  </span>
+                  <StatusBadge label={l.approvalStatus} tone={l.suspended ? 'error' : 'success'} />
                 </div>
-                <p className="text-[12px] text-gray-600 mt-2">
+                <p className="text-[12px] text-text-primary mt-2">
                   <b>{l.points}</b> of {l.threshold} points · {l.count} record(s)
                 </p>
               </div>
@@ -173,18 +168,16 @@ export function VendorCompliancePage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 mt-6 mb-4 bg-white p-1 rounded-xl border border-gray-200 w-fit">
-        {TABS.map(({ key, label, icon: Icon }) => (
-          <button key={key} onClick={() => setTab(key)}
-            className={`flex items-center gap-2 px-4 py-2 text-[13px] font-semibold rounded-lg transition ${
-              tab === key ? 'bg-[#66B4B1] text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
-            <Icon size={15} /> {label}
-            {key === 'updates' && updates.some((u) => !u.read) && (
-              <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-            )}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs
+        activeKey={tab}
+        onSelect={setTab}
+        items={TABS.map((t) => ({
+          key: t.key,
+          label: t.key === 'updates' && updates.some((u) => !u.read)
+            ? <span className="inline-flex items-center gap-1">{t.label}<span className="w-1.5 h-1.5 rounded-full bg-error" /></span>
+            : t.label,
+        }))}
+      />
 
       {/* ── My record ── */}
       {tab === 'record' && (
@@ -199,15 +192,15 @@ export function VendorCompliancePage() {
             {active.map((v) => <ViolationCard key={v._id} v={v} />)}
             {withdrawn.length > 0 && (
               <>
-                <p className="text-[12px] font-bold text-gray-500 pt-3 pb-1">
+                <p className="text-xs font-bold uppercase tracking-wide text-text-secondary pt-3 pb-1 px-1">
                   Withdrawn after review — these no longer count
                 </p>
                 {withdrawn.map((v) => <ViolationCard key={v._id} v={v} withdrawn />)}
               </>
             )}
-            <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg mt-4">
-              <LifeBuoy size={15} className="text-blue-600 mt-0.5 shrink-0" />
-              <p className="text-[12px] text-blue-800">
+            <div className="flex items-start gap-2 p-3 bg-accent-teal/10 border border-accent-teal/25 rounded-xl mt-4">
+              <LifeBuoy size={15} className="text-[#4C8684] mt-0.5 shrink-0" />
+              <p className="text-[12px] text-text-primary">
                 Think something here is wrong? Raise it through Support with the booking reference.
                 An operator reviews every appeal and can withdraw a violation entirely.
               </p>
@@ -221,22 +214,22 @@ export function VendorCompliancePage() {
         updates.length === 0 ? (
           <Empty icon={Bell} title="No messages" body="Warnings, withdrawals and account changes appear here." />
         ) : (
-          <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+          <div className="bg-white rounded-[20px] border border-border-light shadow-sm divide-y divide-border-light overflow-hidden">
             {updates.map((u) => {
               const style = UPDATE_STYLE[u.kind] || UPDATE_STYLE.compliance_warning;
               const Icon = style.icon;
               return (
                 <div key={u.id} className="p-4 flex items-start gap-3">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${style.tone}`}>
-                    <Icon size={15} />
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${style.tone}`}>
+                    <Icon size={16} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="text-[13px] font-bold text-gray-900">{u.title}</p>
-                      {!u.read && <span className="w-2 h-2 rounded-full bg-red-500 mt-1.5 shrink-0" />}
+                      <p className="text-[13px] font-bold text-text-primary">{u.title}</p>
+                      {!u.read && <span className="w-2 h-2 rounded-full bg-error mt-1.5 shrink-0" />}
                     </div>
-                    <p className="text-[13px] text-gray-600 mt-0.5">{u.body}</p>
-                    <p className="text-[11px] text-gray-400 mt-1">
+                    <p className="text-[13px] text-text-primary mt-0.5">{u.body}</p>
+                    <p className="text-[11px] text-text-secondary mt-1">
                       {new Date(u.createdAt).toLocaleString('en-IN')}
                       {u.vendorType && <span className="capitalize"> · {u.vendorType}</span>}
                     </p>
@@ -251,14 +244,14 @@ export function VendorCompliancePage() {
       {/* ── Rules ── */}
       {tab === 'rules' && policy && (
         <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h3 className="text-[15px] font-bold text-gray-900 mb-1">How this works</h3>
-            <p className="text-[13px] text-gray-600">
+          <div className="bg-white rounded-[20px] border border-border-light shadow-sm p-4">
+            <h3 className="text-[15px] font-bold text-text-primary mb-1">How this works</h3>
+            <p className="text-[13px] text-text-primary leading-relaxed">
               Each service failure adds points to your record. Reach <b>{policy.threshold} points</b> inside
               a rolling <b>{policy.windowDays} days</b> and your account goes under review, which can end in
               suspension. Points older than {policy.windowDays} days stop counting on their own.
             </p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+            <div className="grid grid-cols-2 gap-2.5 mt-4">
               <Stat label="Respond to requests within" value={`${policy.sla?.vendorResponseHours ?? 2} hrs`} />
               <Stat label="Complete bookings within" value={`${policy.sla?.serviceCompletionGraceDays ?? 2} days of service`} />
               <Stat label="Dispatch orders within" value={`${policy.sla?.orderFulfilmentDays ?? 3} days`} />
@@ -266,24 +259,22 @@ export function VendorCompliancePage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div className="p-5 pb-3">
-              <h3 className="text-[15px] font-bold text-gray-900">What each failure costs</h3>
-              <p className="text-[12px] text-gray-500 mt-0.5">Only the rules currently in force are listed.</p>
+          <div className="bg-white rounded-[20px] border border-border-light shadow-sm overflow-hidden">
+            <div className="p-4 pb-3">
+              <h3 className="text-[15px] font-bold text-text-primary">What each failure costs</h3>
+              <p className="text-xs text-text-secondary mt-0.5">Only the rules currently in force are listed.</p>
             </div>
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-border-light">
               {policy.rules.map((r) => (
-                <div key={r.type} className="px-5 py-3 flex items-start justify-between gap-4">
+                <div key={r.type} className="px-4 py-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-[13px] font-bold text-gray-900">{r.label}</span>
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${SEVERITY_STYLE[r.severity] || SEVERITY_STYLE.medium}`}>
-                        {r.severity}
-                      </span>
+                      <span className="text-[13px] font-bold text-text-primary">{r.label}</span>
+                      <StatusBadge size="xs" label={r.severity} tone={SEVERITY_TONE[r.severity] || 'warning'} />
                     </div>
-                    <p className="text-[12px] text-gray-500 mt-0.5">{r.description}</p>
+                    <p className="text-[12px] text-text-secondary mt-0.5">{r.description}</p>
                   </div>
-                  <span className="text-[13px] font-bold text-gray-700 shrink-0 whitespace-nowrap">
+                  <span className="text-[13px] font-black text-text-primary shrink-0 whitespace-nowrap">
                     +{r.points} {r.points === 1 ? 'point' : 'points'}
                   </span>
                 </div>
@@ -291,9 +282,9 @@ export function VendorCompliancePage() {
             </div>
           </div>
 
-          <div className="flex items-start gap-2 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-            <Info size={15} className="text-gray-500 mt-0.5 shrink-0" />
-            <p className="text-[12px] text-gray-600">
+          <div className="flex items-start gap-2 p-3 bg-white border border-border-light rounded-xl">
+            <Info size={15} className="text-text-secondary mt-0.5 shrink-0" />
+            <p className="text-[12px] text-text-secondary">
               Points are fixed at the moment a failure is recorded. If Tail Circle changes these values later,
               anything already on your record keeps the points it was given.
             </p>
@@ -311,23 +302,23 @@ function StandingCard({ points, threshold, remaining, windowDays, breached, susp
   const clear = points === 0;
 
   const tone = suspended || breached
-    ? { bar: 'bg-red-500', ring: 'bg-red-50 text-red-600', head: 'text-red-900' }
+    ? { bar: 'bg-error', ring: 'bg-error/10 text-error', head: 'text-error' }
     : remaining <= 1
-      ? { bar: 'bg-orange-500', ring: 'bg-orange-50 text-orange-600', head: 'text-orange-900' }
+      ? { bar: 'bg-warning', ring: 'bg-warning/15 text-warning', head: 'text-warning' }
       : clear
-        ? { bar: 'bg-emerald-500', ring: 'bg-emerald-50 text-emerald-600', head: 'text-emerald-900' }
-        : { bar: 'bg-amber-500', ring: 'bg-amber-50 text-amber-600', head: 'text-amber-900' };
+        ? { bar: 'bg-success', ring: 'bg-success/10 text-success', head: 'text-success' }
+        : { bar: 'bg-warning', ring: 'bg-warning/10 text-warning', head: 'text-text-primary' };
 
   const Icon = clear ? ShieldCheck : ShieldAlert;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5">
-      <div className="flex items-start gap-4">
-        <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${tone.ring}`}>
+    <div className="bg-white rounded-[24px] border border-border-light shadow-sm p-4">
+      <div className="flex items-start gap-3">
+        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${tone.ring}`}>
           <Icon size={20} />
         </div>
         <div className="flex-1 min-w-0">
-          <h2 className={`text-[16px] font-bold ${tone.head}`}>
+          <h2 className={`text-[17px] font-black ${tone.head}`}>
             {suspended
               ? 'Suspended'
               : breached
@@ -336,17 +327,17 @@ function StandingCard({ points, threshold, remaining, windowDays, breached, susp
                   ? 'Good standing'
                   : `${remaining} ${remaining === 1 ? 'point' : 'points'} before review`}
           </h2>
-          <p className="text-[13px] text-gray-600 mt-0.5">
+          <p className="text-[13px] text-text-secondary mt-0.5">
             {clear
               ? `No service failures in the last ${windowDays} days.`
               : `${points} of ${threshold} points · ${count} record(s) in the last ${windowDays} days.`}
           </p>
 
           <div className="mt-3">
-            <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden">
+            <div className="h-2.5 rounded-full bg-bg-secondary overflow-hidden">
               <div className={`h-full rounded-full transition-all ${tone.bar}`} style={{ width: `${Math.max(pct, clear ? 100 : 4)}%` }} />
             </div>
-            <div className="flex justify-between text-[11px] text-gray-400 font-bold mt-1">
+            <div className="flex justify-between text-[11px] text-text-secondary font-bold mt-1">
               <span>0</span>
               <span>{threshold} = review</span>
             </div>
@@ -359,42 +350,32 @@ function StandingCard({ points, threshold, remaining, windowDays, breached, susp
 
 function ViolationCard({ v, withdrawn = false }) {
   return (
-    <div className={`bg-white rounded-xl border p-4 ${withdrawn ? 'border-gray-200 opacity-70' : 'border-gray-200'}`}>
+    <div className={`bg-white rounded-[20px] border border-border-light shadow-sm p-4 ${withdrawn ? 'opacity-70' : ''}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[14px] font-bold text-gray-900">{v.label}</span>
-            <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${SEVERITY_STYLE[v.severity] || SEVERITY_STYLE.medium}`}>
-              {v.severity}
-            </span>
-            {withdrawn && (
-              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-700">
-                withdrawn
-              </span>
-            )}
-            {v.status === 'upheld' && (
-              <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-orange-100 text-orange-700">
-                reviewed &amp; upheld
-              </span>
-            )}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[15px] font-bold text-text-primary mr-0.5">{v.label}</span>
+            <StatusBadge size="xs" label={v.severity} tone={SEVERITY_TONE[v.severity] || 'warning'} />
+            {withdrawn && <StatusBadge size="xs" label="withdrawn" tone="success" />}
+            {v.status === 'upheld' && <StatusBadge size="xs" label="reviewed & upheld" tone="warning" />}
           </div>
-          <p className="text-[13px] text-gray-700 mt-1">{v.reason}</p>
-          {v.detail && <p className="text-[12px] text-gray-500 mt-0.5">{v.detail}</p>}
+          <p className="text-[13px] text-text-primary mt-1.5">{v.reason}</p>
+          {v.detail && <p className="text-[12px] text-text-secondary mt-0.5">{v.detail}</p>}
           {v.customerImpact && !withdrawn && (
-            <p className="text-[12px] text-red-600 mt-1">What the customer experienced: {v.customerImpact}</p>
+            <p className="text-[12px] text-error mt-1">What the customer experienced: {v.customerImpact}</p>
           )}
-          <p className="text-[11px] text-gray-400 mt-2 flex items-center gap-1.5">
+          <p className="text-[11px] text-text-secondary mt-2 flex items-center gap-1.5 flex-wrap">
             <Clock size={11} />
             {new Date(v.occurredAt).toLocaleString('en-IN')}
             {v.refLabel && <span>· {v.refLabel}</span>}
           </p>
           {v.reviewNote && (
-            <p className="text-[12px] text-gray-600 mt-1.5 italic">
+            <p className="text-[12px] text-text-secondary mt-1.5 italic">
               Tail Circle: {v.reviewNote}
             </p>
           )}
         </div>
-        <span className={`text-[13px] font-bold shrink-0 whitespace-nowrap ${withdrawn ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
+        <span className={`text-[14px] font-black shrink-0 whitespace-nowrap ${withdrawn ? 'text-text-disabled line-through' : 'text-text-primary'}`}>
           +{v.points} {v.points === 1 ? 'pt' : 'pts'}
         </span>
       </div>
@@ -404,21 +385,21 @@ function ViolationCard({ v, withdrawn = false }) {
 
 function Stat({ label, value }) {
   return (
-    <div className="bg-gray-50 rounded-lg p-3">
-      <p className="text-[11px] text-gray-500 font-medium">{label}</p>
-      <p className="text-[13px] font-bold text-gray-900 mt-0.5">{value}</p>
+    <div className="bg-bg-primary border border-border-light rounded-2xl p-3">
+      <p className="text-[11px] text-text-secondary font-medium leading-snug">{label}</p>
+      <p className="text-[14px] font-black text-text-primary mt-1">{value}</p>
     </div>
   );
 }
 
 function Empty({ icon: Icon, title, body }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-      <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-3">
-        <Icon size={20} />
+    <div className="bg-white rounded-[20px] border border-border-light py-10 px-6 text-center">
+      <div className="w-14 h-14 rounded-full bg-success/10 text-success flex items-center justify-center mx-auto mb-3">
+        <Icon size={24} />
       </div>
-      <p className="text-[14px] font-bold text-gray-800">{title}</p>
-      <p className="text-[13px] text-gray-500 mt-1 max-w-md mx-auto">{body}</p>
+      <p className="text-[15px] font-bold text-text-primary">{title}</p>
+      <p className="text-[13px] text-text-secondary mt-1 max-w-[300px] mx-auto leading-relaxed">{body}</p>
     </div>
   );
 }
