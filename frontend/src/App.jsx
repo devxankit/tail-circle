@@ -353,6 +353,7 @@ const VendorHub = lazy(() => import('./modules/Admin/vendor/VendorHub').then(m =
 const VendorPayouts = lazy(() => import('./modules/Admin/vendor/CommonVendorPages').then(m => ({ default: m.VendorPayouts || m.default })));
 const VendorSupport = lazy(() => import('./modules/Admin/vendor/CommonVendorPages').then(m => ({ default: m.VendorSupport || m.default })));
 const VendorSettings = lazy(() => import('./modules/Admin/vendor/CommonVendorPages').then(m => ({ default: m.VendorSettings || m.default })));
+const VendorMoreScreen = lazy(() => import('./modules/Admin/vendor/mobile/MoreScreen').then(m => ({ default: m.MoreScreen || m.default })));
 const MealProviderLayout = lazy(() => import('./modules/Admin/MealSubscriptionProvider/MealProviderLayout').then(m => ({ default: m.MealProviderLayout || m.default })));
 const MealDashboard = lazy(() => import('./modules/Admin/MealSubscriptionProvider/views/DashboardOverview').then(m => ({ default: m.DashboardOverview || m.default })));
 const MealPlansView = lazy(() => import('./modules/Admin/MealSubscriptionProvider/views/MealPlansView').then(m => ({ default: m.MealPlansView || m.default })));
@@ -488,7 +489,7 @@ function ProtectedAdminRoute({ children }) {
  *
  * Omitting `allow` marks a route as shared by every vendor.
  */
-function ProtectedVendorRoute({ children, allow }) {
+function ProtectedVendorRoute({ children, allow, withAlerts = true }) {
   const token = localStorage.getItem('tc_access_token');
   const info = localStorage.getItem('vendor_info');
   if (!token || !info) {
@@ -523,8 +524,12 @@ function ProtectedVendorRoute({ children, allow }) {
    * wrapping per block would guarantee one of them silently misses the ring —
    * and the panel that misses it is the one whose partner gets suspended for
    * not responding.
+   *
+   * Portals nested inside another guard (clinic, grooming, daycare, adoption sit
+   * under the /vendor layout's guard) pass `withAlerts={false}`: a second
+   * provider meant a second overlay and every booking ringing twice.
    */
-  return <VendorAlertProvider>{children}</VendorAlertProvider>;
+  return withAlerts ? <VendorAlertProvider>{children}</VendorAlertProvider> : children;
 }
 
 /**
@@ -783,10 +788,10 @@ function App() {
 
                 {/* Vendor Dashboard & Tools (Full Web Layout) */}
                 <Route path="/vendor" element={<ProtectedVendorRoute><VendorLayout /></ProtectedVendorRoute>}>
-                  <Route path="doctor/consultations" element={<ProtectedVendorRoute allow="clinic"><ClinicVendorProvider><DoctorManagement /></ClinicVendorProvider></ProtectedVendorRoute>} />
-                  <Route path="grooming-provider" element={<ProtectedVendorRoute allow="grooming"><GroomingVendorPortal /></ProtectedVendorRoute>} />
-                  <Route path="daycare-provider" element={<ProtectedVendorRoute allow="daycare"><DaycareVendorPortal /></ProtectedVendorRoute>} />
-                  <Route path="adoption-partner" element={<ProtectedVendorRoute allow="adoption"><AdoptionVendorPortal /></ProtectedVendorRoute>} />
+                  <Route path="doctor/consultations" element={<ProtectedVendorRoute allow="clinic" withAlerts={false}><ClinicVendorProvider><DoctorManagement /></ClinicVendorProvider></ProtectedVendorRoute>} />
+                  <Route path="grooming-provider" element={<ProtectedVendorRoute allow="grooming" withAlerts={false}><GroomingVendorPortal /></ProtectedVendorRoute>} />
+                  <Route path="daycare-provider" element={<ProtectedVendorRoute allow="daycare" withAlerts={false}><DaycareVendorPortal /></ProtectedVendorRoute>} />
+                  <Route path="adoption-partner" element={<ProtectedVendorRoute allow="adoption" withAlerts={false}><AdoptionVendorPortal /></ProtectedVendorRoute>} />
                   <Route path="meal/plans" element={<Navigate to="/vendor/meal-provider/dashboard" replace />} />
                   <Route path="event/packages" element={<Navigate to="/vendor/events-organizer" replace />} />
                   <Route path="memorial/requests" element={<Navigate to="/vendor/memorial-provider" replace />} />
@@ -794,6 +799,8 @@ function App() {
                   <Route path="settings" element={<VendorSettings />} />
                   <Route path="payouts" element={<VendorPayouts />} />
                   <Route path="support" element={<VendorSupport />} />
+                  {/* The partner app's More tab for the panels this layout serves. */}
+                  <Route path="more" element={<VendorMoreScreen />} />
                 </Route>
 
                 {/* Shop Partner Standalone Dashboard */}
@@ -807,6 +814,7 @@ function App() {
                   <Route path="finance" element={<ShopFinanceView />} />
                   <Route path="compliance" element={<VendorCompliancePage />} />
                   <Route path="settings" element={<ShopSettingsView />} />
+                  <Route path="more" element={<VendorMoreScreen />} />
                   <Route path="*" element={<Navigate to="/vendor/shop-provider" replace />} />
                 </Route>
 
@@ -824,6 +832,7 @@ function App() {
                   <Route path="finance" element={<FinanceCenterView />} />
                   <Route path="compliance" element={<VendorCompliancePage />} />
                   <Route path="settings" element={<BusinessControlCenterView />} />
+                  <Route path="more" element={<VendorMoreScreen />} />
 
                   {/* Redirects for removed legacy routes */}
                   <Route path="support" element={<Navigate to="/vendor/meal-provider/feedback" replace />} />
@@ -851,6 +860,7 @@ function App() {
                   <Route path="finance" element={<EventsFinanceView />} />
                   <Route path="compliance" element={<VendorCompliancePage />} />
                   <Route path="settings" element={<EventsSettingsView />} />
+                  <Route path="more" element={<VendorMoreScreen />} />
                   <Route path="*" element={<Navigate to="/vendor/events-organizer" replace />} />
                 </Route>
 
@@ -867,6 +877,7 @@ function App() {
                   <Route path="finance" element={<MemorialFinance />} />
                   <Route path="compliance" element={<VendorCompliancePage />} />
                   <Route path="settings" element={<MemorialSettings />} />
+                  <Route path="more" element={<VendorMoreScreen />} />
                   <Route path="*" element={<Navigate to="/vendor/memorial-provider" replace />} />
                 </Route>
 

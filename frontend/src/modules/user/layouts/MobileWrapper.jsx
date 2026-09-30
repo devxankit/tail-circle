@@ -4,7 +4,8 @@ import { OfflineBanner } from '../components/OfflineBanner';
 
 export function MobileWrapper({ children }) {
   const location = useLocation();
-  const isAdminOrVendor = location.pathname.startsWith('/admin') || location.pathname.startsWith('/vendor');
+  const isVendor = location.pathname.startsWith('/vendor');
+  const isAdmin = location.pathname.startsWith('/admin');
   const isLanding = location.pathname === '/' || location.pathname.startsWith('/landing');
 
   if (isLanding) {
@@ -15,7 +16,7 @@ export function MobileWrapper({ children }) {
     );
   }
 
-  if (isAdminOrVendor) {
+  if (isAdmin) {
     return (
       <div className="min-h-screen w-full overflow-x-hidden flex flex-col" style={{ userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', msUserSelect: 'text' }}>
         <style>{`
@@ -71,6 +72,58 @@ export function MobileWrapper({ children }) {
         `}</style>
         <div className="flex-1 flex flex-col w-full min-h-screen admin-area vendor-area">
           {children}
+        </div>
+      </div>
+    );
+  }
+
+  /*
+   * The partner app. Same phone column as the customer app, at every screen
+   * width, but without the customer branch's `key={pathname}` wrapper: that
+   * remounts the whole subtree on each navigation, which would remount the
+   * VendorAlertProvider above the panels and drop live booking alerts (and the
+   * unlocked alert sound) every time the partner changed tab. The partner
+   * shell runs its own page transition inside its content pane instead.
+   *
+   * `vendor-overlay-root` is where partner sheets and dialogs portal to:
+   * inside the column (so `fixed` resolves against it) but outside the
+   * shell's scrolling pane.
+   */
+  if (isVendor) {
+    return (
+      <div className="fixed inset-0 bg-gray-100 flex justify-center overflow-hidden touch-none">
+        <div className="vendor-app w-full max-w-[430px] h-full bg-bg-primary shadow-2xl relative flex flex-col overflow-x-hidden touch-auto" style={{ transform: 'translate3d(0, 0, 0)' }}>
+          <style>{`
+            @keyframes pageTransition {
+              0% {
+                opacity: 0.65;
+                transform: translate3d(12px, 0, 0);
+              }
+              100% {
+                opacity: 1;
+                transform: translate3d(0, 0, 0);
+              }
+            }
+
+            .vendor-app::-webkit-scrollbar,
+            .vendor-app *::-webkit-scrollbar {
+              display: none !important;
+              width: 0 !important;
+              height: 0 !important;
+            }
+            .vendor-app,
+            .vendor-app * {
+              -ms-overflow-style: none !important;
+              scrollbar-width: none !important;
+            }
+          `}</style>
+          <OfflineBanner />
+          {/* Scrolls for the pages that have no shell (login, the hub); the
+              shell fills it exactly and scrolls its own content pane. */}
+          <div data-vendor-scroll="" className="flex-1 min-h-0 flex flex-col w-full overflow-y-auto overflow-x-hidden">
+            {children}
+          </div>
+          <div id="vendor-overlay-root" />
         </div>
       </div>
     );

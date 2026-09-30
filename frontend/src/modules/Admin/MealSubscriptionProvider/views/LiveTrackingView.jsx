@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useMealProvider } from '../context/MealProviderContext';
-import { Car, CheckCircle, Clock, Search } from 'lucide-react';
-import { cn } from '../../../user/utils/cn';
+import { Car, CheckCircle, Clock } from 'lucide-react';
+import { SearchBar, CardAction, useConfirm } from '../../vendor/mobile';
 
 /**
  * Orders currently "Out for Delivery" — real data from GET /vendor/deliveries.
@@ -14,6 +14,7 @@ import { cn } from '../../../user/utils/cn';
 export function LiveTrackingView() {
   const { deliveries, updateDeliveryStatus } = useMealProvider();
   const [search, setSearch] = useState('');
+  const confirm = useConfirm();
 
   const active = deliveries.filter((d) => d.status === 'Out for Delivery');
   const filtered = active.filter((d) =>
@@ -22,66 +23,51 @@ export function LiveTrackingView() {
     d.customer.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleMarkDelivered = (del) => {
-    if (window.confirm(`Mark delivery ${del.id} to ${del.customer} as Delivered?`)) {
+  const handleMarkDelivered = async (del) => {
+    if (await confirm({ title: `Mark delivery ${del.id} to ${del.customer} as Delivered?`, confirmLabel: 'Mark Delivered' })) {
       updateDeliveryStatus(del._id || del.id, 'Delivered');
     }
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-3xl border border-gray-100 shadow-sm">
-        <div>
-          <h2 className="text-xl font-black text-gray-900 tracking-tight">Out for Delivery</h2>
-          <p className="text-sm font-semibold text-gray-500 mt-0.5">Orders currently on their way. No live GPS/rider tracking is wired up yet.</p>
-        </div>
-        <div className="relative w-full sm:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search order or customer..."
-            className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#F87B68]/20 focus:border-[#F87B68] transition"
-          />
-        </div>
+    <div className="space-y-4">
+      <div className="px-1">
+        <h2 className="text-lg font-bold text-text-primary leading-tight">Out for Delivery</h2>
+        <p className="text-xs text-text-secondary mt-1">Orders currently on their way. No live GPS/rider tracking is wired up yet.</p>
       </div>
 
-      <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <Car size={40} className="text-gray-200 mb-4" />
-            <p className="font-bold text-gray-400 text-sm">No orders out for delivery</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-100">
-            {filtered.map((del) => (
-              <div key={del.id} className="flex items-center justify-between gap-4 p-4 hover:bg-gray-50/50 transition">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-                    <Car size={16} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-gray-900 truncate">{del.customer}</p>
-                    <p className="text-xs text-gray-500 truncate">{del.plan} &middot; {del.orderId}</p>
-                  </div>
+      <SearchBar value={search} onChange={setSearch} placeholder="Search order or customer..." />
+
+      {filtered.length === 0 ? (
+        <div className="bg-white rounded-[20px] border border-border-light flex flex-col items-center justify-center py-14 text-center">
+          <Car size={40} className="text-text-disabled mb-4" />
+          <p className="font-bold text-text-secondary text-sm">No orders out for delivery</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((del) => (
+            <div key={del.id} className="bg-white rounded-[20px] border border-border-light shadow-sm p-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-accent-teal/10 text-[#4C8684] flex items-center justify-center shrink-0">
+                  <Car size={18} />
                 </div>
-                {del.deliveryTime && (
-                  <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-500 shrink-0">
-                    <Clock size={13} /> {del.deliveryTime}
-                  </div>
-                )}
-                <button
-                  onClick={() => handleMarkDelivered(del)}
-                  className="shrink-0 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5"
-                >
-                  <CheckCircle size={14} /> Mark Delivered
-                </button>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-text-primary truncate">{del.customer}</p>
+                  <p className="text-xs text-text-secondary truncate">{del.plan} &middot; {del.orderId}</p>
+                </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+              {del.deliveryTime && (
+                <div className="flex items-center gap-1.5 text-xs text-text-secondary mt-2">
+                  <Clock size={13} /> {del.deliveryTime}
+                </div>
+              )}
+              <CardAction tone="teal" icon={CheckCircle} className="w-full mt-3" onClick={() => handleMarkDelivered(del)}>
+                Mark Delivered
+              </CardAction>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,128 +1,209 @@
-import React, { useState } from 'react';
-import { FileText, Search, Filter, Upload, Download, Eye, FileDigit } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Upload, Download, Eye, FileDigit, FileText } from 'lucide-react';
 import { useVendor } from '../context/ClinicVendorContext';
+import { uploadVendorFile } from '../../../../services/vendor';
+import {
+  SearchBar, ListCard, CardAction, StatusBadge, EmptyState, BottomSheet, PrimaryButton, InlineError,
+  useVendorToast, errorMessage, fieldClass, labelClass,
+} from '../../vendor/mobile';
+
+const STATUSES = ['Ready', 'Processing', 'Sample Collected', 'Ordered'];
+const isImage = (url) => /\.(png|jpe?g|webp|gif|bmp|heic)(\?|$)/i.test(url || '') || /^blob:|^data:image/.test(url || '');
+
+const BLANK = { patient: '', owner: '', testType: '', status: 'Ready' };
 
 export function LabReportsView() {
-  const { labReports } = useVendor();
+  const { labReports, doctorPatients, addLabReport } = useVendor();
+  const { addToast } = useVendorToast();
   const [searchQuery, setSearchQuery] = useState('');
 
   const reports = labReports || [];
 
-  const filtered = reports.filter(r => r.patient.toLowerCase().includes(searchQuery.toLowerCase()) || r.testType.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filtered = reports.filter(r => (r.patient || '').toLowerCase().includes(searchQuery.toLowerCase()) || (r.testType || '').toLowerCase().includes(searchQuery.toLowerCase()));
 
-  const [processingState, setProcessingState] = useState({});
+  // Upload sheet
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [form, setForm] = useState(BLANK);
+  const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const fileRef = useRef(null);
 
-  const handleAction = (id, type) => {
-    if (processingState[id]) return;
-    setProcessingState(prev => ({ ...prev, [id]: type }));
-    setTimeout(() => {
-      setProcessingState(prev => ({ ...prev, [id]: null }));
-    }, 1500);
+  // Preview sheet
+  const [preview, setPreview] = useState(null);
+
+  const openUpload = () => {
+    setForm(BLANK);
+    setFile(null);
+    setUploadError('');
+    setUploadOpen(true);
   };
 
-  const handleUpload = () => {
+  const pickPatient = (id) => {
+    const p = doctorPatients.find((x) => String(x.id) === String(id));
+    setForm((f) => ({ ...f, patient: p?.name || '', owner: p?.owner || '' }));
+  };
+
+  const handleUpload = async () => {
     if (isUploading) return;
+    if (!form.patient.trim() || !form.testType.trim()) {
+      setUploadError('Choose the patient and enter the test name.');
+      return;
+    }
+    if (form.status === 'Ready' && !file) {
+      setUploadError('Attach the result file for a report marked Ready.');
+      return;
+    }
     setIsUploading(true);
-    setTimeout(() => {
+    setUploadError('');
+    try {
+      const resultUrl = file ? await uploadVendorFile(file, 'lab-reports') : '';
+      await addLabReport({ ...form, patient: form.patient.trim(), testType: form.testType.trim(), resultUrl: resultUrl || undefined });
+      setUploadOpen(false);
+      addToast({ message: 'Lab report added.', type: 'success' });
+    } catch (err) {
+      setUploadError(errorMessage(err, 'Could not upload the report.'));
+    } finally {
       setIsUploading(false);
-    }, 2000);
+    }
+  };
+
+  const download = (row) => {
+    const a = document.createElement('a');
+    a.href = row.resultUrl;
+    a.download = `${row.id || 'lab-report'}`;
+    a.target = '_blank';
+    a.rel = 'noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
-        <div>
-          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-            <FileDigit className="text-[#F87B68]" /> Lab Reports & Diagnostics
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 px-1">
+          <h2 className="text-lg font-bold text-text-primary flex items-center gap-2">
+            <FileDigit size={20} className="text-primary-main shrink-0" /> Lab Reports & Diagnostics
           </h2>
-          <p className="text-xs text-gray-500 mt-1">Manage and review patient laboratory and test results.</p>
+          <p className="text-xs text-text-secondary mt-1">Manage and review patient laboratory and test results.</p>
         </div>
+        <button
+          onClick={openUpload}
+          className="h-11 px-4 rounded-full text-sm font-bold flex items-center gap-1.5 shadow-md shrink-0 transition bg-primary-main text-white shadow-primary-main/25"
+        >
+          <Upload size={16} /> Upload Result
+        </button>
+      </div>
 
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-            <input 
-              type="text" 
-              placeholder="Search reports..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#F87B68]/50 focus:border-[#F87B68] w-64 transition"
+      <SearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search reports..." />
+
+      {filtered.length === 0 ? (
+        <EmptyState icon={FileDigit} text="No lab reports found." />
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((row) => (
+            <ListCard
+              key={row.id}
+              title={row.patient}
+              subtitle={row.owner}
+              badge={<StatusBadge label={row.status} tone={row.status === 'Ready' ? 'success' : 'warning'} />}
+              meta={[
+                { label: 'Test Type', value: row.testType, full: true },
+                { label: 'Report ID', value: row.id },
+                { label: 'Date', value: row.date },
+              ]}
+              footer={row.status === 'Ready' ? (
+                row.resultUrl ? (
+                  <>
+                    <CardAction icon={Eye} className="flex-1" onClick={() => setPreview(row)}>Preview</CardAction>
+                    <CardAction tone="outline" icon={Download} className="flex-1" onClick={() => download(row)}>Download</CardAction>
+                  </>
+                ) : (
+                  <span className="text-xs text-text-secondary font-bold italic py-1">Ready — no result file was attached</span>
+                )
+              ) : (
+                <span className="text-xs text-text-secondary font-bold italic py-1">Awaiting Lab</span>
+              )}
             />
-          </div>
-          <button 
-            onClick={handleUpload}
-            disabled={isUploading}
-            className={`px-4 py-2 rounded-lg text-sm font-bold transition shadow-sm flex items-center gap-2 ${isUploading ? 'bg-slate-800/70 text-white cursor-wait' : 'bg-slate-800 text-white hover:bg-slate-900'}`}
-          >
-            <Upload size={16} /> {isUploading ? 'Uploading...' : 'Upload Result'}
-          </button>
+          ))}
         </div>
-      </div>
+      )}
 
-      <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-100 text-[11px] text-gray-500 uppercase tracking-wider font-bold">
-                <th className="p-4">Report ID & Date</th>
-                <th className="p-4">Patient Information</th>
-                <th className="p-4">Test Type</th>
-                <th className="p-4">Status</th>
-                <th className="p-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filtered.map((row) => (
-                <tr key={row.id} className="hover:bg-gray-50 transition">
-                  <td className="p-4">
-                    <p className="font-bold text-gray-900 text-sm">{row.id}</p>
-                    <p className="text-xs text-gray-500">{row.date}</p>
-                  </td>
-                  <td className="p-4">
-                    <p className="font-bold text-gray-900 text-sm">{row.patient}</p>
-                    <p className="text-xs text-gray-500">{row.owner}</p>
-                  </td>
-                  <td className="p-4">
-                    <p className="text-sm font-medium text-gray-800">{row.testType}</p>
-                  </td>
-                  <td className="p-4">
-                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold border ${
-                      row.status === 'Ready' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-700 border-amber-100'
-                    }`}>
-                      {row.status}
-                    </span>
-                  </td>
-                  <td className="p-4 text-right">
-                    {row.status === 'Ready' ? (
-                      <div className="flex justify-end gap-2">
-                        <button 
-                          onClick={() => handleAction(row.id, 'preview')}
-                          disabled={processingState[row.id]}
-                          className={`p-2 rounded-lg transition ${processingState[row.id] === 'preview' ? 'text-blue-400 bg-blue-50 cursor-wait' : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'}`} 
-                          title="Preview"
-                        >
-                          <Eye size={16} />
-                        </button>
-                        <button 
-                          onClick={() => handleAction(row.id, 'download')}
-                          disabled={processingState[row.id]}
-                          className={`p-2 rounded-lg transition ${processingState[row.id] === 'download' ? 'text-blue-400 bg-blue-50 cursor-wait' : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'}`} 
-                          title="Download"
-                        >
-                          <Download size={16} />
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-400 font-bold italic">Awaiting Lab</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Upload a result */}
+      <BottomSheet
+        open={uploadOpen}
+        onClose={() => { if (!isUploading) setUploadOpen(false); }}
+        title="Upload Lab Result"
+        hideClose={isUploading}
+        footer={(
+          <div className="flex gap-2">
+            <PrimaryButton tone="soft" onClick={() => setUploadOpen(false)} disabled={isUploading}>Cancel</PrimaryButton>
+            <PrimaryButton tone="dark" onClick={handleUpload} disabled={isUploading} loading={isUploading}>
+              {isUploading ? 'Uploading...' : 'Save Report'}
+            </PrimaryButton>
+          </div>
+        )}
+      >
+        <div className="space-y-4 pb-2">
+          <InlineError>{uploadError}</InlineError>
+          <div>
+            <label className={labelClass}>Patient *</label>
+            <select
+              className={fieldClass}
+              value={doctorPatients.find((p) => p.name === form.patient && p.owner === form.owner)?.id || ''}
+              onChange={(e) => pickPatient(e.target.value)}
+            >
+              <option value="">-- Choose Patient --</option>
+              {doctorPatients.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.owner})</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Test Name *</label>
+            <input value={form.testType} onChange={(e) => setForm((f) => ({ ...f, testType: e.target.value }))} placeholder="e.g., Complete Blood Count (CBC)" className={fieldClass} />
+          </div>
+          <div>
+            <label className={labelClass}>Status</label>
+            <select value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))} className={fieldClass}>
+              {STATUSES.map((s) => <option key={s}>{s}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Result File {form.status === 'Ready' ? '*' : '(optional)'}</label>
+            <input ref={fileRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="w-full min-h-[56px] rounded-xl border-2 border-dashed border-accent-teal/40 bg-accent-teal/5 text-sm font-bold text-[#4C8684] flex items-center justify-center gap-2 px-3"
+            >
+              {file ? <><FileText size={18} className="shrink-0" /> <span className="truncate">{file.name}</span></> : <><Upload size={18} /> Choose PDF or image</>}
+            </button>
+          </div>
         </div>
-      </div>
+      </BottomSheet>
+
+      {/* Preview a result */}
+      <BottomSheet
+        open={!!preview}
+        onClose={() => setPreview(null)}
+        title={preview ? `${preview.testType}` : ''}
+        subtitle={preview ? `${preview.patient} • ${preview.date}` : undefined}
+        fullScreen
+        footer={preview ? (
+          <PrimaryButton tone="teal" icon={Download} onClick={() => download(preview)}>Download</PrimaryButton>
+        ) : null}
+      >
+        {preview && (isImage(preview.resultUrl) ? (
+          <img src={preview.resultUrl} alt={preview.testType} className="w-full rounded-2xl border border-border-light" />
+        ) : (
+          <div className="h-full min-h-[60vh] flex flex-col">
+            <iframe title={preview.testType} src={preview.resultUrl} className="flex-1 w-full rounded-2xl border border-border-light bg-white" />
+            <a href={preview.resultUrl} target="_blank" rel="noreferrer" className="mt-3 text-center text-xs font-bold text-primary-main min-h-[40px] flex items-center justify-center gap-1.5">
+              Open in a new tab
+            </a>
+          </div>
+        ))}
+      </BottomSheet>
     </div>
   );
 }

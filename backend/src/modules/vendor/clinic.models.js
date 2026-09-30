@@ -154,6 +154,7 @@ const vaccineReminderSchema = new mongoose.Schema(
     vaccine: { type: String, default: '' },
     date: { type: String, default: '' },
     status: { type: String, default: 'Scheduled' }, // Due Soon|Scheduled|Overdue|Completed
+    remindedAt: { type: Date, default: null }, // last owner reminder sent from the dashboard
     seedKey: { type: String },
   },
   { timestamps: true }

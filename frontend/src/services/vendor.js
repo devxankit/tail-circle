@@ -579,6 +579,11 @@ export async function fetchClinicVaccinations() {
   const { data } = await api.get('/vendor/vaccinations');
   return data;
 }
+/** Notify the pet's owner that a vaccination is due. */
+export async function sendClinicVaccinationReminder(id) {
+  const { data } = await api.post(`/vendor/vaccinations/${id}/remind`);
+  return data;
+}
 export async function fetchClinicEmergencies() {
   const { data } = await api.get('/vendor/emergencies');
   return data;

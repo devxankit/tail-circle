@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Clock, Check, X, MapPin, PawPrint, Calendar, IndianRupee, AlertTriangle, RefreshCw,
+  Clock, Check, X, MapPin, PawPrint, Calendar, IndianRupee, AlertTriangle, RefreshCw, ChevronDown,
 } from 'lucide-react';
 import {
   fetchPendingBookingRequests, acceptBookingRequest, rejectBookingRequest,
 } from '../../../services/providerVendor';
 import { useVendorAlerts } from '../../../context/VendorAlertContext';
+import { usePrompt } from '../vendor/mobile/dialogContext';
 
 /**
  * Booking requests waiting on this partner's answer.
@@ -30,8 +31,10 @@ const SERVICE_LABEL = {
   memorial: 'Memorial',
 };
 
-export function PendingBookingRequests({ onChange, className = '' }) {
+export function PendingBookingRequests({ onChange, className = '', compact = false }) {
   const [rows, setRows] = useState([]);
+  const [expanded, setExpanded] = useState(false);
+  const prompt = usePrompt();
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState(null);
@@ -87,15 +90,135 @@ export function PendingBookingRequests({ onChange, className = '' }) {
 
   const onAccept = (row) => settle(row, () => acceptBookingRequest(row._id), 'accept');
 
-  const onReject = (row) => {
-    const reason = window.prompt(
-      `Decline ${row.bookingNo}?\n\n${row.customerName} will be refunded in full, and declining is recorded on your service standing.\n\nReason (the customer is told):`
-    );
+  // The same question `window.prompt` asked, in a sheet; the same string (or
+  // null on cancel) comes back, so the checks below are unchanged.
+  const onReject = async (row) => {
+    const reason = await prompt({
+      title: `Decline ${row.bookingNo}?`,
+      message: `${row.customerName} will be refunded in full, and declining is recorded on your service standing.\n\nReason (the customer is told):`,
+      submitLabel: 'Decline',
+      danger: true,
+    });
     if (!reason || reason.trim().length < 3) return;
     settle(row, () => rejectBookingRequest(row._id, reason.trim()), 'decline');
   };
 
   if (loading || (!rows.length && !error)) return null;
+
+  /*
+   * The partner app's version: one summary card that never leaves the screen
+   * ("3 requests waiting · 04:32 left on the next"), expanding in place to the
+   * same list with the same Accept / Decline.
+   */
+  if (compact) {
+    return (
+      <div className={`bg-white rounded-[20px] border-2 shadow-sm overflow-hidden ${
+        rows.some((r) => r.overdue) ? 'border-error/40' : 'border-accent-teal/50'} ${className}`}>
+        <div className="flex items-stretch">
+          <button
+            type="button"
+            onClick={() => setExpanded((e) => !e)}
+            aria-expanded={expanded}
+            className="flex-1 min-w-0 flex items-center gap-3 p-4 text-left"
+          >
+            <span className="w-10 h-10 rounded-xl bg-accent-teal/15 text-[#4C8684] flex items-center justify-center shrink-0">
+              <Clock size={20} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[15px] font-bold text-text-primary leading-tight">
+                {rows.length} {rows.length === 1 ? 'request' : 'requests'} waiting
+              </span>
+              <NextDeadline rows={rows} />
+            </span>
+            <ChevronDown size={20} className={`text-text-secondary shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+          </button>
+          <button
+            type="button"
+            onClick={load}
+            aria-label="Refresh"
+            className="w-12 flex items-center justify-center text-text-secondary border-l border-border-light shrink-0"
+          >
+            <RefreshCw size={17} />
+          </button>
+        </div>
+
+        {error && (
+          <div className="mx-4 mb-3 flex items-start gap-2 p-3 bg-error/5 border border-error/20 rounded-xl">
+            <AlertTriangle size={15} className="text-error mt-0.5 shrink-0" />
+            <p className="text-[12px] text-text-primary">{error}</p>
+          </div>
+        )}
+
+        {expanded && (
+          <div className="px-4 pb-4 space-y-3">
+            {rows.map((r) => (
+              <div key={r._id}
+                className={`rounded-2xl border p-3.5 ${r.overdue ? 'border-error/40 bg-error/5' : 'border-border-light bg-bg-primary'}`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-[14px] font-bold text-text-primary">
+                    {SERVICE_LABEL[r.type] || r.type}
+                  </span>
+                  <span className="text-[12px] text-text-secondary font-mono">{r.bookingNo}</span>
+                  {r.visitType === 'home' && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-accent-teal/10 text-[#4C8684]">
+                      home visit
+                    </span>
+                  )}
+                </div>
+
+                <div className="mt-2 space-y-1.5 text-[13px] text-text-primary">
+                  <p className="flex items-start gap-1.5">
+                    <PawPrint size={14} className="text-text-secondary mt-0.5 shrink-0" />
+                    <span>{r.pet || '—'}{r.petBreed ? ` (${r.petBreed})` : ''} · {r.customerName}</span>
+                  </p>
+                  <p className="flex items-start gap-1.5">
+                    <Calendar size={14} className="text-text-secondary mt-0.5 shrink-0" />
+                    <span>
+                      {r.schedule?.startDate || 'date TBC'}{r.schedule?.time ? ` · ${r.schedule.time}` : ''}
+                      {r.schedule?.durationDays ? ` · ${r.schedule.durationDays} days` : ''}
+                    </span>
+                  </p>
+                  <p className="flex items-center gap-1.5 font-black">
+                    <IndianRupee size={14} className="text-text-secondary shrink-0" />
+                    {r.amount.toLocaleString('en-IN')}
+                  </p>
+                  {r.address?.city && (
+                    <p className="flex items-start gap-1.5 text-[12px] text-text-secondary">
+                      <MapPin size={13} className="mt-0.5 shrink-0" />
+                      {[r.address.line1, r.address.city].filter(Boolean).join(', ')}
+                    </p>
+                  )}
+                  {r.items?.length > 0 && (
+                    <p className="text-[12px] text-text-secondary">
+                      {r.items.map((i) => i.name).join(' · ')}
+                    </p>
+                  )}
+                </div>
+
+                <Deadline respondBy={r.respondBy} overdue={r.overdue} />
+
+                <div className="flex gap-2 mt-3">
+                  <button onClick={() => onAccept(r)} disabled={busyId === r._id}
+                    className="flex-1 min-h-[44px] flex items-center justify-center gap-1.5 bg-accent-teal disabled:opacity-50 text-white rounded-xl text-[14px] font-bold">
+                    <Check size={17} /> Accept
+                  </button>
+                  <button onClick={() => onReject(r)} disabled={busyId === r._id}
+                    className="flex-1 min-h-[44px] flex items-center justify-center gap-1.5 bg-white border border-border-light disabled:opacity-50 text-text-primary rounded-xl text-[14px] font-bold">
+                    <X size={17} /> Decline
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            <p className="text-[11px] text-text-secondary leading-snug">
+              Requests you do not answer in time are declined automatically, the customer is refunded,
+              and it counts against your service standing.
+            </p>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={`mb-6 ${className}`}>
@@ -194,6 +317,39 @@ export function PendingBookingRequests({ onChange, className = '' }) {
         and it counts against your service standing.
       </p>
     </div>
+  );
+}
+
+/** The compact card's subline: time left on the soonest request. */
+function NextDeadline({ rows }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  if (rows.some((r) => r.overdue || (r.respondBy && new Date(r.respondBy) - now <= 0))) {
+    return (
+      <span className="flex items-center gap-1 mt-0.5 text-[12px] font-bold text-error">
+        <AlertTriangle size={12} /> Overdue — tap to answer
+      </span>
+    );
+  }
+  const next = rows
+    .map((r) => (r.respondBy ? new Date(r.respondBy) - now : null))
+    .filter((ms) => ms != null)
+    .sort((a, b) => a - b)[0];
+  if (next == null) {
+    return <span className="block mt-0.5 text-[12px] text-text-secondary">Tap to review and answer</span>;
+  }
+  const hrs = Math.floor(next / 3_600_000);
+  const mins = Math.floor((next % 3_600_000) / 60_000);
+  const secs = Math.floor((next % 60_000) / 1000);
+  const pad = (n) => String(n).padStart(2, '0');
+  return (
+    <span className={`block mt-0.5 text-[12px] font-bold ${next < 15 * 60_000 ? 'text-error' : 'text-warning'}`}>
+      {hrs > 0 ? `${hrs}h ${pad(mins)}m` : `${pad(mins)}:${pad(secs)}`} left on the next
+    </span>
   );
 }
 

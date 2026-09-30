@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Search, ChevronDown, ChevronLeft, ChevronRight, ArrowUpDown, Filter, X } from 'lucide-react';
 import { cn } from '../../../modules/user/utils/cn';
+import { FilterSheet, FilterOptions } from '../vendor/mobile/FilterSheet';
 
 export function DataTable({ 
   columns = [], 
@@ -9,8 +10,15 @@ export function DataTable({
   searchKey = "", 
   filterKey = "", 
   filterOptions = [], 
-  emptyMessage = "No records found"
+  emptyMessage = "No records found",
+  // Opt-in for the partner app: always the card list, search on top and the
+  // filter in a sheet. Without it the layout switches on `sm:`, which follows
+  // the browser window — inside the 430px phone column on a desktop that would
+  // show the desktop table. Admin screens never pass it.
+  forceMobile = false,
 }) {
+  // Picks the default class string, or the phone one when forced.
+  const c = (standard, phone) => (forceMobile ? phone : standard);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
@@ -88,10 +96,10 @@ export function DataTable({
     <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.015)] flex flex-col h-full relative">
       {/* Top Header Actions (Search & Filter) */}
       {(searchKey || filterKey) && (
-        <div className="p-4 sm:p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-50/30">
+        <div className={c("p-4 sm:p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-50/30", "p-3 border-b border-border-light flex flex-col gap-2 bg-white")}>
           
           {searchKey && (
-            <div className="relative flex-1 w-full max-w-sm">
+            <div className={c("relative flex-1 w-full max-w-sm", "relative w-full")}>
               <span className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400">
                 <Search size={16} />
               </span>
@@ -103,7 +111,7 @@ export function DataTable({
                   setCurrentPage(1);
                 }}
                 placeholder={searchPlaceholder}
-                className="w-full pl-10 pr-4 py-3 sm:py-2.5 text-[16px] sm:text-xs border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500/10 focus:border-purple-500 bg-white placeholder-gray-400 font-medium"
+                className={c("w-full pl-10 pr-4 py-3 sm:py-2.5 text-[16px] sm:text-xs border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-purple-500/10 focus:border-purple-500 bg-white placeholder-gray-400 font-medium", "w-full h-12 pl-10 pr-4 text-[16px] border border-border-light rounded-2xl focus:outline-none focus:ring-2 focus:ring-accent-teal/20 focus:border-accent-teal bg-white placeholder:text-text-disabled font-medium")}
               />
             </div>
           )}
@@ -113,13 +121,13 @@ export function DataTable({
             <>
               {/* Mobile Filter Trigger */}
               <button 
-                className="w-full sm:hidden flex items-center justify-center gap-2 py-3 border border-gray-200 rounded-full text-[16px] font-bold text-gray-700 bg-white"
+                className={c("w-full sm:hidden flex items-center justify-center gap-2 py-3 border border-gray-200 rounded-full text-[16px] font-bold text-gray-700 bg-white", "w-full h-12 flex items-center justify-center gap-2 border border-border-light rounded-2xl text-[15px] font-bold text-text-primary bg-white")}
                 onClick={() => setMobileFilterOpen(true)}
               >
-                <Filter size={16} /> Filters
+                <Filter size={16} /> Filters{forceMobile && activeFilter !== 'All' ? ` · ${activeFilter}` : ''}
               </button>
 
-              <div className="hidden sm:flex items-center gap-2.5 self-end sm:self-auto">
+              {!forceMobile && <div className="hidden sm:flex items-center gap-2.5 self-end sm:self-auto">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Filter By</span>
                 <div className="relative">
                   <select
@@ -139,14 +147,30 @@ export function DataTable({
                     <ChevronDown size={14} />
                   </span>
                 </div>
-              </div>
+              </div>}
             </>
           )}
         </div>
       )}
 
+      {/* Phone filter sheet (forced mobile): same filter state, in the kit sheet. */}
+      {forceMobile && (
+        <FilterSheet
+          open={mobileFilterOpen}
+          onClose={() => setMobileFilterOpen(false)}
+          onReset={() => { setActiveFilter('All'); setCurrentPage(1); }}
+        >
+          <FilterOptions
+            label="Category"
+            options={[{ value: 'All', label: 'All Categories' }, ...filterOptions]}
+            value={activeFilter}
+            onChange={(v) => { setActiveFilter(v); setCurrentPage(1); }}
+          />
+        </FilterSheet>
+      )}
+
       {/* Mobile Filter Bottom Drawer */}
-      {mobileFilterOpen && (
+      {!forceMobile && mobileFilterOpen && (
         <div className="fixed inset-0 z-50 flex flex-col justify-end bg-gray-900/60 backdrop-blur-sm sm:hidden" onClick={() => setMobileFilterOpen(false)}>
           <div className="bg-white w-full rounded-t-2xl shadow-xl animate-in slide-in-from-bottom-full duration-250 flex flex-col max-h-[70vh]" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-gray-100">
@@ -186,7 +210,7 @@ export function DataTable({
       )}
 
       {/* Table & Cards Container */}
-      <div className="flex-1 overflow-x-auto min-h-[250px] bg-gray-50/10 sm:bg-transparent p-4 sm:p-0">
+      <div className={c("flex-1 overflow-x-auto min-h-[250px] bg-gray-50/10 sm:bg-transparent p-4 sm:p-0", "flex-1 p-3 bg-bg-primary/40")}>
         
         {paginatedData.length === 0 ? (
           <div className="p-16 flex flex-col items-center justify-center gap-2 text-center">
@@ -196,7 +220,7 @@ export function DataTable({
         ) : (
           <>
             {/* Desktop / Tablet Table */}
-            <table className="w-full text-left border-collapse hidden sm:table">
+            {!forceMobile && <table className="w-full text-left border-collapse hidden sm:table">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/20">
                   {columns.map((col) => (
@@ -227,10 +251,10 @@ export function DataTable({
                   </tr>
                 ))}
               </tbody>
-            </table>
+            </table>}
 
             {/* Mobile Card List */}
-            <div className="flex flex-col gap-3 sm:hidden">
+            <div className={c("flex flex-col gap-3 sm:hidden", "flex flex-col gap-3")}>
               {paginatedData.map((row, rIdx) => {
                 // Heuristic: identify common keys for title, status, actions
                 const titleCol = columns.find(c => ['name', 'title', 'id', 'customer', 'petName'].includes(c.key)) || columns[0];
@@ -241,11 +265,11 @@ export function DataTable({
                 const metricCols = columns.filter(c => c !== titleCol && c !== statusCol && c !== actionCol);
 
                 return (
-                  <div key={row.id || rIdx} className="bg-white border border-[#FAF7F2] rounded-xl p-4 w-full shadow-sm">
+                  <div key={row.id || rIdx} className={c("bg-white border border-[#FAF7F2] rounded-xl p-4 w-full shadow-sm", "bg-white border border-border-light rounded-[20px] p-4 w-full shadow-sm")}>
                     {/* Header Row */}
                     <div className="flex items-start justify-between gap-3 mb-3 pb-3 border-b border-gray-50">
                       <div className="flex items-center gap-3 overflow-hidden">
-                        <div className="w-10 h-10 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center font-black shrink-0">
+                        <div className={c("w-10 h-10 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center font-black shrink-0", "w-10 h-10 rounded-full bg-accent-teal/10 text-[#4C8684] flex items-center justify-center font-black shrink-0")}>
                            {String(row[titleCol.key] || '').charAt(0).toUpperCase()}
                         </div>
                         <div className="truncate">
@@ -277,7 +301,7 @@ export function DataTable({
 
                     {/* Actions Row */}
                     {actionCol && (
-                      <div className="pt-3 border-t border-gray-50 flex items-center justify-end gap-2 w-full min-h-[44px]">
+                      <div className={c("pt-3 border-t border-gray-50 flex items-center justify-end gap-2 w-full min-h-[44px]", "pt-3 border-t border-border-light flex flex-wrap items-center justify-end gap-2 w-full min-h-[44px]")}>
                         {actionCol.render(row)}
                       </div>
                     )}
@@ -291,15 +315,15 @@ export function DataTable({
 
       {/* Pagination Footer */}
       {totalPages > 1 && (
-        <div className="p-4 border-t border-gray-100 bg-gray-50/10 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider hidden sm:block">
+        <div className={c("p-4 border-t border-gray-100 bg-gray-50/10 flex flex-col sm:flex-row items-center justify-between gap-4", "p-3 border-t border-border-light bg-white flex flex-col items-center gap-3")}>
+          {!forceMobile && <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider hidden sm:block">
             Showing <span className="text-gray-700">{startIndex}</span> to{" "}
             <span className="text-gray-700">{endIndex}</span> of{" "}
             <span className="text-gray-700">{filteredData.length}</span> entries
-          </p>
+          </p>}
 
           {/* Desktop/Tablet Pagination */}
-          <div className="hidden sm:flex items-center gap-1.5">
+          {!forceMobile && <div className="hidden sm:flex items-center gap-1.5">
             <button
               onClick={() => handlePageChange(currentPage - 1)}
               disabled={currentPage === 1}
@@ -330,10 +354,10 @@ export function DataTable({
             >
               <ChevronRight size={14} />
             </button>
-          </div>
+          </div>}
 
           {/* Mobile Pagination */}
-          <div className="flex sm:hidden items-center justify-between w-full gap-2">
+          <div className={c("flex sm:hidden items-center justify-between w-full gap-2", "flex items-center justify-between w-full gap-2")}>
             <button
               onClick={() => handlePageChange(currentPage - 1)}
               disabled={currentPage === 1}

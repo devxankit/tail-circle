@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Bell, Calendar, AlertTriangle, FileText, Check, Loader2, Info } from 'lucide-react';
+import { Bell, Calendar, AlertTriangle, Check, Loader2, Info } from 'lucide-react';
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from '../../../../services/notifications';
+import { ChipTabs, SkeletonList } from '../../vendor/mobile';
 
 const TYPE_ICON = {
   booking: Calendar,
@@ -9,9 +10,9 @@ const TYPE_ICON = {
 };
 
 const TYPE_COLOR = {
-  booking: 'border-l-blue-500 bg-blue-50/20',
-  vet: 'border-l-red-500 bg-red-50/20',
-  system: 'border-l-gray-400 bg-gray-50/20',
+  booking: 'border-l-accent-teal',
+  vet: 'border-l-error',
+  system: 'border-l-text-disabled',
 };
 
 /** Real notifications from GET /notifications — same feed the customer app reads. */
@@ -61,95 +62,84 @@ export function NotificationsView({ onNavigate }) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-black text-gray-900 flex items-center gap-2">
-            <Bell size={18} className="text-[#F87B68]" /> Notifications
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 px-1">
+          <h2 className="text-lg font-bold text-text-primary flex items-center gap-2 flex-wrap">
+            <Bell size={18} className="text-primary-main" /> Notifications
             {unreadCount > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-xs font-black bg-[#F87B68] text-white">
+              <span className="px-2 py-0.5 rounded-full text-xs font-black bg-primary-main text-white">
                 {unreadCount} New
               </span>
             )}
           </h2>
-          <p className="text-xs text-gray-400 font-medium mt-0.5">New appointments and clinic alerts.</p>
+          <p className="text-xs text-text-secondary mt-1">New appointments and clinic alerts.</p>
         </div>
 
         {unreadCount > 0 && (
           <button
             onClick={markAllRead}
             disabled={processing}
-            className="px-4 py-2 border border-gray-200 hover:border-gray-300 text-xs font-black text-gray-700 bg-white hover:bg-gray-50 rounded-xl transition flex items-center gap-1.5 shadow-sm disabled:opacity-60"
+            className="min-h-[40px] px-3 border border-border-light text-xs font-bold text-text-primary bg-white rounded-xl transition flex items-center gap-1.5 shadow-sm disabled:opacity-60 shrink-0"
           >
-            {processing ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} className="text-emerald-500" />}
+            {processing ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} className="text-success" />}
             Mark all as read
           </button>
         )}
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden flex flex-col min-h-[480px]">
-        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50/50 flex flex-wrap gap-2 items-center justify-between">
-          <div className="flex gap-1.5">
-            {[
-              { id: 'all', label: 'All' },
-              { id: 'unread', label: 'Unread' },
-              { id: 'booking', label: 'Appointments' },
-              { id: 'vet', label: 'Alerts' },
-            ].map(tab => (
+      <ChipTabs
+        items={[
+          { key: 'all', label: 'All' },
+          { key: 'unread', label: 'Unread' },
+          { key: 'booking', label: 'Appointments' },
+          { key: 'vet', label: 'Alerts' },
+        ]}
+        activeKey={filter}
+        onSelect={setFilter}
+      />
+      <p className="text-[10px] text-text-secondary font-bold uppercase tracking-wider px-1">
+        Showing {filtered.length} of {items.length}
+      </p>
+
+      {loading ? (
+        <SkeletonList rows={4} />
+      ) : (
+        <div className="space-y-2">
+          {filtered.map(item => {
+            const Icon = TYPE_ICON[item.type] || Info;
+            return (
               <button
-                key={tab.id}
-                onClick={() => setFilter(tab.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
-                  filter === tab.id ? 'bg-gray-900 text-white shadow-sm' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
-                }`}
+                type="button"
+                key={item.id}
+                onClick={() => toggleRead(item)}
+                className={`w-full text-left flex items-start gap-3 p-4 bg-white border border-border-light border-l-4 rounded-2xl shadow-sm transition active:bg-bg-primary ${TYPE_COLOR[item.type] || 'border-l-text-disabled'} ${item.unread ? '' : 'opacity-75'}`}
               >
-                {tab.label}
+                <div className="w-10 h-10 rounded-xl bg-bg-primary border border-border-light flex items-center justify-center shrink-0">
+                  <Icon size={18} className="text-text-secondary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h4 className={`text-sm text-text-primary ${item.unread ? 'font-bold' : 'font-semibold'}`}>{item.title}</h4>
+                    {item.unread && <span className="w-2 h-2 rounded-full bg-primary-main shrink-0" />}
+                  </div>
+                  <p className="text-xs text-text-secondary mt-1 leading-relaxed">{item.msg}</p>
+                  <span className="text-[11px] text-text-secondary/80 font-medium mt-1.5 block">{item.time}</span>
+                </div>
               </button>
-            ))}
-          </div>
-          <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-            Showing {filtered.length} of {items.length}
-          </span>
-        </div>
+            );
+          })}
 
-        {loading ? (
-          <div className="flex-1 flex items-center justify-center py-20"><Loader2 size={26} className="animate-spin text-gray-400" /></div>
-        ) : (
-          <div className="flex-1 divide-y divide-gray-100">
-            {filtered.map(item => {
-              const Icon = TYPE_ICON[item.type] || Info;
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => toggleRead(item)}
-                  className={`flex items-start gap-4 p-4 border-l-4 transition hover:bg-gray-50/50 cursor-pointer ${TYPE_COLOR[item.type] || 'border-l-gray-400 bg-gray-50/20'} ${item.unread ? 'bg-white font-semibold' : 'opacity-75'}`}
-                >
-                  <div className="w-9 h-9 rounded-xl bg-white border border-gray-100 shadow-sm flex items-center justify-center shrink-0">
-                    <Icon size={18} className="text-gray-500" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-xs font-bold text-gray-900">{item.title}</h4>
-                      {item.unread && <span className="w-1.5 h-1.5 rounded-full bg-[#F87B68]" />}
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1 leading-relaxed">{item.msg}</p>
-                    <span className="text-[10px] text-gray-400 font-medium mt-2 block">{item.time}</span>
-                  </div>
-                </div>
-              );
-            })}
-
-            {filtered.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20 text-center">
-                <div className="w-14 h-14 bg-gray-50 border border-gray-100 rounded-full flex items-center justify-center mb-3">
-                  <Bell size={22} className="text-gray-300" />
-                </div>
-                <p className="font-bold text-gray-600 text-sm">No notifications</p>
-                <p className="text-xs text-gray-400 mt-1">New appointments will show up here.</p>
+          {filtered.length === 0 && (
+            <div className="bg-white border border-border-light rounded-[20px] flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-14 h-14 bg-bg-primary rounded-full flex items-center justify-center mb-3">
+                <Bell size={22} className="text-text-disabled" />
               </div>
-            )}
-          </div>
-        )}
-      </div>
+              <p className="font-bold text-text-primary text-sm">No notifications</p>
+              <p className="text-xs text-text-secondary mt-1">New appointments will show up here.</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

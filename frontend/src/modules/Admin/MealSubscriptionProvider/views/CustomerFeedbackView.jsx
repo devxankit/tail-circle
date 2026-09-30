@@ -12,10 +12,10 @@ import { MessageSquare } from 'lucide-react';
  */
 export function CustomerFeedbackView() {
   return (
-    <div className="h-full flex flex-col items-center justify-center text-center py-24 bg-white rounded-3xl border border-gray-100">
-      <MessageSquare size={40} className="text-gray-200 mb-4" />
-      <h3 className="text-base font-bold text-gray-700">Customer feedback isn't available yet</h3>
-      <p className="text-sm text-gray-400 mt-2 max-w-sm">
+    <div className="flex flex-col items-center justify-center text-center py-16 px-6 bg-white rounded-[20px] border border-border-light">
+      <MessageSquare size={40} className="text-text-disabled mb-4" />
+      <h3 className="text-base font-bold text-text-primary">Customer feedback isn't available yet</h3>
+      <p className="text-sm text-text-secondary mt-2 max-w-sm leading-relaxed">
         There's no review or feedback model wired up for meal-subscription vendors on the backend yet —
         this page will show real reviews once that's built.
       </p>

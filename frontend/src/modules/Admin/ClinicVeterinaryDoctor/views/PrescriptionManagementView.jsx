@@ -1,15 +1,23 @@
 import React, { useState, useRef } from 'react';
-import { Plus, Printer, Download, FileText, Calendar, Search, Pill, Trash2, Camera, Upload, Image as ImageIcon, Eye, X, Check, Loader2, Sparkles } from 'lucide-react';
+import { Plus, Printer, Download, FileText, Calendar, Search, Pill, Trash2, Camera, Upload, Eye, Check, Loader2 } from 'lucide-react';
 import { useVendor } from '../context/ClinicVendorContext';
 import { uploadVendorFile } from '../../../../services/vendor';
+import {
+  SegmentedTabs, FormSection, BottomSheet, StickyActionBar, PrimaryButton, EmptyState, StatusBadge,
+  useVendorToast, errorMessage, fieldClass, textareaClass, labelClass,
+} from '../../vendor/mobile';
+import { printDocument, medicinesTable } from '../utils/clinicActions';
+
+const smallField = 'w-full h-11 rounded-xl border border-border-light bg-white px-3 text-[16px] text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent-teal focus:ring-2 focus:ring-accent-teal/20';
 
 export function PrescriptionManagementView({ onNavigate }) {
   const { doctorPatients, prescriptions, addPrescription } = useVendor();
+  const { addToast } = useVendorToast();
   const [activeTab, setActiveTab] = useState('new');
-  
+
   // Prescription Mode: 'digital' | 'photo'
   const [rxType, setRxType] = useState('digital');
-  
+
   // Common Prescription State
   const [selectedPatientId, setSelectedPatientId] = useState('');
   const [diagnosis, setDiagnosis] = useState('');
@@ -29,15 +37,18 @@ export function PrescriptionManagementView({ onNavigate }) {
 
   // Lightbox Modal for Photo Prescriptions in History/Preview
   const [lightboxImage, setLightboxImage] = useState(null);
+  // The preview column, as a sheet on a phone.
+  const [showPreview, setShowPreview] = useState(false);
+  const [historySearch, setHistorySearch] = useState('');
 
   const addMedicine = () => setMedicines([...medicines, { name: '', dosage: '', frequency: '', duration: '' }]);
-  
+
   const updateMedicine = (index, field, value) => {
     const updated = [...medicines];
     updated[index][field] = value;
     setMedicines(updated);
   };
-  
+
   const removeMedicine = (index) => {
     setMedicines(medicines.filter((_, i) => i !== index));
   };
@@ -82,12 +93,12 @@ export function PrescriptionManagementView({ onNavigate }) {
   const handleSave = async () => {
     if (isSaving) return;
     if (!selectedPatientId) {
-      alert('Please select a patient first.');
+      addToast({ message: 'Please select a patient first.', type: 'error' });
       return;
     }
 
     if (rxType === 'photo' && !photoUrl && !photoPreview) {
-      alert('Please upload or click a photo of the prescription.');
+      addToast({ message: 'Please upload or click a photo of the prescription.', type: 'error' });
       return;
     }
 
@@ -106,7 +117,7 @@ export function PrescriptionManagementView({ onNavigate }) {
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
-      
+
       // Reset form
       setDiagnosis('');
       setMedicines([{ name: '', dosage: '', frequency: '', duration: '' }]);
@@ -115,8 +126,7 @@ export function PrescriptionManagementView({ onNavigate }) {
       setPhotoPreview('');
       setFollowUpDate('');
     } catch (err) {
-      console.error('Failed to save prescription', err);
-      alert('Failed to save prescription. Please try again.');
+      addToast({ message: errorMessage(err, 'Failed to save prescription. Please try again.'), type: 'error' });
     } finally {
       setIsSaving(false);
     }
@@ -145,446 +155,530 @@ export function PrescriptionManagementView({ onNavigate }) {
     }
   };
 
+  const hasPhoto = Boolean(photoUrl || photoPreview);
+  const filledMedicines = medicines.filter((m) => m.name.trim());
+
+  /** Print (or save as PDF) the digital prescription being written. */
+  const printDigital = () => {
+    if (!selectedPatient) {
+      addToast({ message: 'Please select a patient first.', type: 'error' });
+      return;
+    }
+    const opened = printDocument({
+      title: `Prescription — ${selectedPatient.name}`,
+      subtitle: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }),
+      rows: [
+        ['Pet', `${selectedPatient.name}${selectedPatient.breed ? ` (${selectedPatient.breed})` : ''}`],
+        ['Owner', selectedPatient.owner],
+        ['Diagnosis', diagnosis],
+        ['Follow-up date', followUpDate],
+      ],
+      sections: [
+        { title: 'Medicines', html: medicinesTable(filledMedicines) },
+        { title: "Doctor's advice", body: notes },
+      ],
+    });
+    if (!opened) addToast({ message: 'Allow pop-ups for this site to print.', type: 'warning' });
+  };
+
+  /** Print a saved digital prescription from the history list. */
+  const printSavedDigital = (rx) => {
+    const opened = printDocument({
+      title: `Prescription — ${rx.petName}`,
+      subtitle: rx.date,
+      rows: [['Pet', rx.petName], ['Owner', rx.owner], ['Diagnosis', rx.diagnosis], ['Follow-up date', rx.followUpDate]],
+      sections: [
+        { title: 'Medicines', html: medicinesTable(rx.items || []) },
+        { title: "Doctor's advice", body: rx.notes },
+      ],
+    });
+    if (!opened) addToast({ message: 'Allow pop-ups for this site to print.', type: 'warning' });
+  };
+
+  const hq = historySearch.trim().toLowerCase();
+  const historyRows = (prescriptions || []).filter((rx) => !hq
+    || rx.petName?.toLowerCase().includes(hq)
+    || rx.owner?.toLowerCase().includes(hq)
+    || rx.diagnosis?.toLowerCase().includes(hq)
+    || (rx.items || []).some((m) => m.name?.toLowerCase().includes(hq)));
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 rounded-xl border border-gray-200 shadow-sm gap-4">
-        <div>
-          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-            <Pill className="text-[#F87B68]" size={20} /> Digital & Photo Prescription Pad
-          </h2>
-          <p className="text-xs text-gray-500">Create digital text prescriptions or upload photo of handwritten prescriptions.</p>
-        </div>
-        <div className="flex bg-gray-100 p-1 rounded-lg self-stretch sm:self-auto">
-          <button 
-            onClick={() => setActiveTab('new')}
-            className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-md transition ${activeTab === 'new' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            + New Prescription
-          </button>
-          <button 
-            onClick={() => setActiveTab('history')}
-            className={`flex-1 sm:flex-none px-4 py-1.5 text-xs font-bold rounded-md transition ${activeTab === 'history' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            History ({(prescriptions || []).length})
-          </button>
-        </div>
+      <div className="px-1">
+        <h2 className="text-lg font-bold text-text-primary flex items-center gap-2">
+          <Pill className="text-primary-main shrink-0" size={20} /> Digital & Photo Prescription Pad
+        </h2>
+        <p className="text-xs text-text-secondary mt-1">Create digital text prescriptions or upload photo of handwritten prescriptions.</p>
       </div>
 
+      <SegmentedTabs
+        items={[
+          { key: 'new', label: '+ New Prescription' },
+          { key: 'history', label: `History (${(prescriptions || []).length})` },
+        ]}
+        activeKey={activeTab}
+        onSelect={setActiveTab}
+      />
+
       {activeTab === 'new' ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Form Area */}
-          <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl shadow-sm p-6 space-y-6">
-            
-            {/* Prescription Mode Selector Toggle */}
-            <div className="bg-slate-50 p-1.5 rounded-xl border border-slate-200 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setRxType('digital')}
-                className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${
-                  rxType === 'digital'
-                    ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <FileText size={16} className={rxType === 'digital' ? 'text-[#F87B68]' : ''} />
-                <span>Digital Form (Text)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setRxType('photo')}
-                className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 ${
-                  rxType === 'photo'
-                    ? 'bg-white text-slate-900 shadow-sm border border-slate-200/80'
-                    : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <Camera size={16} className={rxType === 'photo' ? 'text-indigo-600' : ''} />
-                <span>Upload Photo / Camera</span>
-              </button>
-            </div>
-
-            {/* Patient & Diagnosis Details */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-black text-gray-800 uppercase tracking-wider border-b pb-2">Patient Details</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Select Patient *</label>
-                  <select 
-                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#F87B68]"
-                    value={selectedPatientId}
-                    onChange={(e) => setSelectedPatientId(e.target.value)}
-                  >
-                    <option value="">-- Choose Patient --</option>
-                    {doctorPatients.map(p => (
-                      <option key={p.id} value={p.id}>{p.name} ({p.owner})</option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Clinical Diagnosis {rxType === 'digital' ? '*' : '(Optional)'}</label>
-                  <input 
-                    type="text" 
-                    value={diagnosis}
-                    onChange={(e) => setDiagnosis(e.target.value)}
-                    placeholder="e.g., Acute Gastroenteritis / Otitis Externa"
-                    className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#F87B68]"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* DIGITAL FORM MODE */}
-            {rxType === 'digital' && (
-              <div className="space-y-4">
-                <div className="flex justify-between items-end border-b pb-2">
-                  <h3 className="text-sm font-black text-gray-800 uppercase tracking-wider">Medication List</h3>
-                  <button onClick={addMedicine} className="text-xs font-bold text-[#F87B68] hover:text-[#F87B68] flex items-center gap-1">
-                    <Plus size={14} /> Add Medicine
-                  </button>
-                </div>
-                
-                <div className="space-y-3">
-                  {medicines.map((med, index) => (
-                    <div key={index} className="flex flex-wrap gap-2 items-end bg-gray-50 p-3 rounded-lg border border-gray-100">
-                      <div className="flex-1 min-w-[150px]">
-                        <label className="block text-[10px] font-bold text-gray-500 uppercase">Medicine Name</label>
-                        <input type="text" value={med.name} onChange={(e) => updateMedicine(index, 'name', e.target.value)} className="w-full p-2 border rounded-md text-sm mt-1" placeholder="e.g. Amoxicillin" />
-                      </div>
-                      <div className="w-24">
-                        <label className="block text-[10px] font-bold text-gray-500 uppercase">Dosage</label>
-                        <input type="text" value={med.dosage} onChange={(e) => updateMedicine(index, 'dosage', e.target.value)} className="w-full p-2 border rounded-md text-sm mt-1" placeholder="50mg" />
-                      </div>
-                      <div className="w-32">
-                        <label className="block text-[10px] font-bold text-gray-500 uppercase">Frequency</label>
-                        <input type="text" value={med.frequency} onChange={(e) => updateMedicine(index, 'frequency', e.target.value)} className="w-full p-2 border rounded-md text-sm mt-1" placeholder="1-0-1 (BID)" />
-                      </div>
-                      <div className="w-24">
-                        <label className="block text-[10px] font-bold text-gray-500 uppercase">Duration</label>
-                        <input type="text" value={med.duration} onChange={(e) => updateMedicine(index, 'duration', e.target.value)} className="w-full p-2 border rounded-md text-sm mt-1" placeholder="5 Days" />
-                      </div>
-                      <button onClick={() => removeMedicine(index)} className="p-2 text-red-500 hover:bg-red-50 rounded-md mb-0.5" title="Remove medicine">
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* PHOTO UPLOAD / CAMERA MODE */}
-            {rxType === 'photo' && (
-              <div className="space-y-4">
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-wider border-b pb-2">Prescription Photo Upload</h3>
-                
-                {/* Hidden file & camera inputs */}
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  ref={fileInputRef}
-                  onChange={handlePhotoSelect}
-                  className="hidden" 
-                />
-                <input 
-                  type="file" 
-                  accept="image/*" 
-                  capture="environment"
-                  ref={cameraInputRef}
-                  onChange={handlePhotoSelect}
-                  className="hidden" 
-                />
-
-                {!(photoUrl || photoPreview) ? (
-                  <div className="border-2 border-dashed border-indigo-200 bg-indigo-50/40 rounded-2xl p-8 text-center space-y-4 hover:border-indigo-400 transition">
-                    <div className="w-14 h-14 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto shadow-sm">
-                      <Camera size={28} />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-gray-900">Click or Upload Prescription Photo</h4>
-                      <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
-                        Snap a photo of the physical prescription sheet using your camera, or upload a scanned image file.
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap justify-center gap-3 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => cameraInputRef.current?.click()}
-                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-2"
-                      >
-                        <Camera size={16} /> Snap Photo (Camera)
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-2"
-                      >
-                        <Upload size={16} /> Choose File from Device
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="relative bg-gray-900 rounded-2xl overflow-hidden border border-gray-800 shadow-md group">
-                    <img 
-                      src={photoPreview || photoUrl} 
-                      alt="Prescription preview" 
-                      className="w-full h-64 object-contain bg-slate-900" 
-                    />
-                    
-                    {isUploading && (
-                      <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center text-white gap-2 font-bold text-xs">
-                        <Loader2 className="animate-spin" size={18} /> Uploading photo...
-                      </div>
-                    )}
-
-                    <div className="absolute top-3 right-3 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setLightboxImage(photoPreview || photoUrl)}
-                        className="p-2 bg-black/60 hover:bg-black/80 text-white rounded-lg backdrop-blur-xs transition"
-                        title="View Full Resolution"
-                      >
-                        <Eye size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={removePhoto}
-                        className="p-2 bg-red-600/80 hover:bg-red-600 text-white rounded-lg backdrop-blur-xs transition"
-                        title="Remove / Retake Photo"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-
-                    <div className="p-3 bg-slate-950 text-white flex items-center justify-between text-xs border-t border-slate-800">
-                      <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
-                        <Check size={14} /> Photo Attached Successfully
-                      </span>
-                      <button 
-                        type="button" 
-                        onClick={() => cameraInputRef.current?.click()}
-                        className="text-gray-300 hover:text-white font-medium underline text-[11px]"
-                      >
-                        Retake Photo
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Notes & Follow up date */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Doctor's Advice / Instructions</label>
-                <textarea 
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Rest, specific diet, precautions..."
-                  className="w-full p-2 border border-gray-300 rounded-lg text-sm h-24 focus:ring-2 focus:ring-[#F87B68]"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Follow-up Date</label>
-                <input 
-                  type="date" 
-                  value={followUpDate}
-                  onChange={(e) => setFollowUpDate(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[#F87B68]"
-                />
-              </div>
-            </div>
+        <>
+          {/* Prescription Mode Selector Toggle */}
+          <div className="bg-bg-secondary p-1 rounded-2xl flex gap-1">
+            <button
+              type="button"
+              onClick={() => setRxType('digital')}
+              className={`flex-1 min-h-[44px] px-2 rounded-xl text-[13px] font-bold transition flex items-center justify-center gap-1.5 ${
+                rxType === 'digital' ? 'bg-white text-text-primary shadow-sm' : 'text-text-secondary'
+              }`}
+            >
+              <FileText size={16} className={rxType === 'digital' ? 'text-primary-main' : ''} />
+              <span>Digital Form (Text)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setRxType('photo')}
+              className={`flex-1 min-h-[44px] px-2 rounded-xl text-[13px] font-bold transition flex items-center justify-center gap-1.5 ${
+                rxType === 'photo' ? 'bg-white text-text-primary shadow-sm' : 'text-text-secondary'
+              }`}
+            >
+              <Camera size={16} className={rxType === 'photo' ? 'text-[#4C8684]' : ''} />
+              <span>Upload Photo / Camera</span>
+            </button>
           </div>
 
-          {/* Preview / Action Area */}
-          <div className="bg-gray-50 border border-gray-200 rounded-xl shadow-sm p-6 flex flex-col h-full">
-            <h3 className="text-sm font-black text-gray-800 uppercase tracking-wider border-b pb-2 mb-4">
-              Prescription Preview
-            </h3>
-            
-            {rxType === 'photo' && (photoUrl || photoPreview) ? (
-              <div className="flex-1 bg-white border border-gray-200 rounded-xl overflow-hidden shadow-xs flex flex-col">
-                <div className="p-3 bg-indigo-50 border-b border-indigo-100 flex justify-between items-center">
-                  <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
-                    <Camera size={14} /> Photo Document
-                  </span>
-                  <button 
-                    onClick={() => setLightboxImage(photoPreview || photoUrl)}
-                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
-                  >
-                    <Eye size={12} /> Full Screen
-                  </button>
-                </div>
-                <div className="flex-1 p-2 bg-slate-100 flex items-center justify-center overflow-hidden">
-                  <img 
-                    src={photoPreview || photoUrl} 
-                    alt="Prescription preview" 
-                    className="max-h-56 object-contain rounded border border-gray-200" 
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="flex-1 bg-white border border-dashed border-gray-300 rounded-lg p-6 flex flex-col items-center justify-center text-center opacity-70">
-                {rxType === 'photo' ? (
-                  <>
-                    <Camera size={48} className="text-indigo-300 mb-3" />
-                    <p className="text-sm font-bold text-gray-500">Live Photo Preview</p>
-                    <p className="text-xs text-gray-400 mt-1 max-w-xs">Upload or snap a prescription picture to see preview here.</p>
-                  </>
-                ) : (
-                  <>
-                    <FileText size={48} className="text-gray-300 mb-3" />
-                    <p className="text-sm font-bold text-gray-500">Live Digital Preview</p>
-                    <p className="text-xs text-gray-400 mt-1 max-w-xs">Fill out the form to generate prescription document.</p>
-                  </>
-                )}
-              </div>
-            )}
-
-            <div className="mt-6 space-y-3">
-              <button 
-                onClick={handleSave} 
-                disabled={isSaving || saveSuccess}
-                className={`w-full font-bold py-2.5 rounded-lg text-sm transition shadow-sm ${
-                  saveSuccess ? 'bg-emerald-500 text-white' : 
-                  isSaving ? 'bg-slate-800/70 text-white cursor-not-allowed' : 
-                  'bg-slate-800 hover:bg-slate-900 text-white'
-                }`}
+          {/* Patient & Diagnosis Details */}
+          <FormSection title="Patient Details">
+            <div>
+              <label className={labelClass}>Select Patient *</label>
+              <select
+                className={fieldClass}
+                value={selectedPatientId}
+                onChange={(e) => setSelectedPatientId(e.target.value)}
               >
-                {saveSuccess ? '✓ Saved Successfully' : isSaving ? 'Saving...' : 'Save Prescription'}
-              </button>
-              <div className="flex gap-3">
-                <button 
-                  onClick={() => (photoUrl || photoPreview) && handlePrintPhoto(photoUrl || photoPreview)}
-                  disabled={rxType === 'photo' && !(photoUrl || photoPreview)}
-                  className="flex-1 bg-white border border-gray-300 text-gray-700 font-bold py-2 rounded-lg text-sm transition hover:bg-gray-50 disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  <Printer size={16} /> Print
+                <option value="">-- Choose Patient --</option>
+                {doctorPatients.map(p => (
+                  <option key={p.id} value={p.id}>{p.name} ({p.owner})</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className={labelClass}>Clinical Diagnosis {rxType === 'digital' ? '*' : '(Optional)'}</label>
+              <input
+                type="text"
+                value={diagnosis}
+                onChange={(e) => setDiagnosis(e.target.value)}
+                placeholder="e.g., Acute Gastroenteritis / Otitis Externa"
+                className={fieldClass}
+              />
+            </div>
+          </FormSection>
+
+          {/* DIGITAL FORM MODE */}
+          {rxType === 'digital' && (
+            <FormSection
+              title="Medication List"
+              action={(
+                <button onClick={addMedicine} className="min-h-[36px] text-xs font-bold text-primary-main flex items-center gap-1">
+                  <Plus size={14} /> Add Medicine
                 </button>
-                <a 
-                  href={photoUrl || photoPreview || '#'} 
-                  download="prescription.jpg"
-                  target="_blank"
-                  rel="noreferrer"
-                  className={`flex-1 bg-white border border-gray-300 text-gray-700 font-bold py-2 rounded-lg text-sm transition hover:bg-gray-50 flex items-center justify-center gap-2 ${rxType === 'photo' && !(photoUrl || photoPreview) ? 'pointer-events-none opacity-50' : ''}`}
-                >
-                  <Download size={16} /> Image / PDF
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : (
-        /* HISTORY TAB */
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
-          <div className="p-4 border-b border-gray-100 flex justify-between items-center">
-            <div className="relative w-72">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
-              <input type="text" placeholder="Search past prescriptions..." className="pl-9 pr-4 py-2 w-full border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#F87B68]" />
-            </div>
-          </div>
-          {(prescriptions || []).length === 0 ? (
-            <div className="p-12 text-center text-gray-500">
-              <Pill size={32} className="mx-auto mb-3 text-gray-300" />
-              <p className="font-bold">No prescription history found.</p>
-              <p className="text-sm mt-1">Past prescriptions will appear here.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {prescriptions.map((rx) => (
-                <div key={rx.id} className="p-4 flex items-start justify-between gap-4 hover:bg-gray-50/60 transition">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${rx.type === 'photo' || rx.prescriptionUrl ? 'bg-indigo-50 text-indigo-600' : 'bg-orange-50 text-[#F87B68]'}`}>
-                      {rx.type === 'photo' || rx.prescriptionUrl ? <Camera size={18} /> : <Pill size={18} />}
+              )}
+            >
+              {medicines.map((med, index) => (
+                <div key={index} className="bg-bg-primary p-3 rounded-2xl border border-border-light space-y-2">
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1 min-w-0">
+                      <label className="block text-[10px] font-bold text-text-secondary uppercase mb-1">Medicine Name</label>
+                      <input type="text" value={med.name} onChange={(e) => updateMedicine(index, 'name', e.target.value)} className={smallField} placeholder="e.g. Amoxicillin" />
+                    </div>
+                    <button onClick={() => removeMedicine(index)} className="w-11 h-11 flex items-center justify-center text-error bg-error/10 rounded-xl shrink-0" title="Remove medicine" aria-label="Remove medicine">
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="min-w-0">
+                      <label className="block text-[10px] font-bold text-text-secondary uppercase mb-1">Dosage</label>
+                      <input type="text" value={med.dosage} onChange={(e) => updateMedicine(index, 'dosage', e.target.value)} className={smallField} placeholder="50mg" />
                     </div>
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="text-sm font-bold text-gray-900">{rx.petName} <span className="text-gray-400 font-medium">· {rx.owner}</span></p>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${rx.type === 'photo' || rx.prescriptionUrl ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-800'}`}>
-                          {rx.type === 'photo' || rx.prescriptionUrl ? '📷 Photo Rx' : '📝 Digital Rx'}
-                        </span>
+                      <label className="block text-[10px] font-bold text-text-secondary uppercase mb-1">Frequency</label>
+                      <input type="text" value={med.frequency} onChange={(e) => updateMedicine(index, 'frequency', e.target.value)} className={smallField} placeholder="1-0-1 (BID)" />
+                    </div>
+                    <div className="min-w-0">
+                      <label className="block text-[10px] font-bold text-text-secondary uppercase mb-1">Duration</label>
+                      <input type="text" value={med.duration} onChange={(e) => updateMedicine(index, 'duration', e.target.value)} className={smallField} placeholder="5 Days" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </FormSection>
+          )}
+
+          {/* PHOTO UPLOAD / CAMERA MODE */}
+          {rxType === 'photo' && (
+            <FormSection title="Prescription Photo Upload">
+              {/* Hidden file & camera inputs */}
+              <input
+                type="file"
+                accept="image/*"
+                ref={fileInputRef}
+                onChange={handlePhotoSelect}
+                className="hidden"
+              />
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                ref={cameraInputRef}
+                onChange={handlePhotoSelect}
+                className="hidden"
+              />
+
+              {!hasPhoto ? (
+                <div className="border-2 border-dashed border-accent-teal/40 bg-accent-teal/5 rounded-2xl p-5 text-center space-y-4">
+                  <div className="w-14 h-14 bg-accent-teal/15 text-[#4C8684] rounded-full flex items-center justify-center mx-auto shadow-sm">
+                    <Camera size={28} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-text-primary">Click or Upload Prescription Photo</h4>
+                    <p className="text-xs text-text-secondary mt-1">
+                      Snap a photo of the physical prescription sheet using your camera, or upload a scanned image file.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="w-full h-12 bg-accent-teal text-white font-bold text-sm rounded-2xl shadow-sm transition flex items-center justify-center gap-2"
+                    >
+                      <Camera size={18} /> Snap Photo (Camera)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full h-12 bg-white border border-border-light text-text-primary font-bold text-sm rounded-2xl shadow-sm transition flex items-center justify-center gap-2"
+                    >
+                      <Upload size={18} /> Choose File from Device
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="relative bg-[#111827] rounded-2xl overflow-hidden shadow-md">
+                  <img
+                    src={photoPreview || photoUrl}
+                    alt="Prescription preview"
+                    className="w-full h-64 object-contain bg-[#111827]"
+                  />
+
+                  {isUploading && (
+                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white gap-2 font-bold text-xs">
+                      <Loader2 className="animate-spin" size={18} /> Uploading photo...
+                    </div>
+                  )}
+
+                  <div className="absolute top-3 right-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setLightboxImage(photoPreview || photoUrl)}
+                      className="w-10 h-10 flex items-center justify-center bg-black/60 text-white rounded-xl transition"
+                      title="View Full Resolution"
+                      aria-label="View Full Resolution"
+                    >
+                      <Eye size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={removePhoto}
+                      className="w-10 h-10 flex items-center justify-center bg-error/90 text-white rounded-xl transition"
+                      title="Remove / Retake Photo"
+                      aria-label="Remove / Retake Photo"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+
+                  <div className="p-3 bg-black text-white flex items-center justify-between text-xs">
+                    <span className="flex items-center gap-1.5 text-accent-teal font-bold">
+                      <Check size={14} /> Photo Attached Successfully
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => cameraInputRef.current?.click()}
+                      className="min-h-[36px] text-white/80 font-medium underline text-[12px]"
+                    >
+                      Retake Photo
+                    </button>
+                  </div>
+                </div>
+              )}
+            </FormSection>
+          )}
+
+          {/* Notes & Follow up date */}
+          <FormSection>
+            <div>
+              <label className={labelClass}>Doctor's Advice / Instructions</label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Rest, specific diet, precautions..."
+                rows={3}
+                className={textareaClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Follow-up Date</label>
+              <input
+                type="date"
+                value={followUpDate}
+                onChange={(e) => setFollowUpDate(e.target.value)}
+                className={fieldClass}
+              />
+            </div>
+          </FormSection>
+
+          <StickyActionBar>
+            <PrimaryButton tone="outline" icon={Eye} onClick={() => setShowPreview(true)} className="flex-none px-4 text-sm">
+              Preview
+            </PrimaryButton>
+            <PrimaryButton
+              tone={saveSuccess ? 'teal' : 'dark'}
+              onClick={handleSave}
+              disabled={isSaving || saveSuccess}
+              loading={isSaving}
+            >
+              {saveSuccess ? '✓ Saved Successfully' : isSaving ? 'Saving...' : 'Save Prescription'}
+            </PrimaryButton>
+          </StickyActionBar>
+
+          {/* Preview / Action Area */}
+          <BottomSheet
+            open={showPreview}
+            onClose={() => setShowPreview(false)}
+            title="Prescription Preview"
+            footer={(
+              <div className="flex gap-2">
+                <PrimaryButton
+                  tone="outline"
+                  icon={Printer}
+                  onClick={() => (rxType === 'digital' ? printDigital() : hasPhoto && handlePrintPhoto(photoUrl || photoPreview))}
+                  disabled={rxType === 'photo' ? !hasPhoto : !selectedPatient}
+                  className="text-sm"
+                >
+                  Print
+                </PrimaryButton>
+                {rxType === 'digital' ? (
+                  <PrimaryButton tone="outline" icon={Download} onClick={printDigital} disabled={!selectedPatient} className="text-sm">
+                    PDF
+                  </PrimaryButton>
+                ) : (
+                  <a
+                    href={photoUrl || photoPreview || '#'}
+                    download="prescription.jpg"
+                    target="_blank"
+                    rel="noreferrer"
+                    className={`flex-1 h-12 rounded-2xl bg-white border border-border-light text-text-primary font-bold text-sm transition flex items-center justify-center gap-2 ${!hasPhoto ? 'pointer-events-none opacity-50' : ''}`}
+                  >
+                    <Download size={16} /> Image / PDF
+                  </a>
+                )}
+              </div>
+            )}
+          >
+            <div className="pb-2">
+              {selectedPatient && (
+                <p className="text-xs font-semibold text-text-secondary mb-3">
+                  {selectedPatient.name} ({selectedPatient.owner})
+                </p>
+              )}
+              {rxType === 'photo' && hasPhoto ? (
+                <div className="bg-white border border-border-light rounded-2xl overflow-hidden flex flex-col">
+                  <div className="p-3 bg-accent-teal/10 border-b border-accent-teal/20 flex justify-between items-center">
+                    <span className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+                      <Camera size={14} /> Photo Document
+                    </span>
+                    <button
+                      onClick={() => setLightboxImage(photoPreview || photoUrl)}
+                      className="min-h-[36px] text-[12px] font-bold text-[#4C8684] flex items-center gap-1"
+                    >
+                      <Eye size={12} /> Full Screen
+                    </button>
+                  </div>
+                  <div className="p-2 bg-bg-secondary flex items-center justify-center overflow-hidden">
+                    <img
+                      src={photoPreview || photoUrl}
+                      alt="Prescription preview"
+                      className="max-h-56 object-contain rounded border border-border-light"
+                    />
+                  </div>
+                </div>
+              ) : rxType === 'digital' && selectedPatient ? null : (
+                <div className="bg-white border border-dashed border-border-light rounded-2xl p-6 flex flex-col items-center justify-center text-center">
+                  {rxType === 'photo' ? (
+                    <>
+                      <Camera size={44} className="text-accent-teal/50 mb-3" />
+                      <p className="text-sm font-bold text-text-secondary">Live Photo Preview</p>
+                      <p className="text-xs text-text-secondary/80 mt-1 max-w-xs">Upload or snap a prescription picture to see preview here.</p>
+                    </>
+                  ) : (
+                    <>
+                      <FileText size={44} className="text-text-disabled mb-3" />
+                      <p className="text-sm font-bold text-text-secondary">Live Digital Preview</p>
+                      <p className="text-xs text-text-secondary/80 mt-1 max-w-xs">Fill out the form to generate prescription document.</p>
+                    </>
+                  )}
+                </div>
+              )}
+              {rxType === 'digital' && selectedPatient && (
+                <div className="mt-3 bg-white border border-border-light rounded-2xl p-4 space-y-3 text-sm">
+                  <div className="flex justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-black text-text-primary">{selectedPatient.name}</p>
+                      <p className="text-xs text-text-secondary">{selectedPatient.owner}</p>
+                    </div>
+                    <p className="text-xs text-text-secondary shrink-0">{new Date().toLocaleDateString('en-IN')}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase text-text-secondary">Diagnosis</p>
+                    <p className="font-semibold text-text-primary">{diagnosis || '—'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase text-text-secondary mb-1">Medicines</p>
+                    {filledMedicines.length ? (
+                      <ul className="space-y-1">
+                        {filledMedicines.map((m, i) => (
+                          <li key={i} className="text-text-primary">
+                            <span className="font-bold">{m.name}</span>
+                            <span className="text-text-secondary"> {[m.dosage, m.frequency, m.duration].filter(Boolean).join(' · ')}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p className="text-text-secondary">None added yet</p>}
+                  </div>
+                  {notes && (
+                    <div>
+                      <p className="text-[10px] font-bold uppercase text-text-secondary">Advice</p>
+                      <p className="text-text-primary whitespace-pre-wrap">{notes}</p>
+                    </div>
+                  )}
+                  {followUpDate && <p className="text-xs font-bold text-[#4C8684]">Follow-up: {followUpDate}</p>}
+                </div>
+              )}
+            </div>
+          </BottomSheet>
+        </>
+      ) : (
+        /* HISTORY TAB */
+        <div className="space-y-3">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" size={18} />
+            <input
+              type="search"
+              value={historySearch}
+              onChange={(e) => setHistorySearch(e.target.value)}
+              placeholder="Search past prescriptions..."
+              className="w-full h-12 rounded-2xl border border-border-light bg-white pl-11 pr-4 text-[16px] text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-accent-teal focus:ring-2 focus:ring-accent-teal/20"
+            />
+          </div>
+          {historyRows.length === 0 ? (
+            hq
+              ? <EmptyState icon={Search} text="No prescriptions match your search." />
+              : <EmptyState icon={Pill} title="No prescription history found." text="Past prescriptions will appear here." />
+          ) : (
+            historyRows.map((rx) => {
+              const isPhoto = rx.type === 'photo' || rx.prescriptionUrl;
+              return (
+                <div key={rx.id} className="bg-white border border-border-light rounded-[20px] shadow-sm p-4">
+                  <div className="flex items-start gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isPhoto ? 'bg-accent-teal/10 text-[#4C8684]' : 'bg-primary-light/40 text-primary-main'}`}>
+                      {isPhoto ? <Camera size={18} /> : <Pill size={18} />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-bold text-text-primary min-w-0">{rx.petName} <span className="text-text-secondary font-medium">· {rx.owner}</span></p>
+                        <StatusBadge label={rx.status} tone={rx.status === 'completed' ? 'neutral' : 'success'} className="shrink-0" />
                       </div>
-                      
-                      <p className="text-xs text-gray-600 mt-0.5">{rx.diagnosis || 'General prescription'}</p>
-                      
-                      {rx.type === 'photo' || rx.prescriptionUrl ? (
-                        <div className="mt-2 flex items-center gap-3">
+                      <div className="flex items-center gap-2 flex-wrap mt-1">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${isPhoto ? 'bg-accent-teal/15 text-[#4C8684]' : 'bg-primary-light/40 text-primary-dark'}`}>
+                          {isPhoto ? '📷 Photo Rx' : '📝 Digital Rx'}
+                        </span>
+                        <span className="text-[11px] text-text-secondary flex items-center gap-1"><Calendar size={11} /> {rx.date}</span>
+                      </div>
+
+                      <p className="text-xs text-text-secondary mt-1.5">{rx.diagnosis || 'General prescription'}</p>
+
+                      {isPhoto ? (
+                        <div className="mt-2 flex items-center gap-2">
                           <button
                             onClick={() => setLightboxImage(rx.prescriptionUrl)}
-                            className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition"
+                            className="min-h-[40px] inline-flex items-center gap-1.5 text-xs font-bold text-[#4C8684] bg-accent-teal/10 px-3 rounded-xl transition"
                           >
                             <Eye size={13} /> View Prescription Photo
                           </button>
                           <button
                             onClick={() => handlePrintPhoto(rx.prescriptionUrl)}
-                            className="text-xs text-gray-500 hover:text-gray-800 font-medium flex items-center gap-1"
+                            className="min-h-[40px] px-2 text-xs text-text-secondary font-medium flex items-center gap-1"
                           >
                             <Printer size={13} /> Print
                           </button>
                         </div>
                       ) : (
-                        <p className="text-[11px] text-gray-400 mt-1">
-                          {(rx.items || []).map(m => m.name).filter(Boolean).join(', ') || 'No medicines listed'}
-                        </p>
+                        <>
+                          <p className="text-[11px] text-text-secondary/80 mt-1">
+                            {(rx.items || []).map(m => m.name).filter(Boolean).join(', ') || 'No medicines listed'}
+                          </p>
+                          <button
+                            onClick={() => printSavedDigital(rx)}
+                            className="min-h-[40px] mt-1 px-2 -ml-2 text-xs text-text-secondary font-medium flex items-center gap-1"
+                          >
+                            <Printer size={13} /> Print / PDF
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
-                  
-                  <div className="text-right shrink-0">
-                    <p className="text-[11px] text-gray-400 flex items-center gap-1 justify-end"><Calendar size={11} /> {rx.date}</p>
-                    <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${rx.status === 'completed' ? 'bg-slate-100 text-slate-600' : 'bg-emerald-50 text-emerald-700'}`}>{rx.status}</span>
-                  </div>
                 </div>
-              ))}
-            </div>
+              );
+            })
           )}
         </div>
       )}
 
-      {/* LIGHTBOX MODAL FOR PHOTO PRESCRIPTION */}
-      {lightboxImage && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="relative max-w-4xl w-full bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-slate-700 flex flex-col max-h-[90vh]">
-            <div className="p-4 bg-slate-950 text-white flex items-center justify-between border-b border-slate-800">
-              <h3 className="text-sm font-bold flex items-center gap-2">
-                <Camera size={16} className="text-indigo-400" /> Prescribed Photo Document
-              </h3>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handlePrintPhoto(lightboxImage)}
-                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5"
-                >
-                  <Printer size={14} /> Print
-                </button>
-                <a
-                  href={lightboxImage}
-                  download="prescription-photo.jpg"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5"
-                >
-                  <Download size={14} /> Download Image
-                </a>
-                <button
-                  onClick={() => setLightboxImage(null)}
-                  className="p-1.5 bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white rounded-lg transition"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 p-4 flex items-center justify-center bg-slate-950 overflow-auto">
-              <img 
-                src={lightboxImage} 
-                alt="Full prescription" 
-                className="max-w-full max-h-[75vh] object-contain rounded-lg shadow-lg border border-slate-800" 
-              />
-            </div>
+      {/* Full-screen photo viewer */}
+      <BottomSheet
+        open={!!lightboxImage}
+        onClose={() => setLightboxImage(null)}
+        title={<span className="flex items-center gap-2"><Camera size={16} className="text-[#4C8684]" /> Prescribed Photo Document</span>}
+        fullScreen
+        zIndex={90}
+        bodyClassName="bg-[#111827] flex items-center justify-center"
+        footer={(
+          <div className="flex gap-2">
+            <PrimaryButton tone="outline" icon={Printer} onClick={() => handlePrintPhoto(lightboxImage)} className="text-sm">
+              Print
+            </PrimaryButton>
+            <a
+              href={lightboxImage || '#'}
+              download="prescription-photo.jpg"
+              target="_blank"
+              rel="noreferrer"
+              className="flex-1 h-12 rounded-2xl bg-accent-teal text-white font-bold text-sm transition flex items-center justify-center gap-2"
+            >
+              <Download size={16} /> Download Image
+            </a>
           </div>
-        </div>
-      )}
+        )}
+      >
+        {lightboxImage && (
+          <img
+            src={lightboxImage}
+            alt="Full prescription"
+            className="max-w-full max-h-full object-contain rounded-lg"
+          />
+        )}
+      </BottomSheet>
     </div>
   );
 }

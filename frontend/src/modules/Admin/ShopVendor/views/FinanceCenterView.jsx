@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useShopVendor } from '../context/ShopVendorContext';
 import { fetchVendorLedger, fetchVendorPayouts, requestVendorPayout } from '../../../../services/vendor';
-import { Wallet, Download, CheckCircle, Clock, Loader2, Send } from 'lucide-react';
-import { cn } from '../../../user/utils/cn';
+import { Wallet, Download, CheckCircle, Clock, Send } from 'lucide-react';
+import {
+  SegmentedTabs, ListCard, StatusBadge, EmptyState, SkeletonList, InlineError, PrimaryButton, CardAction,
+} from '../../vendor/mobile';
 
 const rupees = (paise) => Math.round((paise || 0) / 100);
 
@@ -60,176 +62,135 @@ export function FinanceCenterView() {
   };
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64"><Loader2 size={28} className="animate-spin text-slate-400" /></div>;
+    return <SkeletonList rows={3} />;
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
 
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Finance Center</h2>
-          <p className="text-sm font-semibold text-slate-500 mt-1">Track earnings, payouts, and commission details.</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-bold text-text-primary leading-tight">Finance Center</h2>
+          <p className="text-xs text-text-secondary mt-1">Track earnings, payouts, and commission details.</p>
         </div>
         <button
           onClick={handleExportReport}
-          className="flex items-center gap-2 bg-slate-900 hover:bg-black text-white px-5 py-2.5 rounded-full text-sm font-bold shadow-md hover:shadow-lg transition cursor-pointer shrink-0"
+          className="h-11 px-4 rounded-full bg-text-primary text-white text-sm font-bold flex items-center gap-1.5 shrink-0"
         >
           <Download size={16} /> Export Ledger
         </button>
       </div>
 
-      {error && <div className="bg-red-50 border border-red-100 text-red-700 text-sm font-semibold rounded-xl p-4">{error}</div>}
+      <InlineError>{error}</InlineError>
 
-      <div className="flex gap-2 border-b border-slate-200">
-        {tabs.map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={cn(
-              "px-5 py-3 text-sm font-bold border-b-2 transition cursor-pointer",
-              activeTab === tab ? "border-slate-900 text-slate-900" : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
-            )}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs items={tabs.map((t) => ({ key: t, label: t }))} activeKey={activeTab} onSelect={setActiveTab} />
 
       {activeTab === 'Overview' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-slate-900 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
-            <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">Lifetime Earnings</h3>
-            <p className="text-4xl font-black mb-4">₹{rupees(dashboard?.lifetimeEarnings).toLocaleString('en-IN')}</p>
-            <div className="flex justify-between items-center pt-4 border-t border-white/10 text-xs font-semibold text-slate-300">
+        <div className="space-y-3">
+          <div className="bg-gradient-to-tr from-[#4C8684] to-[#80C1BF] rounded-[28px] p-5 text-white shadow-lg relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl translate-x-10 -translate-y-10" />
+            <h3 className="text-[11px] font-bold uppercase tracking-widest opacity-85 mb-1.5">Lifetime Earnings</h3>
+            <p className="text-[34px] font-black leading-none mb-4">₹{rupees(dashboard?.lifetimeEarnings).toLocaleString('en-IN')}</p>
+            <div className="pt-3 border-t border-white/20 text-xs font-semibold opacity-90">
               <span>{ledger.length} settled transactions</span>
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
-            <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-4">Pending Settlement</h3>
-            <p className="text-3xl font-black text-slate-900 mb-4">₹{rupees(dashboard?.pendingSettlement).toLocaleString('en-IN')}</p>
-            <p className="text-xs font-semibold text-slate-500">{unsettledCount} unsettled ledger {unsettledCount === 1 ? 'entry' : 'entries'}</p>
+          <div className="bg-white border border-border-light rounded-[20px] p-4 shadow-sm">
+            <h3 className="text-[11px] font-bold uppercase tracking-widest text-text-secondary mb-1.5">Pending Settlement</h3>
+            <p className="text-2xl font-black text-text-primary">₹{rupees(dashboard?.pendingSettlement).toLocaleString('en-IN')}</p>
+            <p className="text-xs font-semibold text-text-secondary mt-1">{unsettledCount} unsettled ledger {unsettledCount === 1 ? 'entry' : 'entries'}</p>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col justify-between">
-            <div>
-              <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2">Request Payout</h3>
-              <p className="text-xs font-semibold text-slate-500 mb-4">Bundles every unsettled entry into one payout request.</p>
-            </div>
-            <button
+          <div className="bg-white border border-border-light rounded-[20px] p-4 shadow-sm">
+            <h3 className="text-[11px] font-bold uppercase tracking-widest text-text-secondary mb-1">Request Payout</h3>
+            <p className="text-xs font-semibold text-text-secondary mb-3">Bundles every unsettled entry into one payout request.</p>
+            <PrimaryButton
+              tone="dark"
+              className="w-full"
               onClick={handleRequestPayout}
               disabled={requesting || unsettledCount === 0}
-              className="w-full py-3 bg-slate-900 hover:bg-black disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl font-bold text-sm transition shadow-md flex items-center justify-center gap-2 cursor-pointer"
+              loading={requesting}
+              icon={Send}
             >
-              {requesting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
               {unsettledCount === 0 ? 'Nothing to settle' : 'Request Payout'}
-            </button>
+            </PrimaryButton>
           </div>
         </div>
       )}
 
       {activeTab === 'Ledger' && (
-        <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="py-4 px-6 text-[10px] font-black uppercase tracking-wider text-slate-500">Date</th>
-                <th className="py-4 px-6 text-[10px] font-black uppercase tracking-wider text-slate-500">Source</th>
-                <th className="py-4 px-6 text-[10px] font-black uppercase tracking-wider text-slate-500">Gross</th>
-                <th className="py-4 px-6 text-[10px] font-black uppercase tracking-wider text-slate-500">Commission</th>
-                <th className="py-4 px-6 text-[10px] font-black uppercase tracking-wider text-slate-500">Net</th>
-                <th className="py-4 px-6 text-[10px] font-black uppercase tracking-wider text-slate-500">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {ledger.map((l) => (
-                <tr key={l._id} className="hover:bg-slate-50 transition">
-                  <td className="py-4 px-6 text-sm font-semibold text-slate-600">{new Date(l.createdAt).toLocaleDateString('en-IN')}</td>
-                  <td className="py-4 px-6 text-sm font-bold text-slate-700 capitalize">{l.refType} {l.label ? `· ${l.label}` : ''}</td>
-                  <td className="py-4 px-6 text-sm font-black text-slate-900">₹{rupees(l.gross).toLocaleString('en-IN')}</td>
-                  <td className="py-4 px-6 text-sm font-bold text-red-600">-₹{rupees(l.commission).toLocaleString('en-IN')}</td>
-                  <td className="py-4 px-6 text-sm font-black text-emerald-600">₹{rupees(l.net).toLocaleString('en-IN')}</td>
-                  <td className="py-4 px-6">
-                    <span className={cn("px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider",
-                      l.status === 'settled' ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                    )}>
-                      {l.status}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-              {ledger.length === 0 && (
-                <tr><td colSpan="6" className="py-8 text-center text-slate-500 font-semibold">No ledger entries yet.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        ledger.length === 0 ? (
+          <EmptyState icon={Wallet} text="No ledger entries yet." />
+        ) : (
+          <div className="space-y-3">
+            {ledger.map((l) => (
+              <ListCard
+                key={l._id}
+                title={<span className="capitalize">{l.refType} {l.label ? `· ${l.label}` : ''}</span>}
+                subtitle={new Date(l.createdAt).toLocaleDateString('en-IN')}
+                status={l.status}
+                meta={[
+                  { label: 'Gross', value: `₹${rupees(l.gross).toLocaleString('en-IN')}` },
+                  { label: 'Commission', value: <span className="text-error">-₹{rupees(l.commission).toLocaleString('en-IN')}</span> },
+                  { label: 'Net', value: <span className="text-success font-black">₹{rupees(l.net).toLocaleString('en-IN')}</span> },
+                ]}
+              />
+            ))}
+          </div>
+        )
       )}
 
       {activeTab === 'Payouts' && (
-        <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="py-4 px-6 text-[10px] font-black uppercase tracking-wider text-slate-500">Payout</th>
-                <th className="py-4 px-6 text-[10px] font-black uppercase tracking-wider text-slate-500">Period</th>
-                <th className="py-4 px-6 text-[10px] font-black uppercase tracking-wider text-slate-500">Net Amount</th>
-                <th className="py-4 px-6 text-[10px] font-black uppercase tracking-wider text-slate-500">Status</th>
-                <th className="py-4 px-6 text-[10px] font-black uppercase tracking-wider text-slate-500">UTR</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {payouts.map((p) => (
-                <tr key={p._id} className="hover:bg-slate-50 transition">
-                  <td className="py-4 px-6 text-sm font-black text-slate-900">{p._id.slice(-8).toUpperCase()}</td>
-                  <td className="py-4 px-6 text-sm font-semibold text-slate-600">{p.period}</td>
-                  <td className="py-4 px-6 text-sm font-black text-slate-900">₹{rupees(p.netAmount).toLocaleString('en-IN')}</td>
-                  <td className="py-4 px-6">
-                    <span className={cn("px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1",
-                      p.status === 'paid' ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
-                    )}>
-                      {p.status === 'paid' ? <CheckCircle size={10} /> : <Clock size={10} />}
-                      {p.status}
-                    </span>
-                  </td>
-                  <td className="py-4 px-6 text-sm font-mono text-slate-500 flex items-center justify-between">
-                    <span>{p.utr || '—'}</span>
-                    <button
-                      onClick={() => {
-                        const lines = [
-                          `TAILCIRCLE VENDOR PAYOUT STATEMENT`,
-                          `-----------------------------------`,
-                          `Payout ID: ${p._id}`,
-                          `Period: ${p.period}`,
-                          `Status: ${p.status.toUpperCase()}`,
-                          `UTR Reference: ${p.utr || 'N/A'}`,
-                          `Net Amount Settled: ₹${rupees(p.netAmount).toLocaleString('en-IN')}`,
-                          `Date Issued: ${new Date(p.createdAt || Date.now()).toLocaleDateString('en-IN')}`,
-                        ].join('\n');
-                        const blob = new Blob([lines], { type: 'text/plain;charset=utf-8;' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `payout_statement_${p._id.slice(-6)}.txt`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                      }}
-                      title="Download Payout Statement"
-                      className="p-1 text-slate-400 hover:text-slate-900 rounded hover:bg-slate-100 transition cursor-pointer"
-                    >
-                      <Download size={14} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {payouts.length === 0 && (
-                <tr><td colSpan="5" className="py-8 text-center text-slate-500 font-semibold">No payouts requested yet.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        payouts.length === 0 ? (
+          <EmptyState icon={Wallet} text="No payouts requested yet." />
+        ) : (
+          <div className="space-y-3">
+            {payouts.map((p) => (
+              <ListCard
+                key={p._id}
+                title={p._id.slice(-8).toUpperCase()}
+                subtitle={p.period}
+                badge={(
+                  <StatusBadge
+                    status={p.status}
+                    label={<span className="inline-flex items-center gap-1">{p.status === 'paid' ? <CheckCircle size={10} /> : <Clock size={10} />}{p.status}</span>}
+                  />
+                )}
+                amount={`₹${rupees(p.netAmount).toLocaleString('en-IN')}`}
+                meta={[{ label: 'UTR', value: <span className="font-mono">{p.utr || '—'}</span>, full: true }]}
+                footer={(
+                  <CardAction
+                    icon={Download}
+                    className="w-full"
+                    onClick={() => {
+                      const lines = [
+                        `TAILCIRCLE VENDOR PAYOUT STATEMENT`,
+                        `-----------------------------------`,
+                        `Payout ID: ${p._id}`,
+                        `Period: ${p.period}`,
+                        `Status: ${p.status.toUpperCase()}`,
+                        `UTR Reference: ${p.utr || 'N/A'}`,
+                        `Net Amount Settled: ₹${rupees(p.netAmount).toLocaleString('en-IN')}`,
+                        `Date Issued: ${new Date(p.createdAt || Date.now()).toLocaleDateString('en-IN')}`,
+                      ].join('\n');
+                      const blob = new Blob([lines], { type: 'text/plain;charset=utf-8;' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `payout_statement_${p._id.slice(-6)}.txt`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                    }}
+                  >
+                    Download Payout Statement
+                  </CardAction>
+                )}
+              />
+            ))}
+          </div>
+        )
       )}
 
     </div>

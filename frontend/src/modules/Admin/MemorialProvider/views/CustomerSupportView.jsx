@@ -10,10 +10,10 @@ import { HeartHandshake } from 'lucide-react';
  */
 export function CustomerSupportView() {
   return (
-    <div className="h-full flex flex-col items-center justify-center text-center py-24 bg-white rounded-3xl border border-slate-100">
-      <HeartHandshake size={40} className="text-slate-200 mb-4" />
-      <h3 className="text-base font-bold text-slate-700">In-app chat isn't available yet</h3>
-      <p className="text-sm text-slate-400 mt-2 max-w-sm">
+    <div className="flex flex-col items-center justify-center text-center py-16 px-6 bg-white rounded-[20px] border border-border-light">
+      <HeartHandshake size={40} className="text-text-disabled mb-4" />
+      <h3 className="text-base font-bold text-text-primary">In-app chat isn't available yet</h3>
+      <p className="text-sm text-text-secondary mt-2 max-w-sm leading-relaxed">
         There's no messaging backend for vendor-to-customer chat. Real customer contact details
         (phone, message) are on the Service Requests page for callback requests you've claimed.
       </p>

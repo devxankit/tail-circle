@@ -4,9 +4,12 @@ import { useToast } from '../components/Toast';
 import { adjustShopStock, createShopProduct } from '../../../../services/vendor';
 import {
   Package, AlertTriangle, ArrowDownToLine, RefreshCcw,
-  Search, Plus, X, Upload
+  Upload
 } from 'lucide-react';
 import { cn } from '../../../user/utils/cn';
+import {
+  SearchBar, StatusBadge, EmptyState, BottomSheet, PrimaryButton, CardAction, fieldClass, labelClass,
+} from '../../vendor/mobile';
 
 export function InventoryView() {
   const { products, refresh } = useShopVendor();
@@ -120,199 +123,158 @@ export function InventoryView() {
   };
 
   return (
-    <div className="space-y-6 relative h-full">
-      
+    <div className="space-y-4">
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Inventory & Stock</h2>
-          <p className="text-sm font-semibold text-slate-500 mt-1">Track quantities and manage low stock alerts.</p>
-        </div>
-        
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <input 
-            type="file" 
-            id="csvUpload" 
-            className="hidden" 
-            accept=".csv"
-            onChange={handleBulkUpload}
-          />
-          <button
-            onClick={() => document.getElementById('csvUpload').click()}
-            disabled={uploading}
-            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-700 px-4 py-2.5 rounded-full text-sm font-bold shadow-sm hover:bg-slate-50 transition cursor-pointer disabled:opacity-60"
-          >
-            <Upload size={16} /> {uploading ? 'Importing…' : 'Bulk Upload'}
-          </button>
-          <button 
-            onClick={handleExportCSV}
-            className="flex items-center gap-2 bg-slate-900 hover:bg-black text-white px-4 py-2.5 rounded-full text-sm font-bold shadow-md hover:shadow-lg transition cursor-pointer"
-          >
-            <ArrowDownToLine size={16} /> Export CSV
-          </button>
-        </div>
+      <div className="px-1">
+        <h2 className="text-lg font-bold text-text-primary leading-tight">Inventory & Stock</h2>
+        <p className="text-xs text-text-secondary mt-1">Track quantities and manage low stock alerts.</p>
+      </div>
+
+      <div className="flex gap-2">
+        <input
+          type="file"
+          id="csvUpload"
+          className="hidden"
+          accept=".csv"
+          onChange={handleBulkUpload}
+        />
+        <CardAction
+          tone="outline"
+          icon={Upload}
+          className="flex-1"
+          onClick={() => document.getElementById('csvUpload').click()}
+          disabled={uploading}
+        >
+          {uploading ? 'Importing…' : 'Bulk Upload'}
+        </CardAction>
+        <CardAction tone="primary" icon={ArrowDownToLine} className="flex-1" onClick={handleExportCSV}>
+          Export CSV
+        </CardAction>
       </div>
 
       {/* Low Stock Alert Banner */}
       {lowStockCount > 0 && (
-        <div className="bg-red-50 border border-red-100 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+        <div className="bg-white border border-error/30 rounded-[20px] p-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-error/10 text-error flex items-center justify-center shrink-0">
               <AlertTriangle size={18} />
             </div>
-            <div>
-              <h3 className="text-sm font-black text-red-900">Attention: {lowStockCount} items are low on stock!</h3>
-              <p className="text-xs font-semibold text-red-700">Please restock them to avoid losing sales.</p>
+            <div className="min-w-0">
+              <h3 className="text-sm font-black text-text-primary">Attention: {lowStockCount} items are low on stock!</h3>
+              <p className="text-xs font-semibold text-text-secondary">Please restock them to avoid losing sales.</p>
             </div>
           </div>
-          <button 
+          <button
             onClick={() => setShowOnlyLowStock(!showOnlyLowStock)}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg transition cursor-pointer"
+            className="mt-3 w-full h-11 bg-error text-white text-sm font-bold rounded-xl transition cursor-pointer"
           >
             {showOnlyLowStock ? "View All Items" : "View Low Stock"}
           </button>
         </div>
       )}
 
-      {/* Inventory Table */}
-      <div className="bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden flex flex-col">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-          <div className="relative w-72">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Search inventory by name or SKU..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-full text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 transition"
-            />
-          </div>
-        </div>
-        
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50 border-b border-slate-200">
-              <tr>
-                <th className="py-4 px-6 text-[10px] font-black uppercase tracking-wider text-slate-500">Item</th>
-                <th className="py-4 px-6 text-[10px] font-black uppercase tracking-wider text-slate-500">Available Stock</th>
-                <th className="py-4 px-6 text-[10px] font-black uppercase tracking-wider text-slate-500">Reserved</th>
-                <th className="py-4 px-6 text-[10px] font-black uppercase tracking-wider text-slate-500">Status</th>
-                <th className="py-4 px-6 text-[10px] font-black uppercase tracking-wider text-slate-500 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredProducts.map((product) => (
-                <tr key={product.id} className="hover:bg-slate-50/50 transition">
-                  <td className="py-4 px-6">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-slate-100 overflow-hidden shrink-0">
-                        <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-slate-900 max-w-[250px] truncate">{product.name}</p>
-                        <p className="text-[11px] font-semibold text-slate-500 mt-0.5">{product.sku}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="py-4 px-6">
-                    <div className="flex flex-col">
-                      <span className={cn("text-base font-black", product.stock <= 0 ? "text-red-600" : product.stock <= product.alertLimit ? "text-amber-600" : "text-slate-900")}>
-                        {product.stock}
-                      </span>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Units</span>
-                    </div>
-                  </td>
-                  <td className="py-4 px-6">
-                    <span className="text-sm font-bold text-slate-500">0</span>
-                  </td>
-                  <td className="py-4 px-6">
-                    <span className={cn("px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider", 
-                      product.stock > product.alertLimit ? "bg-emerald-100 text-emerald-700" : 
-                      product.stock > 0 ? "bg-amber-100 text-amber-700" : 
-                      "bg-red-100 text-red-700"
-                    )}>
-                      {product.stock > product.alertLimit ? 'In Stock' : product.stock > 0 ? 'Low Stock' : 'Out of Stock'}
-                    </span>
-                  </td>
-                  <td className="py-4 px-6 text-right">
-                    <button 
-                      onClick={() => setSelectedProduct(product)}
-                      className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-lg transition cursor-pointer"
-                    >
-                      Update Stock
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <SearchBar value={search} onChange={setSearch} placeholder="Search inventory by name or SKU..." />
 
-      {/* Update Stock Modal */}
-      {selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setSelectedProduct(null)} />
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl relative animate-in fade-in zoom-in-95 duration-200 overflow-hidden">
-            
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h3 className="text-lg font-black text-slate-900">Update Stock</h3>
-              <button onClick={() => setSelectedProduct(null)} className="w-8 h-8 rounded-full hover:bg-slate-200 flex items-center justify-center text-slate-500 transition cursor-pointer">
-                <X size={18} />
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-6">
-              
-              <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                <img src={selectedProduct.image} alt="" className="w-12 h-12 rounded-lg object-cover bg-white" />
+      {filteredProducts.length === 0 ? (
+        <EmptyState icon={Package} text="No items match." />
+      ) : (
+        <div className="space-y-3">
+          {filteredProducts.map((product) => (
+            <div key={product.id} className="bg-white rounded-[20px] border border-border-light shadow-sm p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-14 h-14 rounded-2xl bg-bg-primary overflow-hidden shrink-0 border border-border-light">
+                  <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[15px] font-bold text-text-primary truncate">{product.name}</p>
+                  <p className="text-[11px] font-semibold text-text-secondary mt-0.5">{product.sku}</p>
+                  <StatusBadge
+                    className="mt-1.5"
+                    label={product.stock > product.alertLimit ? 'In Stock' : product.stock > 0 ? 'Low Stock' : 'Out of Stock'}
+                    tone={product.stock > product.alertLimit ? 'success' : product.stock > 0 ? 'warning' : 'error'}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 mt-3 pt-3 border-t border-border-light">
                 <div>
-                  <p className="text-sm font-bold text-slate-900 line-clamp-1">{selectedProduct.name}</p>
-                  <p className="text-xs font-semibold text-slate-500 mt-1">Current Stock: <span className="font-black text-slate-700">{selectedProduct.stock}</span></p>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-text-secondary">Available Stock</p>
+                  <p className={cn("text-lg font-black leading-tight", product.stock <= 0 ? "text-error" : product.stock <= product.alertLimit ? "text-warning" : "text-text-primary")}>
+                    {product.stock} <span className="text-[10px] font-bold text-text-secondary uppercase tracking-widest">Units</span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-text-secondary">Reserved</p>
+                  <p className="text-lg font-black leading-tight text-text-secondary">0</p>
                 </div>
               </div>
-
-              <div className="space-y-3">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Adjustment Reason</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {['Restock', 'Damage', 'Return', 'Correction'].map(reason => (
-                    <button
-                      key={reason}
-                      onClick={() => setUpdateReason(reason)}
-                      className={cn(
-                        "px-4 py-2 rounded-xl text-sm font-bold transition border cursor-pointer",
-                        updateReason === reason ? "bg-slate-900 text-white border-slate-900 shadow-md" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                      )}
-                    >
-                      {reason}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">Quantity (+ / -)</label>
-                <input 
-                  type="number"
-                  value={updateAmount}
-                  onChange={(e) => setUpdateAmount(e.target.value)}
-                  placeholder="e.g. 50"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-lg font-black text-slate-900 focus:outline-none focus:border-slate-400 transition"
-                />
-              </div>
-
-              <button
-                onClick={handleUpdateStock}
-                disabled={!updateAmount || savingStock}
-                className="w-full py-3.5 bg-slate-900 hover:bg-black disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm transition shadow-lg cursor-pointer flex justify-center items-center gap-2"
-              >
-                <RefreshCcw size={16} className={savingStock ? 'animate-spin' : ''} /> {savingStock ? 'Updating…' : 'Update Inventory'}
-              </button>
-
+              <CardAction className="w-full mt-3" onClick={() => setSelectedProduct(product)}>
+                Update Stock
+              </CardAction>
             </div>
-          </div>
+          ))}
         </div>
       )}
+
+      {/* Update Stock sheet */}
+      <BottomSheet
+        open={!!selectedProduct}
+        onClose={() => setSelectedProduct(null)}
+        title="Update Stock"
+        footer={(
+          <PrimaryButton
+            tone="dark"
+            onClick={handleUpdateStock}
+            disabled={!updateAmount || savingStock}
+            icon={RefreshCcw}
+            loading={savingStock}
+          >
+            {savingStock ? 'Updating…' : 'Update Inventory'}
+          </PrimaryButton>
+        )}
+      >
+        {selectedProduct && (
+          <div className="space-y-5 pb-2">
+            <div className="flex items-center gap-3 bg-bg-primary p-3 rounded-2xl border border-border-light">
+              <img src={selectedProduct.image} alt="" className="w-12 h-12 rounded-xl object-cover bg-white" />
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-text-primary line-clamp-1">{selectedProduct.name}</p>
+                <p className="text-xs font-semibold text-text-secondary mt-1">Current Stock: <span className="font-black text-text-primary">{selectedProduct.stock}</span></p>
+              </div>
+            </div>
+
+            <div>
+              <label className={labelClass}>Adjustment Reason</label>
+              <div className="grid grid-cols-2 gap-2">
+                {['Restock', 'Damage', 'Return', 'Correction'].map(reason => (
+                  <button
+                    key={reason}
+                    onClick={() => setUpdateReason(reason)}
+                    className={cn(
+                      "min-h-[44px] px-4 rounded-xl text-sm font-bold transition border cursor-pointer",
+                      updateReason === reason ? "bg-text-primary text-white border-text-primary shadow-md" : "bg-white text-text-secondary border-border-light"
+                    )}
+                  >
+                    {reason}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className={labelClass}>Quantity (+ / -)</label>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={updateAmount}
+                onChange={(e) => setUpdateAmount(e.target.value)}
+                placeholder="e.g. 50"
+                className={cn(fieldClass, 'text-lg font-black')}
+              />
+            </div>
+          </div>
+        )}
+      </BottomSheet>
 
     </div>
   );

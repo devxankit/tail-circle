@@ -360,6 +360,9 @@ function serializeLab(r) {
     testType: r.testType,
     status: r.status,
     doctor: r.doctorName,
+    // The uploaded result. It was stored but never returned, so the dashboard
+    // had nothing to preview or download.
+    resultUrl: r.resultUrl || '',
   };
 }
 
@@ -441,17 +444,63 @@ export async function updateFollowUp(scope, id, patch) {
 
 /* ── Vaccinations ─────────────────────────────────────────────────── */
 
-export async function listVaccinations(scope) {
-  const clinicVendorId = tenantOf(scope);
-  const rows = await VaccineReminder.find({ clinicVendorId }).sort({ createdAt: 1 });
-  const shape = (r) => ({
+function serializeVaccination(r) {
+  return {
     id: String(r._id),
     petName: r.petName,
     owner: r.owner,
     vaccine: r.vaccine,
     date: r.date,
     status: r.status,
+    remindedAt: r.remindedAt || null,
+  };
+}
+
+/**
+ * Remind the pet's owner that a vaccination is due, as an in-app/push
+ * notification. The owner is found through the patient record the reminder
+ * belongs to (or, for older reminders without that link, the clinic's patient
+ * with the same pet and owner name). Owners without an app account cannot be
+ * reached this way, and the caller is told so rather than shown a fake "sent".
+ */
+export async function sendVaccinationReminder(scope, id) {
+  const clinicVendorId = tenantOf(scope);
+  if (!mongoose.isValidObjectId(id)) throw ApiError.badRequest('Invalid vaccination id');
+  const reminder = await VaccineReminder.findOne({ _id: id, clinicVendorId });
+  if (!reminder) throw ApiError.notFound('Vaccination not found');
+  if (reminder.status === 'Completed') throw ApiError.badRequest('This vaccination is already completed');
+  if (reminder.remindedAt && Date.now() - new Date(reminder.remindedAt).getTime() < 60 * 60 * 1000) {
+    throw ApiError.tooMany('A reminder was already sent in the last hour');
+  }
+
+  let patient = null;
+  if (reminder.patientRecordId) {
+    patient = await PatientRecord.findOne({ _id: reminder.patientRecordId, clinicVendorId });
+  }
+  if (!patient) {
+    patient = await PatientRecord.findOne({ clinicVendorId, name: reminder.petName, owner: reminder.owner });
+  }
+  if (!patient?.ownerUserId) {
+    throw ApiError.badRequest(`${reminder.owner || 'This owner'} has no TailCircle account linked, so an in-app reminder can't be sent.`);
+  }
+
+  const doc = await primaryDoctor(scope);
+  await notify(patient.ownerUserId, {
+    title: 'Vaccination due',
+    body: `${reminder.petName}'s ${reminder.vaccine || 'vaccination'} is due${reminder.date ? ` on ${reminder.date}` : ''}. Book a visit with ${doc?.name || 'your vet'}.`,
+    type: 'vet',
+    link: '/appointments',
   });
+
+  reminder.remindedAt = new Date();
+  await reminder.save();
+  return serializeVaccination(reminder);
+}
+
+export async function listVaccinations(scope) {
+  const clinicVendorId = tenantOf(scope);
+  const rows = await VaccineReminder.find({ clinicVendorId }).sort({ createdAt: 1 });
+  const shape = serializeVaccination;
   return {
     upcoming: rows.filter((r) => r.status === 'Due Soon' || r.status === 'Scheduled').map(shape),
     missed: rows.filter((r) => r.status === 'Overdue').map(shape),

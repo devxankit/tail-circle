@@ -72,6 +72,7 @@ export function VendorAuth() {
     else if (!/\S+@\S+\.\S+/.test(formData.email)) errs.email = 'Invalid email';
     if (!formData.phone) errs.phone = 'Required';
     if (!formData.password) errs.password = 'Required';
+    if (!formData.city?.trim()) errs.city = 'Required';
     if (!formData.address) errs.address = 'Required';
     setErrors(errs);
     if (Object.keys(errs).length > 0) {
@@ -135,7 +136,7 @@ export function VendorAuth() {
         phone: formData.phone,
         password: formData.password,
         roles: formData.roles,
-        city: formData.address || formData.city,
+        city: formData.city.trim(),
         address: formData.address,
       });
       setSuccessSignup(true);
@@ -145,82 +146,79 @@ export function VendorAuth() {
     }
   };
 
-  // Replicating the soft boxed inputs from the reference image, enforcing 16px font and 48px min-height on mobile
-  const inputClass = "w-full py-3 px-4 sm:py-3.5 bg-white border border-gray-200 rounded-lg focus:border-[#40716F] focus:ring-4 focus:ring-[#40716F]/10 focus:outline-none transition-all text-[16px] sm:text-sm text-gray-900 placeholder-gray-400 font-medium min-h-[48px] sm:min-h-0";
+  // The partner app's inputs: 48px tall, 16px text (no iOS zoom on focus).
+  const inputClass = "w-full h-12 px-4 bg-white border border-border-light rounded-xl focus:border-accent-teal focus:ring-2 focus:ring-accent-teal/20 focus:outline-none transition-all text-[16px] text-text-primary placeholder:text-text-disabled font-medium";
 
   return (
-    <div className="h-screen w-full flex bg-[#FAF7F2] font-sans selection:bg-[#40716F]/30 overflow-hidden">
+    <div className="flex-1 w-full flex flex-col bg-bg-primary font-sans selection:bg-[#40716F]/30">
+      {/* A pill above the bottom edge of the phone column, like the partner
+          app's toasts. */}
       {toast && (
-        <div className={cn("fixed bottom-5 right-5 z-50 px-6 py-3 rounded-lg text-white text-sm shadow-xl font-medium", toast.type === 'success' ? 'bg-[#40716F]' : 'bg-red-600')}>
-          {toast.message}
+        <div
+          className="fixed left-4 right-4 z-50 flex justify-center pointer-events-none"
+          style={{ bottom: 'calc(20px + env(safe-area-inset-bottom, 0px))' }}
+        >
+          <div role="status" className={cn("px-5 py-3 rounded-full text-white text-sm shadow-xl font-semibold text-center", toast.type === 'success' ? 'bg-[#40716F]' : 'bg-error')}>
+            {toast.message}
+          </div>
         </div>
       )}
 
-      {/* Main Full Screen Card */}
-      <div className="w-full h-full relative flex flex-col lg:flex-row">
-        
-        {/* Left Side / Mobile Top: Real Photo Background */}
-        <div className="flex w-full h-[35vh] min-h-[320px] lg:min-h-0 lg:h-full lg:w-[55%] relative p-6 lg:p-12 flex-col justify-between overflow-hidden bg-gray-50 shrink-0">
-          
-          {/* Background Image (No color overlay) */}
-          <img 
-            src="/media/tail_circle_auth_banner.png" 
-            alt="Vendor illustration" 
-            className="absolute inset-0 w-full h-full object-cover object-[center_30%] lg:object-center"
-          />
-          
-          {/* Subtle gradient to ensure white text readability */}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/40 pointer-events-none" />
+      {/* Photo band — the same banner the wide layout used, at phone size. */}
+      <div className="flex w-full h-[250px] relative px-6 pt-6 pb-12 flex-col justify-between overflow-hidden bg-gray-50 shrink-0" style={{ paddingTop: 'calc(24px + env(safe-area-inset-top, 0px))' }}>
+        <img
+          src="/media/tail_circle_auth_banner.png"
+          alt="Vendor illustration"
+          className="absolute inset-0 w-full h-full object-cover object-[center_30%]"
+        />
 
-          {/* Top Content: Just Logo */}
-          <div className="z-10 relative flex flex-col">
-            <h1 className="text-2xl lg:text-3xl font-serif text-white tracking-tight drop-shadow-md">
-              TailCircle
-            </h1>
-          </div>
+        {/* Subtle gradient to ensure white text readability */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-black/10 to-black/65 pointer-events-none" />
 
-          {/* Bottom Content: Text Group & Footer */}
-          <div className="z-10 relative hidden lg:flex flex-col justify-end">
-            <div className="max-w-[400px] mb-8">
-              <h2 className="text-4xl lg:text-5xl font-serif text-white leading-tight font-light mb-4 drop-shadow-md">
-                Scale Your Pet Business
-              </h2>
-              <p className="text-white/90 font-medium text-sm leading-relaxed drop-shadow-sm">
-                Join the TailCircle ecosystem. Connect with thousands of pet parents looking for top-tier services.
-              </p>
-            </div>
-          </div>
+        <h1 className="z-10 relative text-2xl font-serif text-white tracking-tight drop-shadow-md">
+          TailCircle
+        </h1>
+
+        <div className="z-10 relative">
+          <h2 className="text-[22px] font-serif text-white leading-tight drop-shadow-md">
+            Scale Your Pet Business
+          </h2>
+          <p className="text-white/90 font-medium text-xs leading-relaxed drop-shadow-sm mt-1">
+            Join the TailCircle ecosystem. Connect with thousands of pet parents looking for top-tier services.
+          </p>
         </div>
+      </div>
 
-        {/* Right Side / Mobile Bottom: Clean Creamy Curved Panel */}
-        {/* Overlaps the image on mobile with -mt-8 and rounded top corners */}
-        <div className="w-full flex-1 lg:flex-none lg:w-[52%] lg:absolute lg:right-0 lg:top-0 lg:bottom-0 bg-[#FAF7F2] rounded-t-[40px] lg:rounded-t-none lg:rounded-l-[80px] -mt-8 lg:mt-0 z-20 p-6 sm:p-10 lg:p-20 flex flex-col lg:justify-center overflow-y-auto shadow-[0_-10px_40px_rgb(0,0,0,0.1)] lg:shadow-[-20px_0_40px_rgb(0,0,0,0.1)]">
-          
-          <div className="max-w-[420px] w-full mx-auto">
+      {/* The sheet-style panel, overlapping the photo. */}
+      <div
+        className="w-full flex-1 bg-bg-primary rounded-t-[32px] -mt-8 z-20 relative px-6 pt-8 flex flex-col shadow-[0_-10px_40px_rgb(0,0,0,0.1)]"
+        style={{ paddingBottom: 'calc(32px + env(safe-area-inset-bottom, 0px))' }}
+      >
+          <div className="w-full">
             {isLogin ? (
               /* ================= LOGIN FORM ================= */
-              <div className="animate-in fade-in slide-in-from-right-8 duration-500">
-                
-                <div className="mb-8">
-                  <h2 className="text-3xl font-serif text-gray-900 leading-tight mb-2">
+              <div>
+
+                <div className="mb-4">
+                  <h2 className="text-[26px] font-serif text-text-primary leading-tight mb-1.5">
                     Welcome to TailCircle.
                   </h2>
-                  <p className="text-gray-500 text-sm font-medium">
+                  <p className="text-text-secondary text-sm font-medium">
                     Let's help you get started.
                   </p>
                 </div>
 
-                <div className="mb-8 text-sm">
-                  <span className="text-gray-500">Don't have an account? </span>
-                  <button 
+                <div className="mb-6 text-sm flex items-center">
+                  <span className="text-text-secondary">Don't have an account? </span>
+                  <button
                     onClick={() => { setIsLogin(false); setCurrentStep(1); setSuccessSignup(false); }}
-                    className="text-[#40716F] font-medium hover:underline ml-1"
+                    className="text-[#40716F] font-bold ml-1 min-h-[44px] px-1"
                   >
                     Sign up
                   </button>
                 </div>
 
-                <form onSubmit={handleLoginSubmit} className="space-y-6">
+                <form onSubmit={handleLoginSubmit} className="space-y-5">
                   
                   {/* The partner-category dropdown that used to sit here is
                       gone. A vendor's business lines are derived from their
@@ -228,31 +226,31 @@ export function VendorAuth() {
                       daycare had no single right answer to give it. */}
 
                   {/* Login Method Toggle */}
-                  <div className="flex gap-6 pt-2 pb-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
+                  <div className="flex gap-2 bg-white rounded-2xl border border-border-light p-1">
+                    <label className={cn("flex-1 flex items-center justify-center gap-2 cursor-pointer min-h-[44px] rounded-xl transition-colors", loginMethod === 'password' && "bg-accent-teal/10")}>
                       <input type="radio" checked={loginMethod === 'password'} onChange={() => setLoginMethod('password')} className="hidden" />
                       <div className={cn("w-4 h-4 rounded-full border flex items-center justify-center transition-colors", loginMethod === 'password' ? "border-[#40716F] bg-[#40716F]" : "border-gray-300")}>
                         {loginMethod === 'password' && <span className="w-1.5 h-1.5 bg-white rounded-full"/>}
                       </div>
-                      <span className={cn("text-sm transition-colors", loginMethod === 'password' ? "text-gray-900 font-medium" : "text-gray-500")}>Password</span>
+                      <span className={cn("text-sm transition-colors", loginMethod === 'password' ? "text-text-primary font-bold" : "text-text-secondary")}>Password</span>
                     </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
+                    <label className={cn("flex-1 flex items-center justify-center gap-2 cursor-pointer min-h-[44px] rounded-xl transition-colors", loginMethod === 'otp' && "bg-accent-teal/10")}>
                       <input type="radio" checked={loginMethod === 'otp'} onChange={() => setLoginMethod('otp')} className="hidden" />
                       <div className={cn("w-4 h-4 rounded-full border flex items-center justify-center transition-colors", loginMethod === 'otp' ? "border-[#40716F] bg-[#40716F]" : "border-gray-300")}>
                         {loginMethod === 'otp' && <span className="w-1.5 h-1.5 bg-white rounded-full"/>}
                       </div>
-                      <span className={cn("text-sm transition-colors", loginMethod === 'otp' ? "text-gray-900 font-medium" : "text-gray-500")}>OTP Login</span>
+                      <span className={cn("text-sm transition-colors", loginMethod === 'otp' ? "text-text-primary font-bold" : "text-text-secondary")}>OTP Login</span>
                     </label>
                   </div>
 
                   {/* Inputs */}
                   {loginMethod === 'password' ? (
-                    <div className="space-y-4 animate-in fade-in duration-300">
-                      <input type="email" placeholder="Email address" required value={formData.loginEmail} onChange={e => handleInputChange('loginEmail', e.target.value)} className={inputClass} />
-                      <input type="password" placeholder="Password" required value={formData.loginPassword} onChange={e => handleInputChange('loginPassword', e.target.value)} className={inputClass} />
+                    <div className="space-y-3">
+                      <input type="email" placeholder="Email address" required autoComplete="email" inputMode="email" value={formData.loginEmail} onChange={e => handleInputChange('loginEmail', e.target.value)} className={inputClass} />
+                      <input type="password" placeholder="Password" required autoComplete="current-password" value={formData.loginPassword} onChange={e => handleInputChange('loginPassword', e.target.value)} className={inputClass} />
                     </div>
                   ) : (
-                    <div className="space-y-4 animate-in fade-in duration-300">
+                    <div className="space-y-3">
                       <div className="relative flex items-center">
                         <input
                           type="text"
@@ -260,19 +258,19 @@ export function VendorAuth() {
                           required
                           value={formData.loginRegisterNo}
                           onChange={e => handleInputChange('loginRegisterNo', e.target.value)}
-                          className={inputClass}
+                          className={cn(inputClass, 'pr-28')}
                         />
-                        <button type="button" onClick={handleSendOtp} disabled={otpCountdown > 0} className="absolute right-4 text-xs text-[#40716F] font-bold uppercase tracking-wider disabled:opacity-50 cursor-pointer transition">
+                        <button type="button" onClick={handleSendOtp} disabled={otpCountdown > 0} className="absolute right-1 h-10 px-3 rounded-lg text-xs text-[#40716F] font-bold uppercase tracking-wider disabled:opacity-50 cursor-pointer transition">
                           {otpCountdown > 0 ? `Wait ${otpCountdown}s` : 'Send OTP'}
                         </button>
                       </div>
-                      <input type="text" placeholder="6-Digit OTP" maxLength={6} required value={formData.loginOtp} onChange={e => handleInputChange('loginOtp', e.target.value.replace(/\D/g, ''))} className={inputClass} />
+                      <input type="text" placeholder="6-Digit OTP" maxLength={6} required inputMode="numeric" autoComplete="one-time-code" value={formData.loginOtp} onChange={e => handleInputChange('loginOtp', e.target.value.replace(/\D/g, ''))} className={inputClass} />
                     </div>
                   )}
 
                   {/* Submit Button */}
-                  <div className="pt-6">
-                    <button type="submit" className="w-full px-6 py-3.5 bg-[#40716F] text-white rounded-lg text-sm font-medium hover:bg-[#335A58] transition-all cursor-pointer shadow-sm active:scale-95">
+                  <div className="pt-3">
+                    <button type="submit" className="w-full h-14 bg-[#40716F] text-white rounded-2xl text-[15px] font-bold hover:bg-[#335A58] transition-all cursor-pointer shadow-lg shadow-[#40716F]/25 active:scale-[0.98]">
                       Log In
                     </button>
                   </div>
@@ -280,85 +278,89 @@ export function VendorAuth() {
               </div>
             ) : (
               /* ================= SIGNUP FORM ================= */
-              <div className="animate-in fade-in slide-in-from-right-8 duration-500">
+              <div>
                 {successSignup ? (
-                  <div className="text-center py-10 space-y-5 animate-in fade-in zoom-in duration-500">
+                  <div className="text-center py-10 space-y-5">
                     <div className="w-16 h-16 bg-[#40716F]/10 rounded-full flex items-center justify-center mx-auto">
                       <Check size={32} className="text-[#40716F]" />
                     </div>
-                    <h2 className="text-3xl font-serif text-gray-900 tracking-tight">Application Submitted</h2>
-                    <p className="text-sm text-gray-500 max-w-sm mx-auto leading-relaxed">
+                    <h2 className="text-[26px] font-serif text-text-primary tracking-tight">Application Submitted</h2>
+                    <p className="text-sm text-text-secondary max-w-sm mx-auto leading-relaxed">
                       We will review your business credentials and email you within 24-48 hours.
                     </p>
                   </div>
                 ) : (
                   <>
-                    <div className="mb-8">
-                      <h2 className="text-3xl font-serif text-gray-900 leading-tight mb-2">
+                    <div className="mb-4">
+                      <h2 className="text-[26px] font-serif text-text-primary leading-tight mb-1.5">
                         Become a Partner.
                       </h2>
-                      <p className="text-gray-500 text-sm font-medium">
+                      <p className="text-text-secondary text-sm font-medium">
                         Register your business on TailCircle.
                       </p>
                     </div>
 
-                    <div className="mb-8 text-sm">
-                      <span className="text-gray-500">Already have an account? </span>
-                      <button 
+                    <div className="mb-4 text-sm flex items-center">
+                      <span className="text-text-secondary">Already have an account? </span>
+                      <button
                         onClick={() => setIsLogin(true)}
-                        className="text-[#40716F] font-medium hover:underline ml-1"
+                        className="text-[#40716F] font-bold ml-1 min-h-[44px] px-1"
                       >
                         Log in
                       </button>
+                    </div>
+
+                    {/* Where you are in the two steps. */}
+                    <div className="flex items-center gap-2 mb-5">
+                      {[1, 2].map((s) => (
+                        <span key={s} className={cn('h-1.5 flex-1 rounded-full transition-colors', currentStep >= s ? 'bg-[#40716F]' : 'bg-border-light')} />
+                      ))}
+                      <span className="text-[11px] font-bold text-text-secondary shrink-0 ml-1">Step {currentStep} of 2</span>
                     </div>
 
                     <div className="space-y-6">
                       {/* Dynamic Step Content */}
                       <div className="min-h-[220px]">
                         {currentStep === 1 && (
-                          <div className="space-y-4 animate-in slide-in-from-right-4 duration-300">
-                            <input type="text" placeholder="Business / Clinic Name" value={formData.businessName} onChange={e => handleInputChange('businessName', e.target.value)} className={inputClass} />
-                            <input type="email" placeholder="Business Email" value={formData.email} onChange={e => handleInputChange('email', e.target.value)} className={inputClass} />
-                            <div className="grid grid-cols-2 gap-4">
-                              <input type="text" placeholder="Phone Number" maxLength={10} value={formData.phone} onChange={e => handleInputChange('phone', e.target.value.replace(/\D/g, ''))} className={inputClass} />
-                              <input type="password" placeholder="Account Password" value={formData.password} onChange={e => handleInputChange('password', e.target.value)} className={inputClass} />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                              <input type="text" placeholder="City (e.g. Mumbai, Indore)" value={formData.city} onChange={e => handleInputChange('city', e.target.value)} className={inputClass} />
-                              <input type="text" placeholder="Shop Area / Address" value={formData.address} onChange={e => handleInputChange('address', e.target.value)} className={inputClass} />
-                            </div>
+                          <div className="space-y-3">
+                            <input type="text" placeholder="Business / Clinic Name" value={formData.businessName} onChange={e => handleInputChange('businessName', e.target.value)} className={cn(inputClass, errors.businessName && 'border-error')} />
+                            <input type="email" inputMode="email" placeholder="Business Email" value={formData.email} onChange={e => handleInputChange('email', e.target.value)} className={cn(inputClass, errors.email && 'border-error')} />
+                            <input type="tel" inputMode="numeric" placeholder="Phone Number" maxLength={10} value={formData.phone} onChange={e => handleInputChange('phone', e.target.value.replace(/\D/g, ''))} className={cn(inputClass, errors.phone && 'border-error')} />
+                            <input type="password" autoComplete="new-password" placeholder="Account Password" value={formData.password} onChange={e => handleInputChange('password', e.target.value)} className={cn(inputClass, errors.password && 'border-error')} />
+                            <input type="text" placeholder="City (e.g. Mumbai, Indore)" value={formData.city} onChange={e => handleInputChange('city', e.target.value)} className={cn(inputClass, errors.city && 'border-error')} />
+                            <input type="text" placeholder="Shop Area / Address" value={formData.address} onChange={e => handleInputChange('address', e.target.value)} className={cn(inputClass, errors.address && 'border-error')} />
                           </div>
                         )}
 
                         {currentStep === 2 && (
-                          <div className="animate-in slide-in-from-right-4 duration-300">
+                          <div>
                             {/* Heading and live count share a row: the count was
                                 a separate paragraph, which put a third block of
                                 text above the list and pushed it off screen. */}
                             <div className="flex items-baseline justify-between gap-3 mb-1">
-                              <p className="text-xs text-gray-500 font-medium">Select Partner Categories</p>
+                              <p className="text-xs text-text-secondary font-bold">Select Partner Categories</p>
                               {formData.roles.length > 1 && (
                                 <span className="text-[11px] font-semibold text-[#40716F] shrink-0">
                                   {formData.roles.length} selected
                                 </span>
                               )}
                             </div>
-                            <p className="text-[11px] text-gray-400 mb-3">
+                            <p className="text-[11px] text-text-secondary mb-3">
                               Pick every service you offer — each gets its own panel.
                             </p>
 
-                            {/* ~4.5 rows visible, so the list reads as
-                                scrollable rather than truncated. */}
-                            <div className="space-y-2 max-h-[228px] overflow-y-auto overscroll-contain pr-1 -mr-1">
+                            {/* The whole list, in the page's own scroll — a
+                                nested scroll box is awkward to drag on a phone. */}
+                            <div className="bg-white rounded-2xl border border-border-light overflow-hidden">
                               {VENDOR_CATEGORIES.map(({ slug: r, label }) => {
                                 const checked = formData.roles.includes(r);
                                 return (
-                                  <label key={r} className={cn("flex items-center gap-3 cursor-pointer p-3 rounded-lg border transition-colors", checked ? "border-[#40716F] bg-[#40716F]/5" : "border-gray-200 hover:border-gray-300")}>
+                                  <label key={r} className={cn("flex items-center gap-3 cursor-pointer px-4 min-h-[52px] border-b border-border-light last:border-b-0 transition-colors", checked ? "bg-[#40716F]/5" : "bg-white")}>
                                     <input type="checkbox" name="roles" checked={checked} onChange={() => toggleRole(r)} className="hidden" />
-                                    <div className={cn("w-4 h-4 rounded border-2 transition-all flex items-center justify-center shrink-0", checked ? "border-[#40716F] bg-[#40716F]" : "border-gray-300")}>
-                                      {checked && <Check size={11} className="text-white" strokeWidth={3} />}
+                                    <div className={cn("w-5 h-5 rounded-md border-2 transition-all flex items-center justify-center shrink-0", checked ? "border-[#40716F] bg-[#40716F]" : "border-text-disabled")}>
+                                      {checked && <Check size={13} className="text-white" strokeWidth={3} />}
                                     </div>
-                                    <span className={cn("text-sm font-medium transition-colors", checked ? "text-gray-900" : "text-gray-600")}>
+                                    <span className={cn("text-sm font-semibold transition-colors", checked ? "text-text-primary" : "text-text-secondary")}>
                                       {label}
                                     </span>
                                   </label>
@@ -369,7 +371,7 @@ export function VendorAuth() {
                             {/* One hint box, not two. The multi-business note
                                 and the KYC note were separate panels with
                                 identical styling, which read as a glitch. */}
-                            <p className="text-[11px] text-gray-400 leading-relaxed bg-[#40716F]/5 p-3 rounded-lg border border-[#40716F]/10 mt-3">
+                            <p className="text-[11px] text-text-secondary leading-relaxed bg-[#40716F]/5 p-3 rounded-xl border border-[#40716F]/10 mt-3">
                               {formData.roles.length > 1 && (
                                 <span className="text-[#40716F] font-medium">
                                   Each business is reviewed separately, so one may go live before another.{' '}
@@ -382,19 +384,19 @@ export function VendorAuth() {
                       </div>
 
                       {/* Step Navigation */}
-                      <div className="pt-6 flex flex-col gap-4">
+                      <div className="pt-2 flex flex-col gap-3">
                         {currentStep === 1 ? (
-                          <button type="button" onClick={handleNextStep} className="w-full py-3.5 bg-[#40716F] text-white rounded-lg text-sm font-medium hover:bg-[#335A58] transition-all cursor-pointer shadow-sm active:scale-95 text-center">
+                          <button type="button" onClick={handleNextStep} className="w-full h-14 bg-[#40716F] text-white rounded-2xl text-[15px] font-bold hover:bg-[#335A58] transition-all cursor-pointer shadow-lg shadow-[#40716F]/25 active:scale-[0.98] text-center">
                             Continue
                           </button>
                         ) : (
-                          <button type="button" onClick={handleSignupComplete} className="w-full py-3.5 bg-[#40716F] text-white rounded-lg text-sm font-medium hover:bg-[#335A58] transition-all cursor-pointer shadow-sm active:scale-95 text-center">
+                          <button type="button" onClick={handleSignupComplete} className="w-full h-14 bg-[#40716F] text-white rounded-2xl text-[15px] font-bold hover:bg-[#335A58] transition-all cursor-pointer shadow-lg shadow-[#40716F]/25 active:scale-[0.98] text-center">
                             Register Account
                           </button>
                         )}
 
                         {currentStep > 1 && (
-                          <button type="button" onClick={handlePrevStep} className="w-full py-3.5 bg-white text-gray-600 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 transition cursor-pointer text-center">
+                          <button type="button" onClick={handlePrevStep} className="w-full h-12 bg-white text-text-primary border border-border-light rounded-2xl text-sm font-bold transition cursor-pointer text-center">
                             Back
                           </button>
                         )}
@@ -406,9 +408,8 @@ export function VendorAuth() {
               </div>
             )}
           </div>
-        </div>
       </div>
     </div>
   );
 }
-export default VendorAuth;
+export default VendorAuth;

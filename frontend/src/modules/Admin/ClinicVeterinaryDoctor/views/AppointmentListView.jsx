@@ -1,26 +1,40 @@
 import React, { useState } from 'react';
-import { Search, Calendar, List, Clock, Video, Home, CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, List, CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useVendor } from '../context/ClinicVendorContext';
+import { SearchBar, FilterSheet, FilterOptions, ListCard, CardAction, StatusBadge, EmptyState } from '../../vendor/mobile';
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
-const statusBadge = {
-  Confirmed: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-  Completed: 'bg-slate-100 text-slate-600 border-slate-200',
-  Pending:   'bg-amber-50 text-amber-700 border-amber-100',
-};
+const STATUS_TONE = { Confirmed: 'success', Completed: 'neutral', Pending: 'warning' };
 
 const typeDot = {
-  'Clinic Visit':       'bg-blue-400',
-  'Video Consultation': 'bg-slate-400',
-  'Home Visit':         'bg-teal-400',
-  'Emergency':          'bg-red-400 animate-pulse',
+  'Clinic Visit':       'bg-accent-teal',
+  'Video Consultation': 'bg-text-disabled',
+  'Home Visit':         'bg-[#4C8684]',
+  'Emergency':          'bg-error animate-pulse',
 };
 
 const typeBar = {
-  'Clinic Visit':       'bg-blue-400',
-  'Video Consultation': 'bg-slate-400',
-  'Home Visit':         'bg-teal-400',
-  'Emergency':          'bg-red-400',
+  'Clinic Visit':       'bg-accent-teal',
+  'Video Consultation': 'bg-text-disabled',
+  'Home Visit':         'bg-[#4C8684]',
+  'Emergency':          'bg-error',
+};
+
+const pad = (n) => String(n).padStart(2, '0');
+const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/** "May 26, 2026" (the API's display date) → "2026-05-26". */
+const keyOf = (display) => {
+  const d = new Date(display);
+  return Number.isNaN(d.getTime()) ? '' : ymd(d);
+};
+/** "04:00 PM" → minutes since midnight, for sorting a day's slots. */
+const minutesOf = (t) => {
+  const m = String(t || '').match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!m) return 0;
+  let h = Number(m[1]) % 12;
+  if (m[3] && m[3].toUpperCase() === 'PM') h += 12;
+  if (!m[3]) h = Number(m[1]);
+  return h * 60 + Number(m[2]);
 };
 
 export function AppointmentListView({ onNavigate }) {
@@ -30,6 +44,10 @@ export function AppointmentListView({ onNavigate }) {
   const [typeFilter, setTypeFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [processing, setProcessing] = useState({});
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  // Calendar mode shows one week (Mon–Sun) and one day of it at a time.
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [calendarDay, setCalendarDay] = useState(null);
 
   const handleConfirm = (id) => {
     setProcessing(prev => ({ ...prev, [id]: true }));
@@ -52,212 +70,207 @@ export function AppointmentListView({ onNavigate }) {
   });
 
   const getTypeIcon = (type) => {
-    const dot = typeDot[type] || 'bg-slate-300';
+    const dot = typeDot[type] || 'bg-text-disabled';
     return <span className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />;
   };
 
   const getStatusBadge = (status) => (
-    <span className={`px-2 py-0.5 text-[10px] font-bold rounded border uppercase ${
-      statusBadge[status] || 'bg-slate-50 text-slate-500 border-slate-200'
-    }`}>{status}</span>
+    <StatusBadge label={status} tone={STATUS_TONE[status] || 'neutral'} />
   );
 
+  const today = new Date();
+  const todayKey = ymd(today);
+  const weekStart = new Date(today.getFullYear(), today.getMonth(), today.getDate() - ((today.getDay() + 6) % 7) + weekOffset * 7);
+  const weekDays = Array.from({ length: 7 }, (_, i) => new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + i));
+  const weekKeys = weekDays.map(ymd);
+  const countOn = (key) => filteredAppointments.filter((a) => keyOf(a.date) === key).length;
+  const weekCount = weekKeys.reduce((s, k) => s + countOn(k), 0);
+  const weekLabel = weekOffset === 0 ? 'This Week' : weekOffset === 1 ? 'Next Week' : weekOffset === -1 ? 'Last Week'
+    : `${weekDays[0].toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} – ${weekDays[6].toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`;
+  // The chosen day if it is in this week; else today, the first busy day, or Monday.
+  const activeDay = weekKeys.includes(calendarDay) ? calendarDay
+    : weekKeys.includes(todayKey) ? todayKey
+      : weekKeys.find((k) => countOn(k) > 0) || weekKeys[0];
+  const dayApts = filteredAppointments.filter(a => keyOf(a.date) === activeDay).sort((a, b) => minutesOf(a.time) - minutesOf(b.time));
+
+  const shiftWeek = (delta) => { setWeekOffset((w) => w + delta); setCalendarDay(null); };
+  const goToday = () => { setWeekOffset(0); setCalendarDay(todayKey); };
+
+  const filterCount = (statusFilter !== 'All' ? 1 : 0) + (typeFilter !== 'All' ? 1 : 0);
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
 
       {/* ── Toolbar ── */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-            <input
-              type="text"
-              placeholder="Search patient, owner..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#F87B68]/30 focus:border-[#F87B68] w-56 transition"
-            />
-          </div>
-          {/* View toggle */}
-          <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl p-1">
-            <button
-              onClick={() => setViewMode('list')}
-              className={`p-1.5 rounded-lg transition cursor-pointer ${
-                viewMode === 'list' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-400 hover:text-slate-600'
-              }`}
-            >
-              <List size={15} />
-            </button>
-            <button
-              onClick={() => setViewMode('calendar')}
-              className={`p-1.5 rounded-lg transition cursor-pointer ${
-                viewMode === 'calendar' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-400 hover:text-slate-600'
-              }`}
-            >
-              <Calendar size={15} />
-            </button>
-          </div>
-        </div>
+      <SearchBar
+        value={searchQuery}
+        onChange={setSearchQuery}
+        placeholder="Search patient, owner..."
+        onFilter={() => setFiltersOpen(true)}
+        filterCount={filterCount}
+      />
 
-        <div className="flex items-center gap-2">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 focus:outline-none focus:border-[#F87B68] transition cursor-pointer"
+      {/* View toggle */}
+      <div className="flex items-center gap-1 bg-bg-secondary rounded-2xl p-1">
+        {[
+          ['list', List, 'List'],
+          ['calendar', Calendar, 'Calendar'],
+        ].map(([mode, Icon, label]) => (
+          <button
+            key={mode}
+            onClick={() => setViewMode(mode)}
+            className={`flex-1 min-h-[40px] rounded-xl text-[13px] font-bold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+              viewMode === mode ? 'bg-white shadow-sm text-text-primary' : 'text-text-secondary'
+            }`}
           >
-            <option value="All">All Statuses</option>
-            <option value="Pending">Pending</option>
-            <option value="Confirmed">Confirmed</option>
-            <option value="Completed">Completed</option>
-          </select>
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 focus:outline-none focus:border-[#F87B68] transition cursor-pointer"
-          >
-            <option value="All">All Types</option>
-            <option value="Clinic Visit">Clinic Visit</option>
-            <option value="Video Consultation">Video Consult</option>
-            <option value="Home Visit">Home Visit</option>
-            <option value="Emergency">Emergency</option>
-          </select>
-        </div>
+            <Icon size={15} /> {label}
+          </button>
+        ))}
       </div>
+
+      <FilterSheet
+        open={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        onReset={() => { setStatusFilter('All'); setTypeFilter('All'); }}
+      >
+        <FilterOptions
+          label="Status"
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={[
+            { value: 'All', label: 'All Statuses' },
+            'Pending',
+            'Confirmed',
+            'Completed',
+          ]}
+        />
+        <FilterOptions
+          label="Type"
+          value={typeFilter}
+          onChange={setTypeFilter}
+          options={[
+            { value: 'All', label: 'All Types' },
+            'Clinic Visit',
+            { value: 'Video Consultation', label: 'Video Consult' },
+            'Home Visit',
+            'Emergency',
+          ]}
+        />
+      </FilterSheet>
 
       {/* ── List View ── */}
       {viewMode === 'list' ? (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Date & Time</th>
-                  <th className="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Patient</th>
-                  <th className="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Type</th>
-                  <th className="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Issue</th>
-                  <th className="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                  <th className="p-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {filteredAppointments.map(apt => (
-                  <tr key={apt.id} className="hover:bg-slate-50/60 transition group">
-                    <td className="p-4 whitespace-nowrap">
-                      <p className="text-sm font-bold text-slate-900">{apt.date}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">{apt.time}</p>
-                    </td>
-                    <td className="p-4">
-                      <p className="text-sm font-bold text-slate-900">{apt.owner}'s {apt.petName}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">{apt.species} - {apt.breed}</p>
-                    </td>
-                    <td className="p-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        {getTypeIcon(apt.type)}
-                        <span className="text-sm font-medium text-slate-700">{apt.type}</span>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <p className="text-sm text-slate-600 max-w-xs truncate" title={apt.issue}>{apt.issue}</p>
-                    </td>
-                    <td className="p-4 whitespace-nowrap">{getStatusBadge(apt.status)}</td>
-                    <td className="p-4 whitespace-nowrap text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {apt.status === 'Pending' && (
-                          <button
-                            onClick={() => handleConfirm(apt.id)}
-                            disabled={processing[apt.id]}
-                            className={`p-1.5 rounded-lg transition cursor-pointer ${
-                              processing[apt.id]
-                                ? 'bg-slate-100 text-slate-300 cursor-not-allowed'
-                                : 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
-                            }`}
-                            title="Confirm appointment"
-                          >
-                            <CheckCircle size={16} />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => onNavigate('appointment_detail', apt)}
-                          className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition shadow-sm cursor-pointer"
-                        >
-                          View Details
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filteredAppointments.length === 0 && (
-                  <tr>
-                    <td colSpan="6" className="p-10 text-center text-slate-400 text-sm">
-                      No appointments found matching your filters.
-                    </td>
-                  </tr>
+        filteredAppointments.length === 0 ? (
+          <EmptyState icon={Calendar} text="No appointments found matching your filters." />
+        ) : (
+          <div className="space-y-3">
+            {filteredAppointments.map(apt => (
+              <ListCard
+                key={apt.id}
+                title={`${apt.owner}'s ${apt.petName}`}
+                subtitle={`${apt.species} - ${apt.breed}`}
+                badge={getStatusBadge(apt.status)}
+                meta={[
+                  { label: 'Date & Time', value: <>{apt.date}<span className="block text-xs font-medium text-text-secondary">{apt.time}</span></> },
+                  { label: 'Type', value: <span className="inline-flex items-center gap-1.5">{getTypeIcon(apt.type)} {apt.type}</span> },
+                  { label: 'Issue', value: apt.issue, full: true },
+                ]}
+                footer={(
+                  <>
+                    {apt.status === 'Pending' && (
+                      <CardAction
+                        tone="teal"
+                        icon={CheckCircle}
+                        className="flex-1"
+                        onClick={() => handleConfirm(apt.id)}
+                        disabled={processing[apt.id]}
+                        aria-label="Confirm appointment"
+                      >
+                        Confirm
+                      </CardAction>
+                    )}
+                    <CardAction tone="outline" className="flex-1" onClick={() => onNavigate('appointment_detail', apt)}>
+                      View Details
+                    </CardAction>
+                  </>
                 )}
-              </tbody>
-            </table>
+              />
+            ))}
           </div>
-        </div>
+        )
       ) : (
         // ── Calendar View ──
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-            <div className="flex items-center gap-4">
-              <div className="flex bg-white border border-slate-200 rounded-xl overflow-hidden">
-                <button className="px-2 py-1.5 hover:bg-slate-50 border-r border-slate-200 text-slate-500 cursor-pointer"><ChevronLeft size={17} /></button>
-                <span className="px-4 py-1.5 text-sm font-bold text-slate-700">This Week</span>
-                <button className="px-2 py-1.5 hover:bg-slate-50 border-l border-slate-200 text-slate-500 cursor-pointer"><ChevronRight size={17} /></button>
-              </div>
-              <button className="text-xs font-bold text-[#F87B68] hover:underline cursor-pointer">Today</button>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center bg-white border border-border-light rounded-2xl overflow-hidden">
+              <button onClick={() => shiftWeek(-1)} aria-label="Previous week" className="w-11 h-11 flex items-center justify-center border-r border-border-light text-text-secondary cursor-pointer"><ChevronLeft size={17} /></button>
+              <span className="px-3 text-sm font-bold text-text-primary whitespace-nowrap">{weekLabel}</span>
+              <button onClick={() => shiftWeek(1)} aria-label="Next week" className="w-11 h-11 flex items-center justify-center border-l border-border-light text-text-secondary cursor-pointer"><ChevronRight size={17} /></button>
             </div>
-            <div className="hidden lg:flex gap-4 text-xs font-semibold text-slate-500">
-              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-blue-400" /> Clinic</span>
-              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-slate-400" /> Video</span>
-              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-teal-400" /> Home</span>
-              <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-400" /> Emergency</span>
-            </div>
+            <button onClick={goToday} className="min-h-[44px] px-2 text-xs font-bold text-primary-main cursor-pointer">Today</button>
           </div>
 
-          <div className="overflow-x-auto p-4 bg-slate-50/20">
-            <div className="flex gap-4 min-w-[800px]">
-              {Object.keys(filteredAppointments.reduce((acc, apt) => {
-                if (!acc[apt.date]) acc[apt.date] = [];
-                acc[apt.date].push(apt);
-                return acc;
-              }, {})).sort().map(date => {
-                const dayApts = filteredAppointments.filter(a => a.date === date).sort((a, b) => a.time.localeCompare(b.time));
-                return (
-                  <div key={date} className="flex-1 min-w-[220px] bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                    <div className="p-3 bg-slate-50 border-b border-slate-100 text-center">
-                      <p className="text-sm font-bold text-slate-800">{date}</p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{dayApts.length} Appt{dayApts.length !== 1 ? 's' : ''}</p>
-                    </div>
-                    <div className="p-2 space-y-2 max-h-[500px] overflow-y-auto">
-                      {dayApts.map(apt => (
-                        <div
-                          key={apt.id}
-                          onClick={() => onNavigate('appointment_detail', apt)}
-                          className="p-3 border border-slate-100 bg-white rounded-xl cursor-pointer hover:shadow-md hover:border-slate-200 transition relative overflow-hidden group ml-1"
-                        >
-                          <div className={`absolute left-0 top-0 bottom-0 w-1 ${typeBar[apt.type] || 'bg-slate-300'}`} />
-                          <div className="flex justify-between items-start mb-1">
-                            <span className="text-xs font-bold text-slate-900">{apt.time}</span>
-                            {getStatusBadge(apt.status)}
-                          </div>
-                          <p className="text-sm font-bold text-slate-900 truncate">{apt.owner}'s {apt.petName}</p>
-                          <p className="text-xs text-slate-500 truncate mt-1">{apt.issue}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-              {filteredAppointments.length === 0 && (
-                <div className="w-full py-12 text-center text-slate-400 text-sm bg-white rounded-2xl border border-dashed border-slate-200">
-                  No appointments match your filters.
-                </div>
-              )}
-            </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-semibold text-text-secondary px-1">
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-accent-teal" /> Clinic</span>
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-text-disabled" /> Video</span>
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-[#4C8684]" /> Home</span>
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-error" /> Emergency</span>
           </div>
+
+          {/* Day strip: the week's seven days, with each day's count. */}
+          <div className="grid grid-cols-7 gap-1.5">
+            {weekDays.map((d, i) => {
+              const key = weekKeys[i];
+              const on = key === activeDay;
+              const count = countOn(key);
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setCalendarDay(key)}
+                  className={`min-w-0 py-2 rounded-[16px] border-2 text-center transition-all cursor-pointer ${
+                    on ? 'bg-[#66B4B1] border-[#66B4B1] text-white shadow-lg shadow-[#66B4B1]/20' : 'bg-white border-border-light text-text-primary'
+                  }`}
+                >
+                  <span className={`block text-[10px] font-bold uppercase ${on ? 'text-white/85' : 'text-text-secondary'}`}>
+                    {d.toLocaleDateString('en-IN', { weekday: 'short' }).slice(0, 3)}
+                  </span>
+                  <span className="block text-base font-black leading-tight">{d.getDate()}</span>
+                  <span className={`block mx-auto mt-0.5 w-1.5 h-1.5 rounded-full ${count ? (on ? 'bg-white' : 'bg-primary-main') : 'bg-transparent'}`} />
+                  {key === todayKey && <span className={`block text-[8px] font-bold ${on ? 'text-white/85' : 'text-primary-main'}`}>TODAY</span>}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[11px] font-bold text-text-secondary uppercase tracking-wide px-1">
+            {new Date(`${activeDay}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
+            {' · '}{dayApts.length} Appt{dayApts.length !== 1 ? 's' : ''}{' · '}{weekCount} this week
+          </p>
+
+          {dayApts.length === 0 ? (
+            <EmptyState compact icon={Calendar} text="No appointments on this day." />
+          ) : (
+            <>
+              <div className="space-y-2">
+                {dayApts.map(apt => (
+                  <button
+                    key={apt.id}
+                    type="button"
+                    onClick={() => onNavigate('appointment_detail', apt)}
+                    className="w-full text-left p-4 pl-5 border border-border-light bg-white rounded-[20px] shadow-sm active:bg-bg-primary transition relative overflow-hidden cursor-pointer"
+                  >
+                    <span className={`absolute left-0 top-0 bottom-0 w-1.5 ${typeBar[apt.type] || 'bg-text-disabled'}`} />
+                    <span className="flex justify-between items-start gap-2 mb-1">
+                      <span className="text-xs font-bold text-text-primary">{apt.time}</span>
+                      {getStatusBadge(apt.status)}
+                    </span>
+                    <span className="block text-sm font-bold text-text-primary truncate">{apt.owner}'s {apt.petName}</span>
+                    <span className="block text-xs text-text-secondary truncate mt-1">{apt.issue}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

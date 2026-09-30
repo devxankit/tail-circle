@@ -1,6 +1,51 @@
 import React, { useState } from 'react';
 import { useMemorialProvider } from '../context/MemorialProviderContext';
-import { Leaf, Plus, MoreVertical, Check, X, Clock, MapPin, Users } from 'lucide-react';
+import { Leaf, Plus, MoreVertical, Check, X, Clock, MapPin, Users, Pencil, Power, Trash2 } from 'lucide-react';
+import { BottomSheet, ActionSheet, PrimaryButton, StatusBadge, EmptyState, FieldPair, fieldClass, textareaClass, labelClass } from '../../vendor/mobile';
+
+/** The service form's fields, shared by Add and Edit (each keeps its own state). */
+function ServiceFields({ data, setData, withPlaceholders }) {
+  return (
+    <div className="space-y-4 pb-4">
+      <div>
+        <label className={labelClass}>Service Name</label>
+        <input type="text" value={data.name} onChange={(e) => setData({...data, name: e.target.value})} placeholder={withPlaceholders ? 'e.g., Premium Burial Service' : undefined} className={fieldClass} />
+      </div>
+      <div>
+        <label className={labelClass}>Category</label>
+        <select value={data.category} onChange={(e) => setData({...data, category: e.target.value})} className={fieldClass}>
+          <option>Burial</option>
+          <option>Grave Preparation</option>
+          <option>Cremation Support</option>
+          <option>Tree Plantation</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div>
+        <label className={labelClass}>Base Price (₹)</label>
+        <input type="text" inputMode="decimal" value={data.price} onChange={(e) => setData({...data, price: e.target.value})} placeholder={withPlaceholders ? '4500' : undefined} className={fieldClass} />
+      </div>
+      <div>
+        <label className={labelClass}>Description</label>
+        <textarea value={data.description} onChange={(e) => setData({...data, description: e.target.value})} rows="3" placeholder={withPlaceholders ? 'Describe the service details respectfully...' : undefined} className={textareaClass}></textarea>
+      </div>
+      <FieldPair>
+        <div>
+          <label className={labelClass}>Duration</label>
+          <input type="text" value={data.duration} onChange={(e) => setData({...data, duration: e.target.value})} placeholder={withPlaceholders ? 'e.g. 2 Hours' : undefined} className={fieldClass} />
+        </div>
+        <div>
+          <label className={labelClass}>Distance Limit</label>
+          <input type="text" value={data.distance} onChange={(e) => setData({...data, distance: e.target.value})} placeholder={withPlaceholders ? 'e.g. 15 km' : undefined} className={fieldClass} />
+        </div>
+      </FieldPair>
+      <div>
+        <label className={labelClass}>Staff Required</label>
+        <input type="number" inputMode="numeric" value={data.staff} onChange={(e) => setData({...data, staff: Number(e.target.value)})} placeholder={withPlaceholders ? '2' : undefined} className={fieldClass} />
+      </div>
+    </div>
+  );
+}
 
 export function MemorialServicesView() {
   const { services, addService, updateService, removeService } = useMemorialProvider();
@@ -18,97 +63,66 @@ export function MemorialServicesView() {
     staff: 1
   });
 
+  const dropdownService = services.find((s) => s.id === activeDropdown);
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 pb-10">
-      
+    <div className="space-y-4">
+
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-        <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">Memorial Services</h2>
-          <p className="text-sm font-semibold text-slate-500 mt-0.5">Configure the core services you offer to grieving pet parents.</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-bold text-text-primary leading-tight">Memorial Services</h2>
+          <p className="text-xs text-text-secondary mt-1">Configure the core services you offer to grieving pet parents.</p>
         </div>
-        <button 
+        <button
           onClick={() => setShowAddService(true)}
-          className="flex items-center gap-2 bg-slate-900 hover:bg-black text-white px-5 py-2.5 rounded-xl text-sm font-bold transition shadow-lg cursor-pointer"
+          className="h-11 px-4 rounded-full bg-primary-main text-white text-sm font-bold flex items-center gap-1.5 shadow-md shadow-primary-main/25 shrink-0 cursor-pointer"
         >
-          <Plus size={18} /> Add New Service
+          <Plus size={16} /> Add Service
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {services.map(service => (
-          <div key={service.id} className={`bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition group relative ${activeDropdown === service.id ? 'z-50' : 'z-10'}`}>
-            <div className="p-6 border-b border-slate-50 relative">
-              <div className="absolute top-6 right-6">
-                <button 
-                  onClick={() => setActiveDropdown(activeDropdown === service.id ? null : service.id)}
-                  className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 transition cursor-pointer"
-                >
-                  <MoreVertical size={16} />
-                </button>
+      {services.length === 0 && <EmptyState icon={Leaf} text="No services yet." />}
 
-                {activeDropdown === service.id && (
-                  <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50 animate-in fade-in zoom-in-95 duration-200">
-                    <button 
-                      onClick={() => {
-                        setEditFormData({...service, price: service.price.replace('₹', '')}); // Strip formatting for edit
-                        setShowEditService(true);
-                        setActiveDropdown(null);
-                      }}
-                      className="w-full text-left px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
-                    >
-                      Edit Service
-                    </button>
-                    <button 
-                      onClick={() => {
-                        updateService(service.id, { status: service.status === 'Active' ? 'Inactive' : 'Active' });
-                        setActiveDropdown(null);
-                      }}
-                      className="w-full text-left px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
-                    >
-                      Mark as {service.status === 'Active' ? 'Inactive' : 'Active'}
-                    </button>
-                    <div className="my-1 border-t border-slate-100"></div>
-                    <button 
-                      onClick={() => {
-                        removeService(service.id);
-                        setActiveDropdown(null);
-                      }}
-                      className="w-full text-left px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 transition cursor-pointer"
-                    >
-                      Delete Service
-                    </button>
-                  </div>
-                )}
-              </div>
-              <span className="inline-block px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 rounded mb-3">
+      <div className="space-y-3">
+        {services.map(service => (
+          <div key={service.id} className="bg-white rounded-[20px] border border-border-light shadow-sm overflow-hidden">
+            <div className="p-4 relative">
+              <button
+                onClick={() => setActiveDropdown(activeDropdown === service.id ? null : service.id)}
+                aria-label="Service actions"
+                className="absolute top-2 right-2 w-11 h-11 rounded-full flex items-center justify-center text-text-secondary active:bg-bg-secondary transition cursor-pointer"
+              >
+                <MoreVertical size={18} />
+              </button>
+              <span className="inline-block px-2 py-1 text-[10px] font-bold uppercase tracking-wider bg-bg-secondary text-text-secondary rounded-md mb-2">
                 {service.category}
               </span>
-              <h3 className="text-lg font-black text-slate-900 mb-2 pr-10">{service.name}</h3>
-              <p className="text-xs font-medium text-slate-500 leading-relaxed min-h-[40px]">{service.description}</p>
+              <h3 className="text-[15px] font-black text-text-primary mb-1.5 pr-10">{service.name}</h3>
+              <p className="text-xs font-medium text-text-secondary leading-relaxed">{service.description}</p>
             </div>
-            
-            <div className="p-6 bg-slate-50/50 flex flex-col gap-4">
+
+            <div className="px-4 pb-4 space-y-3">
               <div className="flex items-center justify-between">
-                <p className="text-2xl font-black text-emerald-600">{service.price}</p>
-                <div className={`px-3 py-1 rounded-lg border text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${service.status === 'Active' ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : 'text-slate-500 bg-slate-100 border-slate-200'}`}>
-                  {service.status === 'Active' ? <Check size={12}/> : <X size={12}/>}
-                  {service.status}
-                </div>
+                <p className="text-xl font-black text-success">{service.price}</p>
+                <StatusBadge
+                  tone={service.status === 'Active' ? 'success' : 'neutral'}
+                  label={<span className="inline-flex items-center gap-1">{service.status === 'Active' ? <Check size={11}/> : <X size={11}/>}{service.status}</span>}
+                />
               </div>
 
               <div className="grid grid-cols-3 gap-2">
-                <div className="bg-white p-3 rounded-xl border border-slate-100 text-center">
-                  <Clock size={14} className="mx-auto text-slate-400 mb-1" />
-                  <p className="text-[10px] font-bold text-slate-700">{service.duration}</p>
+                <div className="bg-bg-primary p-2.5 rounded-xl border border-border-light text-center">
+                  <Clock size={14} className="mx-auto text-text-secondary mb-1" />
+                  <p className="text-[11px] font-bold text-text-primary">{service.duration}</p>
                 </div>
-                <div className="bg-white p-3 rounded-xl border border-slate-100 text-center">
-                  <MapPin size={14} className="mx-auto text-slate-400 mb-1" />
-                  <p className="text-[10px] font-bold text-slate-700">{service.distance}</p>
+                <div className="bg-bg-primary p-2.5 rounded-xl border border-border-light text-center">
+                  <MapPin size={14} className="mx-auto text-text-secondary mb-1" />
+                  <p className="text-[11px] font-bold text-text-primary">{service.distance}</p>
                 </div>
-                <div className="bg-white p-3 rounded-xl border border-slate-100 text-center">
-                  <Users size={14} className="mx-auto text-slate-400 mb-1" />
-                  <p className="text-[10px] font-bold text-slate-700">{service.staff} Staff</p>
+                <div className="bg-bg-primary p-2.5 rounded-xl border border-border-light text-center">
+                  <Users size={14} className="mx-auto text-text-secondary mb-1" />
+                  <p className="text-[11px] font-bold text-text-primary">{service.staff} Staff</p>
                 </div>
               </div>
             </div>
@@ -116,155 +130,95 @@ export function MemorialServicesView() {
         ))}
       </div>
 
-      {showAddService && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto custom-scrollbar animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 sticky top-0 z-10">
-              <h3 className="text-xl font-black text-slate-900">Add Memorial Service</h3>
-              <button onClick={() => setShowAddService(false)} className="p-2 bg-white rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition shadow-sm border border-slate-200 cursor-pointer">
-                <X size={16} />
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-5">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Service Name</label>
-                <input type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} placeholder="e.g., Premium Burial Service" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Category</label>
-                  <select value={formData.category} onChange={(e) => setFormData({...formData, category: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300 cursor-pointer">
-                    <option>Burial</option>
-                    <option>Grave Preparation</option>
-                    <option>Cremation Support</option>
-                    <option>Tree Plantation</option>
-                    <option>Other</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Base Price (₹)</label>
-                  <input type="text" value={formData.price} onChange={(e) => setFormData({...formData, price: e.target.value})} placeholder="4500" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-                </div>
-              </div>
+      {/* The service dropdown, as an action sheet — same three actions. */}
+      <ActionSheet
+        open={!!dropdownService}
+        onClose={() => setActiveDropdown(null)}
+        title={dropdownService?.name}
+        actions={dropdownService ? [
+          {
+            key: 'edit',
+            label: 'Edit Service',
+            icon: Pencil,
+            onClick: () => {
+              setEditFormData({...dropdownService, price: dropdownService.price.replace('₹', '')}); // Strip formatting for edit
+              setShowEditService(true);
+              setActiveDropdown(null);
+            },
+          },
+          {
+            key: 'toggle',
+            label: `Mark as ${dropdownService.status === 'Active' ? 'Inactive' : 'Active'}`,
+            icon: Power,
+            onClick: () => {
+              updateService(dropdownService.id, { status: dropdownService.status === 'Active' ? 'Inactive' : 'Active' });
+              setActiveDropdown(null);
+            },
+          },
+          {
+            key: 'delete',
+            label: 'Delete Service',
+            icon: Trash2,
+            danger: true,
+            onClick: () => {
+              removeService(dropdownService.id);
+              setActiveDropdown(null);
+            },
+          },
+        ] : []}
+      />
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Description</label>
-                <textarea value={formData.description} onChange={(e) => setFormData({...formData, description: e.target.value})} rows="3" placeholder="Describe the service details respectfully..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"></textarea>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Duration</label>
-                  <input type="text" value={formData.duration} onChange={(e) => setFormData({...formData, duration: e.target.value})} placeholder="e.g. 2 Hours" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Distance Limit</label>
-                  <input type="text" value={formData.distance} onChange={(e) => setFormData({...formData, distance: e.target.value})} placeholder="e.g. 15 km" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Staff Required</label>
-                  <input type="number" value={formData.staff} onChange={(e) => setFormData({...formData, staff: Number(e.target.value)})} placeholder="2" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-                </div>
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-slate-100 flex gap-3 bg-slate-50/50 sticky bottom-0 z-10">
-              <button onClick={() => setShowAddService(false)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 transition cursor-pointer">
-                Cancel
-              </button>
-              <button 
-                onClick={() => {
-                  if (formData.name) {
-                    addService({ ...formData, price: `₹${formData.price}` });
-                    setShowAddService(false);
-                    setFormData({ name: '', category: 'Burial', price: '', description: '', duration: '', distance: '', staff: 1 });
-                  }
-                }} 
-                className="flex-1 py-3 bg-slate-900 hover:bg-black text-white text-sm font-bold rounded-xl transition shadow-lg cursor-pointer"
-              >
-                Save Service
-              </button>
-            </div>
+      <BottomSheet
+        open={showAddService}
+        onClose={() => setShowAddService(false)}
+        fullScreen
+        title="Add Memorial Service"
+        footer={(
+          <div className="flex gap-2">
+            <PrimaryButton tone="soft" onClick={() => setShowAddService(false)}>Cancel</PrimaryButton>
+            <PrimaryButton
+              tone="dark"
+              onClick={() => {
+                if (formData.name) {
+                  addService({ ...formData, price: `₹${formData.price}` });
+                  setShowAddService(false);
+                  setFormData({ name: '', category: 'Burial', price: '', description: '', duration: '', distance: '', staff: 1 });
+                }
+              }}
+            >
+              Save Service
+            </PrimaryButton>
           </div>
-        </div>
-      )}
+        )}
+      >
+        <ServiceFields data={formData} setData={setFormData} withPlaceholders />
+      </BottomSheet>
 
-      {/* Edit Service Modal */}
-      {showEditService && editFormData && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto custom-scrollbar animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 sticky top-0 z-10">
-              <h3 className="text-xl font-black text-slate-900">Edit Memorial Service</h3>
-              <button onClick={() => setShowEditService(false)} className="p-2 bg-white rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition shadow-sm border border-slate-200 cursor-pointer">
-                <X size={16} />
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-5">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Service Name</label>
-                <input type="text" value={editFormData.name} onChange={(e) => setEditFormData({...editFormData, name: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Category</label>
-                  <select value={editFormData.category} onChange={(e) => setEditFormData({...editFormData, category: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300 cursor-pointer">
-                    <option>Burial</option>
-                    <option>Grave Preparation</option>
-                    <option>Cremation Support</option>
-                    <option>Tree Plantation</option>
-                    <option>Other</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Base Price (₹)</label>
-                  <input type="text" value={editFormData.price} onChange={(e) => setEditFormData({...editFormData, price: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Description</label>
-                <textarea value={editFormData.description} onChange={(e) => setEditFormData({...editFormData, description: e.target.value})} rows="3" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"></textarea>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Duration</label>
-                  <input type="text" value={editFormData.duration} onChange={(e) => setEditFormData({...editFormData, duration: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Distance Limit</label>
-                  <input type="text" value={editFormData.distance} onChange={(e) => setEditFormData({...editFormData, distance: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Staff Required</label>
-                  <input type="number" value={editFormData.staff} onChange={(e) => setEditFormData({...editFormData, staff: Number(e.target.value)})} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-                </div>
-              </div>
-            </div>
-
-            <div className="p-6 border-t border-slate-100 flex gap-3 bg-slate-50/50 sticky bottom-0 z-10">
-              <button onClick={() => setShowEditService(false)} className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 transition cursor-pointer">
-                Cancel
-              </button>
-              <button 
-                onClick={() => {
-                  if (editFormData.name) {
-                    updateService(editFormData.id, { ...editFormData, price: `₹${editFormData.price}` });
-                    setShowEditService(false);
-                  }
-                }} 
-                className="flex-1 py-3 bg-slate-900 hover:bg-black text-white text-sm font-bold rounded-xl transition shadow-lg cursor-pointer"
-              >
-                Save Changes
-              </button>
-            </div>
+      {/* Edit Service sheet */}
+      <BottomSheet
+        open={showEditService && !!editFormData}
+        onClose={() => setShowEditService(false)}
+        fullScreen
+        title="Edit Memorial Service"
+        footer={(
+          <div className="flex gap-2">
+            <PrimaryButton tone="soft" onClick={() => setShowEditService(false)}>Cancel</PrimaryButton>
+            <PrimaryButton
+              tone="dark"
+              onClick={() => {
+                if (editFormData.name) {
+                  updateService(editFormData.id, { ...editFormData, price: `₹${editFormData.price}` });
+                  setShowEditService(false);
+                }
+              }}
+            >
+              Save Changes
+            </PrimaryButton>
           </div>
-        </div>
-      )}
+        )}
+      >
+        {editFormData && <ServiceFields data={editFormData} setData={setEditFormData} />}
+      </BottomSheet>
     </div>
   );
 }

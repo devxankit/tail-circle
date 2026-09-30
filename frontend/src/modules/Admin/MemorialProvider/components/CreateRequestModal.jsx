@@ -1,7 +1,16 @@
 import React, { useState } from 'react';
-import { X, Calendar, Clock, MapPin, User, Info, FileText } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, Info, FileText } from 'lucide-react';
+import { BottomSheet } from '../../vendor/mobile/BottomSheet';
+import { PrimaryButton } from '../../vendor/mobile/StickyActionBar';
+import { Checkbox, FieldPair, fieldClass, textareaClass, labelClass } from '../../vendor/mobile/Field';
+import { useVendorToast } from '../../vendor/mobile/toastContext';
 
+/**
+ * Manually log a customer request — a full-screen sheet in the partner app,
+ * opened from the Requests tab.
+ */
 export function CreateRequestModal({ isOpen, onClose, onSave, services, addons }) {
+  const { addToast } = useVendorToast();
   const [formData, setFormData] = useState({
     customerName: '',
     petName: '',
@@ -33,7 +42,7 @@ export function CreateRequestModal({ isOpen, onClose, onSave, services, addons }
 
   const handleSave = () => {
     if (!formData.customerName || !formData.petName || !formData.location || !formData.preferredDate) {
-      alert('Please fill out all required fields.');
+      addToast({ message: 'Please fill out all required fields.', type: 'warning' });
       return;
     }
 
@@ -64,124 +73,107 @@ export function CreateRequestModal({ isOpen, onClose, onSave, services, addons }
     onClose();
   };
 
+  const iconField = `${fieldClass} pl-11`;
+
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-[2rem] shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] animate-in zoom-in-95 duration-200">
-        
-        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
+    <BottomSheet
+      open={isOpen}
+      onClose={onClose}
+      fullScreen
+      title="New Service Request"
+      subtitle="Manually log a new customer request."
+      footer={(
+        <div className="flex gap-2">
+          <PrimaryButton tone="soft" className="flex-none px-5" onClick={onClose}>Cancel</PrimaryButton>
+          <PrimaryButton tone="dark" onClick={handleSave}>Create Request</PrimaryButton>
+        </div>
+      )}
+    >
+      <div className="space-y-6 pb-4">
+
+        {/* Customer & Pet Details */}
+        <div className="space-y-4">
+          <h4 className="text-sm font-black text-text-primary flex items-center gap-2 border-b border-border-light pb-2"><User size={16}/> Customer Details</h4>
           <div>
-            <h3 className="text-xl font-black text-slate-900">New Service Request</h3>
-            <p className="text-xs font-semibold text-slate-500 mt-0.5">Manually log a new customer request.</p>
+            <label className={labelClass}>Customer Name *</label>
+            <input required type="text" name="customerName" value={formData.customerName} onChange={handleChange} placeholder="e.g. John Doe" className={fieldClass} />
           </div>
-          <button onClick={onClose} className="p-2 bg-white rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition shadow-sm border border-slate-200 cursor-pointer">
-            <X size={16} />
-          </button>
+          <div>
+            <label className={labelClass}>Pet Name & Breed *</label>
+            <input required type="text" name="petName" value={formData.petName} onChange={handleChange} placeholder="e.g. Max (Golden Retriever)" className={fieldClass} />
+          </div>
         </div>
-        
-        <div className="p-6 space-y-6">
-          
-          {/* Customer & Pet Details */}
-          <div className="space-y-4">
-            <h4 className="text-sm font-black text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-2"><User size={16}/> Customer Details</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Customer Name *</label>
-                <input required type="text" name="customerName" value={formData.customerName} onChange={handleChange} placeholder="e.g. John Doe" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Pet Name & Breed *</label>
-                <input required type="text" name="petName" value={formData.petName} onChange={handleChange} placeholder="e.g. Max (Golden Retriever)" className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-              </div>
+
+        {/* Service Details */}
+        <div className="space-y-4">
+          <h4 className="text-sm font-black text-text-primary flex items-center gap-2 border-b border-border-light pb-2"><Info size={16}/> Service Details</h4>
+
+          <div>
+            <label className={labelClass}>Service Type *</label>
+            <select name="serviceType" value={formData.serviceType} onChange={handleChange} className={fieldClass}>
+              {services.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Urgency</label>
+            <select name="urgency" value={formData.urgency} onChange={handleChange} className={fieldClass}>
+              <option value="Normal">Normal</option>
+              <option value="Priority">Priority</option>
+              <option value="Urgent">Urgent</option>
+            </select>
+          </div>
+
+          <div>
+            <label className={labelClass}>Service Location *</label>
+            <div className="relative">
+              <MapPin size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
+              <input required type="text" name="location" value={formData.location} onChange={handleChange} placeholder="e.g. Koramangala Phase 1" className={iconField} />
             </div>
           </div>
 
-          {/* Service Details */}
-          <div className="space-y-4">
-            <h4 className="text-sm font-black text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-2"><Info size={16}/> Service Details</h4>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Service Type *</label>
-                <select name="serviceType" value={formData.serviceType} onChange={handleChange} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300 cursor-pointer">
-                  {services.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Urgency</label>
-                <select name="urgency" value={formData.urgency} onChange={handleChange} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300 cursor-pointer">
-                  <option value="Normal">Normal</option>
-                  <option value="Priority">Priority</option>
-                  <option value="Urgent">Urgent</option>
-                </select>
-              </div>
-            </div>
-
+          <FieldPair>
             <div>
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Service Location *</label>
+              <label className={labelClass}>Preferred Date *</label>
               <div className="relative">
-                <MapPin size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input required type="text" name="location" value={formData.location} onChange={handleChange} placeholder="e.g. Koramangala Phase 1" className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
+                <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
+                <input required type="date" name="preferredDate" value={formData.preferredDate} onChange={handleChange} className={`${fieldClass} pl-9 pr-2`} />
               </div>
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Preferred Date *</label>
-                <div className="relative">
-                  <Calendar size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input required type="date" name="preferredDate" value={formData.preferredDate} onChange={handleChange} className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Preferred Time</label>
-                <div className="relative">
-                  <Clock size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input type="time" name="preferredTime" value={formData.preferredTime} onChange={handleChange} className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300" />
-                </div>
+            <div>
+              <label className={labelClass}>Preferred Time</label>
+              <div className="relative">
+                <Clock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
+                <input type="time" name="preferredTime" value={formData.preferredTime} onChange={handleChange} className={`${fieldClass} pl-9 pr-2`} />
               </div>
             </div>
-          </div>
-
-          {/* Add-ons */}
-          {addons.length > 0 && (
-            <div className="space-y-4">
-              <h4 className="text-sm font-black text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-2">Optional Memory Add-ons</h4>
-              <div className="flex flex-col gap-2">
-                {addons.filter(a => a.status === 'Active').map(addon => (
-                  <label key={addon.id} className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-100 rounded-xl cursor-pointer hover:bg-slate-100 transition">
-                    <input 
-                      type="checkbox" 
-                      checked={formData.selectedAddons.includes(addon.name)}
-                      onChange={() => handleAddonToggle(addon.name)}
-                      className="w-4 h-4 text-slate-900 rounded focus:ring-slate-900 border-slate-300 cursor-pointer" 
-                    />
-                    <div className="flex-1">
-                      <p className="text-sm font-bold text-slate-700">{addon.name}</p>
-                      <p className="text-[10px] font-semibold text-slate-500">{addon.price}</p>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Notes */}
-          <div className="space-y-4">
-            <h4 className="text-sm font-black text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-2"><FileText size={16}/> Customer Notes</h4>
-            <textarea name="notes" value={formData.notes} onChange={handleChange} rows="3" placeholder="Any specific requirements or respectful considerations..." className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"></textarea>
-          </div>
-
+          </FieldPair>
         </div>
 
-        <div className="p-6 border-t border-slate-100 flex gap-3 bg-white sticky bottom-0 z-10">
-          <button onClick={onClose} className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-50 transition cursor-pointer">
-            Cancel
-          </button>
-          <button onClick={handleSave} className="flex-1 py-3 bg-slate-900 hover:bg-black text-white text-sm font-bold rounded-xl transition shadow-lg cursor-pointer">
-            Create Request
-          </button>
+        {/* Add-ons */}
+        {addons.length > 0 && (
+          <div className="space-y-3">
+            <h4 className="text-sm font-black text-text-primary flex items-center gap-2 border-b border-border-light pb-2">Optional Memory Add-ons</h4>
+            <div className="bg-bg-primary rounded-2xl border border-border-light px-3">
+              {addons.filter(a => a.status === 'Active').map(addon => (
+                <Checkbox
+                  key={addon.id}
+                  label={addon.name}
+                  hint={addon.price}
+                  checked={formData.selectedAddons.includes(addon.name)}
+                  onChange={() => handleAddonToggle(addon.name)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Notes */}
+        <div className="space-y-3">
+          <h4 className="text-sm font-black text-text-primary flex items-center gap-2 border-b border-border-light pb-2"><FileText size={16}/> Customer Notes</h4>
+          <textarea name="notes" value={formData.notes} onChange={handleChange} rows="3" placeholder="Any specific requirements or respectful considerations..." className={textareaClass}></textarea>
         </div>
+
       </div>
-    </div>
+    </BottomSheet>
   );
 }

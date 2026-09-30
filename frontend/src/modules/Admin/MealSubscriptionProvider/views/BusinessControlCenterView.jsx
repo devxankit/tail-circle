@@ -3,6 +3,10 @@ import { useMealProvider } from '../context/MealProviderContext';
 import { updateVendorProfile, changeVendorPassword, uploadVendorFile, addVendorDocument, removeVendorDocument } from '../../../../services/vendor';
 import { Building2, ShieldCheck, Upload, Save, CheckCircle, Loader2, Store, CreditCard, Trash2 } from 'lucide-react';
 import { cn } from '../../../user/utils/cn';
+import {
+  ChipTabs, FormSection, StickyActionBar, PrimaryButton, StatusBadge, Checkbox, Toggle, InlineError,
+  fieldClass, labelClass,
+} from '../../vendor/mobile';
 
 export function BusinessControlCenterView() {
   const { profile, updateProfile, refresh } = useMealProvider();
@@ -157,319 +161,249 @@ export function BusinessControlCenterView() {
     }
   };
 
+  const disabledField = 'w-full h-12 rounded-xl border border-border-light bg-bg-primary px-4 text-[16px] text-text-secondary cursor-not-allowed';
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 h-full flex flex-col pb-10 relative">
-      
-      {/* Success Toast */}
-      <div className={cn(
-        "fixed top-6 right-6 bg-emerald-50 text-emerald-700 px-6 py-4 rounded-2xl border border-emerald-200 shadow-xl z-50 flex items-center gap-3 transition-all duration-500 transform",
-        showToast ? "translate-y-0 opacity-100" : "-translate-y-8 opacity-0 pointer-events-none"
-      )}>
-        <CheckCircle size={20} className="text-emerald-500" />
-        <p className="font-bold text-sm">Settings updated successfully!</p>
-      </div>
+    <div className="space-y-4">
 
-      {/* Header */}
-      <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.02)] shrink-0 flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-black text-gray-900 tracking-tight">Business Control Center</h2>
-          <p className="text-sm font-semibold text-gray-500 mt-0.5">Manage your kitchen profile, delivery policies, and security.</p>
-        </div>
-        {(activeTab === 'profile' || activeTab === 'settings') && (
-          <button
-            onClick={handleSaveProfile}
-            disabled={isSaving}
-            className="px-6 py-3 bg-slate-900 hover:bg-black text-white rounded-xl font-bold text-sm flex items-center gap-2 transition shadow-lg cursor-pointer disabled:opacity-50"
-          >
-            {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />} Save Changes
-          </button>
+      {/* Success toast — the same message and timing, as the app's centred pill. */}
+      <div
+        className={cn(
+          "fixed left-4 right-4 z-[90] flex justify-center pointer-events-none transition-all duration-500",
+          showToast ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"
         )}
+        style={{ bottom: 'calc(96px + env(safe-area-inset-bottom, 0px))' }}
+      >
+        <div className="bg-text-primary text-white px-5 py-3 rounded-full shadow-xl flex items-center gap-2.5">
+          <CheckCircle size={18} className="text-success" />
+          <p className="font-bold text-[13px]">Settings updated successfully!</p>
+        </div>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-6 flex-1">
-        
-        {/* Left Navigation */}
-        <div className="w-full md:w-64 shrink-0 flex flex-col gap-2">
-          {navItems.map(item => (
-            <button 
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={cn(
-                "flex items-center gap-3 px-5 py-3.5 rounded-2xl transition text-sm font-bold text-left cursor-pointer",
-                activeTab === item.id 
-                  ? "bg-slate-900 text-white shadow-lg shadow-slate-900/20" 
-                  : "bg-white border border-gray-100 text-gray-600 hover:text-gray-900 hover:border-gray-200 hover:bg-gray-50 shadow-sm"
-              )}
-            >
-              {item.icon} {item.label}
-            </button>
-          ))}
-        </div>
+      <p className="text-xs text-text-secondary px-1">Manage your kitchen profile, delivery policies, and security.</p>
 
-        {/* Content Area */}
-        <div className="flex-1 bg-white rounded-3xl border border-gray-100 shadow-[0_8px_30px_rgb(0,0,0,0.02)] min-h-[500px] overflow-hidden">
-          
-          {/* PROFILE TAB */}
-          {activeTab === 'profile' && (
-            <div className="p-8 space-y-8 animate-in fade-in">
-              {error && <div className="bg-red-50 border border-red-100 text-red-700 text-sm font-semibold rounded-2xl p-4">{error}</div>}
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between border-b border-gray-100 pb-6 gap-4">
-                <div className="flex items-center gap-6">
-                  <div className="w-24 h-24 bg-gray-50 border border-gray-200 rounded-2xl flex flex-col items-center justify-center text-gray-400 relative overflow-hidden shadow-inner shrink-0">
-                    {formData.logo ? (
-                      <img src={formData.logo} alt="Logo" className="w-full h-full object-cover" />
-                    ) : (
-                      <Upload size={24} />
-                    )}
-                  </div>
-                  <div>
-                    <h3 className="text-2xl font-black text-gray-900">{profile.businessName}</h3>
-                    <p className="text-sm font-medium text-gray-500 mt-1 flex items-center gap-1">Status: <CheckCircle size={14} className="text-emerald-500"/> <span className="text-emerald-600 font-bold">{profile.verification}</span></p>
-                    <input type="file" id="kitchenLogo" className="hidden" accept="image/*" onChange={handleLogoUpload} />
-                    <button
-                      onClick={() => document.getElementById('kitchenLogo').click()}
-                      disabled={uploadingLogo}
-                      className="mt-3 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                    >
-                      {uploadingLogo ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />} Change Kitchen Logo
-                    </button>
-                  </div>
-                </div>
+      {/* The vertical tab rail, as chips. */}
+      <ChipTabs
+        items={navItems.map((item) => ({ key: item.id, label: item.label }))}
+        activeKey={activeTab}
+        onSelect={setActiveTab}
+      />
+
+      {/* PROFILE TAB */}
+      {activeTab === 'profile' && (
+        <div className="space-y-4">
+          <InlineError>{error}</InlineError>
+          <FormSection>
+            <div className="flex items-center gap-4">
+              <div className="w-24 h-24 bg-bg-primary border border-border-light rounded-2xl flex flex-col items-center justify-center text-text-secondary relative overflow-hidden shrink-0">
+                {formData.logo ? (
+                  <img src={formData.logo} alt="Logo" className="w-full h-full object-cover" />
+                ) : (
+                  <Upload size={24} />
+                )}
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Business Name</label>
-                  <input
-                    type="text"
-                    value={formData.businessName}
-                    onChange={e => setFormData({...formData, businessName: e.target.value})}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:border-[#F87B68] focus:ring-2 focus:ring-[#F87B68]/20 transition"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Business Email</label>
-                  <input
-                    type="email"
-                    value={profile.email || ''}
-                    disabled
-                    className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-xl text-sm font-bold text-gray-500 cursor-not-allowed"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Support Phone</label>
-                  <input 
-                    type="text" 
-                    value={formData.phone}
-                    onChange={e => setFormData({...formData, phone: e.target.value})} 
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:border-[#F87B68] focus:ring-2 focus:ring-[#F87B68]/20 transition" 
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Kitchen Address</label>
-                  <input 
-                    type="text" 
-                    value={formData.address}
-                    onChange={e => setFormData({...formData, address: e.target.value})} 
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:border-[#F87B68] focus:ring-2 focus:ring-[#F87B68]/20 transition" 
-                  />
-                </div>
+              <div className="min-w-0">
+                <h3 className="text-lg font-black text-text-primary truncate">{profile.businessName}</h3>
+                <p className="text-xs font-medium text-text-secondary mt-1 flex items-center gap-1 flex-wrap">Status: <StatusBadge label={profile.verification} tone="success" /></p>
+                <input type="file" id="kitchenLogo" className="hidden" accept="image/*" onChange={handleLogoUpload} />
+                <button
+                  onClick={() => document.getElementById('kitchenLogo').click()}
+                  disabled={uploadingLogo}
+                  className="mt-2 min-h-[44px] px-3 bg-white border border-border-light text-text-primary rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {uploadingLogo ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} Change Kitchen Logo
+                </button>
               </div>
             </div>
-          )}
+          </FormSection>
 
-          {/* BANK & KYC VERIFICATION TAB */}
-          {activeTab === 'bank_kyc' && (
-            <div className="p-8 space-y-8 animate-in fade-in max-w-2xl">
-              <div>
-                <h3 className="text-lg font-black text-gray-900 mb-1">Bank Account & Payout Details</h3>
-                <p className="text-xs font-semibold text-gray-500 mb-4">Required to receive meal subscription payouts.</p>
+          <FormSection title="Business details">
+            <div>
+              <label className={labelClass}>Business Name</label>
+              <input
+                type="text"
+                value={formData.businessName}
+                onChange={e => setFormData({...formData, businessName: e.target.value})}
+                className={cn(fieldClass, 'font-bold')}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Business Email</label>
+              <input type="email" value={profile.email || ''} disabled className={disabledField} />
+            </div>
+            <div>
+              <label className={labelClass}>Support Phone</label>
+              <input
+                type="tel"
+                inputMode="tel"
+                value={formData.phone}
+                onChange={e => setFormData({...formData, phone: e.target.value})}
+                className={fieldClass}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Kitchen Address</label>
+              <input
+                type="text"
+                value={formData.address}
+                onChange={e => setFormData({...formData, address: e.target.value})}
+                className={fieldClass}
+              />
+            </div>
+          </FormSection>
+        </div>
+      )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Bank Name</label>
-                    <input type="text" placeholder="e.g. HDFC Bank" value={bankData.bankName} onChange={e => setBankData({...bankData, bankName: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-900" />
+      {/* BANK & KYC VERIFICATION TAB */}
+      {activeTab === 'bank_kyc' && (
+        <div className="space-y-4">
+          <InlineError>{error}</InlineError>
+          <FormSection title="Bank Account & Payout Details" description="Required to receive meal subscription payouts.">
+            <div>
+              <label className={labelClass}>Bank Name</label>
+              <input type="text" placeholder="e.g. HDFC Bank" value={bankData.bankName} onChange={e => setBankData({...bankData, bankName: e.target.value})} className={fieldClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Account Holder Name</label>
+              <input type="text" placeholder="Full name on bank account" value={bankData.accountHolder} onChange={e => setBankData({...bankData, accountHolder: e.target.value})} className={fieldClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Account Number</label>
+              <input type="text" inputMode="numeric" placeholder="Enter account number" value={bankData.accountNumber} onChange={e => setBankData({...bankData, accountNumber: e.target.value})} className={fieldClass} />
+            </div>
+            <div>
+              <label className={labelClass}>IFSC Code</label>
+              <input type="text" placeholder="HDFC0001234" value={bankData.ifsc} onChange={e => setBankData({...bankData, ifsc: e.target.value.toUpperCase()})} className={fieldClass} />
+            </div>
+
+            <div className="pt-3 border-t border-border-light space-y-3">
+              <Checkbox label="GSTIN Registered" checked={gstData.hasGst} onChange={(v) => setGstData({...gstData, hasGst: v})} />
+              {gstData.hasGst && (
+                <input type="text" placeholder="GSTIN Number (15 digits)" value={gstData.number} onChange={e => setGstData({...gstData, number: e.target.value})} className={fieldClass} />
+              )}
+            </div>
+          </FormSection>
+
+          <FormSection title="Required KYC Documents" description="Upload FSSAI License, Kitchen Permit & Owner ID for Super Admin approval.">
+            <div className="space-y-2">
+              {(profile.documents || []).map((doc, idx) => (
+                <div key={idx} className="flex items-center gap-3 p-3 bg-bg-primary border border-border-light rounded-xl">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-xs text-text-primary uppercase tracking-wide">
+                      {doc.kind === 'license' ? 'FSSAI / Food License' : doc.kind === 'clinic_auth' ? 'Kitchen Permit' : doc.kind === 'owner_id' ? 'Owner ID Proof' : doc.kind === 'gst' ? 'GST Certificate' : doc.kind}
+                    </p>
+                    <a href={doc.url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#4C8684] underline">View Document</a>
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Account Holder Name</label>
-                    <input type="text" placeholder="Full name on bank account" value={bankData.accountHolder} onChange={e => setBankData({...bankData, accountHolder: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-900" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">Account Number</label>
-                    <input type="text" placeholder="Enter account number" value={bankData.accountNumber} onChange={e => setBankData({...bankData, accountNumber: e.target.value})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-900" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">IFSC Code</label>
-                    <input type="text" placeholder="HDFC0001234" value={bankData.ifsc} onChange={e => setBankData({...bankData, ifsc: e.target.value.toUpperCase()})} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-900" />
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-4">
-                  <label className="flex items-center gap-2 text-sm font-bold text-gray-700 cursor-pointer">
-                    <input type="checkbox" checked={gstData.hasGst} onChange={e => setGstData({...gstData, hasGst: e.target.checked})} className="accent-gray-900 w-4 h-4" />
-                    GSTIN Registered
-                  </label>
-                  {gstData.hasGst && (
-                    <input type="text" placeholder="GSTIN Number (15 digits)" value={gstData.number} onChange={e => setGstData({...gstData, number: e.target.value})} className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm font-bold text-gray-900 flex-1" />
-                  )}
-                </div>
-              </div>
-
-              <div className="pt-6 border-t border-gray-100 space-y-4">
-                <div>
-                  <h3 className="text-lg font-black text-gray-900">Required KYC Documents</h3>
-                  <p className="text-xs font-semibold text-gray-500">Upload FSSAI License, Kitchen Permit & Owner ID for Super Admin approval.</p>
-                </div>
-
-                <div className="space-y-3">
-                  {(profile.documents || []).map((doc, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3.5 bg-gray-50 border border-gray-200 rounded-xl">
-                      <div className="flex items-center gap-3">
-                        <span className="font-bold text-sm text-gray-900 uppercase tracking-wide">
-                          {doc.kind === 'license' ? 'FSSAI / Food License' : doc.kind === 'clinic_auth' ? 'Kitchen Permit' : doc.kind === 'owner_id' ? 'Owner ID Proof' : doc.kind === 'gst' ? 'GST Certificate' : doc.kind}
-                        </span>
-                        <a href={doc.url} target="_blank" rel="noreferrer" className="text-xs font-semibold text-blue-600 hover:underline truncate max-w-[180px]">View Document</a>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className={cn(
-                          "px-2.5 py-1 text-[10px] font-extrabold uppercase rounded-md",
-                          doc.status === 'Verified' ? "bg-emerald-100 text-emerald-800" : doc.status === 'Rejected' ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"
-                        )}>
-                          {doc.status || 'Pending'}
-                        </span>
-                        <button onClick={() => handleDocRemove(idx)} className="text-gray-400 hover:text-red-600 transition">
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-
-                  {(!profile.documents || profile.documents.length === 0) && (
-                    <p className="text-xs text-gray-400 font-medium py-2">No KYC documents uploaded yet.</p>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-3 pt-2">
-                  <select value={docKind} onChange={e => setDocKind(e.target.value)} className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-800">
-                    <option value="license">FSSAI Food License</option>
-                    <option value="clinic_auth">Kitchen Premises / Sanitary Permit</option>
-                    <option value="owner_id">Owner ID Proof (Aadhaar/PAN)</option>
-                    <option value="gst">GST Registration Certificate</option>
-                  </select>
-
-                  <input type="file" id="mealDocInput" accept="image/*,application/pdf" className="hidden" onChange={handleDocUpload} />
-                  <button onClick={() => document.getElementById('mealDocInput').click()} disabled={uploadingDoc} className="px-5 py-2.5 bg-gray-900 hover:bg-black text-white text-xs font-bold rounded-xl transition flex items-center gap-2 disabled:opacity-50">
-                    {uploadingDoc ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />} {uploadingDoc ? 'Uploading...' : 'Upload File'}
+                  <StatusBadge status={doc.status || 'Pending'} />
+                  <button onClick={() => handleDocRemove(idx)} aria-label="Remove document" className="w-10 h-10 rounded-xl flex items-center justify-center text-error bg-error/5 shrink-0">
+                    <Trash2 size={16} />
                   </button>
                 </div>
-              </div>
-            </div>
-          )}
+              ))}
 
-          {/* KITCHEN & POLICIES TAB */}
-          {activeTab === 'settings' && (
-            <div className="p-8 space-y-8 animate-in fade-in max-w-2xl">
-              <div className="flex items-center justify-between p-4 border border-gray-200 rounded-2xl bg-gray-50">
-                <div>
-                  <h4 className="text-sm font-black text-gray-900">Accepting Meal Subscriptions</h4>
-                  <p className="text-xs font-semibold text-gray-500 mt-0.5">Toggle to temporarily pause new meal subscriptions on the platform.</p>
-                </div>
-                <div
-                  onClick={toggleStoreStatus}
-                  className={cn(
-                    "w-12 h-6 rounded-full relative cursor-pointer shadow-inner transition-colors duration-200",
-                    isOnline ? "bg-emerald-500" : "bg-gray-300"
-                  )}
-                >
-                  <div className={cn("absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all duration-200", isOnline ? "right-1" : "left-1")} />
-                </div>
-              </div>
-
-              <div className="space-y-6 pt-4 border-t border-gray-100">
-                <h3 className="text-lg font-black text-gray-900">Kitchen & Delivery Policies</h3>
-
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-bold text-gray-800">Cash on Delivery (COD)</h4>
-                      <p className="text-xs text-gray-500">Allow customers to pay on delivery for trial meals and plan renewals.</p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={codEnabled}
-                      onChange={(e) => setCodEnabled(e.target.checked)}
-                      className="w-5 h-5 accent-gray-900 cursor-pointer"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-bold text-gray-800">Flex Return Policy</h4>
-                      <p className="text-xs text-gray-500">Accept trial refunds or plan adjustments within 7 days.</p>
-                    </div>
-                    <input
-                      type="checkbox"
-                      checked={returnsEnabled}
-                      onChange={(e) => setReturnsEnabled(e.target.checked)}
-                      className="w-5 h-5 accent-gray-900 cursor-pointer"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2 pt-4">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-500">Minimum Order Value (₹)</label>
-                  <input
-                    type="number"
-                    value={minOrderValue}
-                    onChange={(e) => setMinOrderValue(Number(e.target.value))}
-                    className="w-full md:w-1/2 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm font-semibold text-gray-900 focus:outline-none focus:border-[#F87B68] transition"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* SECURITY TAB */}
-          {activeTab === 'security' && (
-            <div className="p-8 space-y-8 animate-in fade-in">
-              <h3 className="text-lg font-black text-gray-900 border-b border-gray-100 pb-4">Security & Access</h3>
-              
-              {passwordDone && (
-                <div className="p-3 bg-emerald-50 text-emerald-800 border border-emerald-100 rounded-xl text-xs font-semibold flex items-center gap-2">
-                  <CheckCircle size={14} /> Password updated.
-                </div>
+              {(!profile.documents || profile.documents.length === 0) && (
+                <p className="text-xs text-text-disabled font-medium py-2">No KYC documents uploaded yet.</p>
               )}
-              {passwordError && (
-                <div className="p-3 bg-red-50 text-red-700 border border-red-100 rounded-xl text-xs font-semibold">{passwordError}</div>
-              )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
-                <input
-                  type="password"
-                  placeholder="Current password"
-                  value={passwords.current}
-                  onChange={(e) => setPasswords(p => ({ ...p, current: e.target.value }))}
-                  className="px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#F87B68] focus:ring-2 focus:ring-[#F87B68]/20 bg-gray-50"
-                />
-                <input
-                  type="password"
-                  placeholder="New password (min 8 chars)"
-                  value={passwords.next}
-                  onChange={(e) => setPasswords(p => ({ ...p, next: e.target.value }))}
-                  className="px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:border-[#F87B68] focus:ring-2 focus:ring-[#F87B68]/20 bg-gray-50"
-                />
-              </div>
-              <button
-                onClick={handleChangePassword}
-                disabled={changingPassword}
-                className="px-5 py-2.5 bg-gray-900 hover:bg-black disabled:opacity-60 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-2"
-              >
-                {changingPassword && <Loader2 size={14} className="animate-spin" />} Change Password
-              </button>
             </div>
-          )}
 
+            <select value={docKind} onChange={e => setDocKind(e.target.value)} className={fieldClass}>
+              <option value="license">FSSAI Food License</option>
+              <option value="clinic_auth">Kitchen Premises / Sanitary Permit</option>
+              <option value="owner_id">Owner ID Proof (Aadhaar/PAN)</option>
+              <option value="gst">GST Registration Certificate</option>
+            </select>
+
+            <input type="file" id="mealDocInput" accept="image/*,application/pdf" className="hidden" onChange={handleDocUpload} />
+            <button onClick={() => document.getElementById('mealDocInput').click()} disabled={uploadingDoc} className="w-full h-12 bg-text-primary text-white text-sm font-bold rounded-xl transition flex items-center justify-center gap-2 disabled:opacity-50">
+              {uploadingDoc ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />} {uploadingDoc ? 'Uploading...' : 'Upload File'}
+            </button>
+          </FormSection>
         </div>
-      </div>
+      )}
+
+      {/* KITCHEN & POLICIES TAB */}
+      {activeTab === 'settings' && (
+        <div className="space-y-4">
+          <div className="bg-white border border-border-light rounded-[20px] shadow-sm px-4 py-2">
+            <Toggle
+              label="Accepting Meal Subscriptions"
+              hint="Toggle to temporarily pause new meal subscriptions on the platform."
+              checked={isOnline}
+              onChange={toggleStoreStatus}
+            />
+          </div>
+
+          <FormSection title="Kitchen & Delivery Policies">
+            <div className="divide-y divide-border-light -my-2">
+              <Toggle
+                label="Cash on Delivery (COD)"
+                hint="Allow customers to pay on delivery for trial meals and plan renewals."
+                checked={codEnabled}
+                onChange={setCodEnabled}
+                className="py-2"
+              />
+              <Toggle
+                label="Flex Return Policy"
+                hint="Accept trial refunds or plan adjustments within 7 days."
+                checked={returnsEnabled}
+                onChange={setReturnsEnabled}
+                className="py-2"
+              />
+            </div>
+
+            <div>
+              <label className={labelClass}>Minimum Order Value (₹)</label>
+              <input
+                type="number"
+                inputMode="decimal"
+                value={minOrderValue}
+                onChange={(e) => setMinOrderValue(Number(e.target.value))}
+                className={fieldClass}
+              />
+            </div>
+          </FormSection>
+        </div>
+      )}
+
+      {/* SECURITY TAB */}
+      {activeTab === 'security' && (
+        <FormSection title="Security & Access">
+          {passwordDone && (
+            <div className="p-3 bg-success/10 text-success border border-success/20 rounded-xl text-xs font-semibold flex items-center gap-2">
+              <CheckCircle size={14} /> Password updated.
+            </div>
+          )}
+          <InlineError>{passwordError}</InlineError>
+          <input
+            type="password"
+            autoComplete="current-password"
+            placeholder="Current password"
+            value={passwords.current}
+            onChange={(e) => setPasswords(p => ({ ...p, current: e.target.value }))}
+            className={fieldClass}
+          />
+          <input
+            type="password"
+            autoComplete="new-password"
+            placeholder="New password (min 8 chars)"
+            value={passwords.next}
+            onChange={(e) => setPasswords(p => ({ ...p, next: e.target.value }))}
+            className={fieldClass}
+          />
+          <PrimaryButton tone="dark" className="w-full" onClick={handleChangePassword} disabled={changingPassword} loading={changingPassword}>
+            Change Password
+          </PrimaryButton>
+        </FormSection>
+      )}
+
+      {/* Save covers the same two tabs it did before. */}
+      {(activeTab === 'profile' || activeTab === 'settings') && (
+        <StickyActionBar>
+          <PrimaryButton onClick={handleSaveProfile} disabled={isSaving} loading={isSaving} icon={Save}>
+            Save Changes
+          </PrimaryButton>
+        </StickyActionBar>
+      )}
 
     </div>
   );

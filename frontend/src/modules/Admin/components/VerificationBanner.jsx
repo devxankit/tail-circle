@@ -7,20 +7,21 @@ export function VerificationBanner({ approvalStatus, onOpenKyc, kycPath }) {
 
   if (approvalStatus === 'approved') return null;
 
+  // A compact card in the partner app's column: same copy, same KYC route.
   return (
-    <div className="w-full bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 sm:p-5 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in duration-300">
-      <div className="flex items-start gap-3.5">
-        <div className="p-2.5 bg-amber-500/20 text-amber-600 rounded-lg shrink-0 mt-0.5 sm:mt-0">
-          <ShieldAlert size={20} />
+    <div className="w-full bg-white border border-warning/30 rounded-[20px] p-3.5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className="w-9 h-9 bg-warning/10 text-warning rounded-xl flex items-center justify-center shrink-0">
+          <ShieldAlert size={18} />
         </div>
-        <div>
-          <div className="flex items-center gap-2">
-            <h4 className="text-sm font-bold text-gray-900">Account Verification Pending</h4>
-            <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider bg-amber-100 text-amber-800 rounded-md">
+        <div className="min-w-0">
+          <div className="flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+            <h4 className="text-[13px] font-bold text-text-primary">Account Verification Pending</h4>
+            <span className="px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wider bg-warning/10 text-warning rounded-md">
               Action Required
             </span>
           </div>
-          <p className="text-xs text-gray-600 font-medium mt-1 leading-relaxed max-w-2xl">
+          <p className="text-[11.5px] text-text-secondary font-medium mt-1 leading-snug">
             Your vendor profile is currently under review by Super Admin. Please fill out your bank details and upload all required category KYC verification documents in your Profile Settings to get approved.
           </p>
         </div>
@@ -32,9 +33,9 @@ export function VerificationBanner({ approvalStatus, onOpenKyc, kycPath }) {
           if (onOpenKyc) onOpenKyc();
           else if (kycPath) navigate(kycPath);
         }}
-        className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition flex items-center gap-2 shrink-0 shadow-sm cursor-pointer active:scale-95"
+        className="mt-3 w-full h-10 bg-warning text-white rounded-xl text-[13px] font-bold transition flex items-center justify-center gap-2 shadow-sm cursor-pointer active:scale-[0.98]"
       >
-        Complete KYC Documents <ArrowRight size={14} />
+        Complete KYC Documents <ArrowRight size={16} />
       </button>
     </div>
   );

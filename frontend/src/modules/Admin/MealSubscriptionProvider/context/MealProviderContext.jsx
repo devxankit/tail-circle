@@ -16,6 +16,8 @@ import {
   fetchVendorDashboard,
 } from '../../../../services/vendor';
 
+import { reportVendorError } from '../../vendor/mobile/toastContext';
+
 const MealProviderContext = createContext();
 
 /** Map the API vendor profile to the portal's profile shape. */
@@ -31,6 +33,10 @@ function toPortalProfile(p) {
     verification: vmap[p.approvalStatus] || 'Pending',
     logo: p.logo || null,
     policies: p.policies || { codEnabled: true, returnsEnabled: true, minOrderValue: 0 },
+    // The verification banner reads these; dropping them showed "pending" to
+    // every partner, approved or not.
+    approvalStatus: p.approvalStatus || 'pending',
+    documents: p.documents || [],
   };
 }
 
@@ -99,25 +105,25 @@ export const MealProviderProvider = ({ children }) => {
       protein: plan.protein,
       duration: plan.duration,
       image: plan.image || undefined,
-    }).catch(() => null);
+    }).catch((e) => { reportVendorError(e, 'Could not create the meal plan.'); return null; });
     if (created) setMealPlans((prev) => [created, ...prev]);
   };
 
   const updateMealPlan = async (id, updates) => {
     setMealPlans((prev) => prev.map((m) => (m.id === id ? { ...m, ...updates } : m)));
-    await apiUpdateMealPlan(id, updates).catch(() => {});
+    await apiUpdateMealPlan(id, updates).catch((e) => { reportVendorError(e, 'Could not update the meal plan.'); refresh(); });
   };
 
   const deleteMealPlan = async (id) => {
     setMealPlans((prev) => prev.filter((m) => m.id !== id));
-    await apiDeleteMealPlan(id).catch(() => {});
+    await apiDeleteMealPlan(id).catch((e) => { reportVendorError(e, 'Could not delete the meal plan.'); refresh(); });
   };
 
   const updateDeliveryStatus = async (id, newStatus) => {
     const item = deliveries.find((d) => d.id === id || d._id === id);
     setDeliveries((prev) => prev.map((d) => (d.id === id || d._id === id ? { ...d, status: newStatus } : d)));
     if (item?._id && (newStatus === 'Out for Delivery' || newStatus === 'Delivered')) {
-      await updateMealDeliveryStatus(item._id, newStatus).catch(() => {});
+      await updateMealDeliveryStatus(item._id, newStatus).catch((e) => { reportVendorError(e, 'Could not update the delivery.'); refresh(); });
     }
   };
 

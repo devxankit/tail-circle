@@ -7,6 +7,7 @@ import {
   MapPin, Calendar, Clock, Upload, IndianRupee, Eye, Users, MessageSquare, Loader2, ShieldCheck
 } from 'lucide-react';
 import { cn } from '../../../user/utils/cn';
+import { StickyActionBar, PrimaryButton, BottomSheet, InlineError, fieldClass, textareaClass, labelClass, FieldPair } from '../../vendor/mobile';
 
 const EMPTY_TRAINER = { provision: 'none', pricePerPet: 300, note: '' };
 
@@ -107,121 +108,124 @@ export function CreateEventView() {
   const renderStep = () => {
     switch(step) {
       case 1: return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Event Title</label>
-              <input
-                type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})}
-                placeholder="e.g. Golden Retriever Meetup"
-                className="w-full px-5 py-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-semibold text-slate-900"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Category</label>
-              <select
-                value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}
-                className="w-full px-5 py-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-semibold text-slate-900"
-              >
-                {categories.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Description</label>
-              <textarea
-                value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})}
-                placeholder="What will happen at this event?"
-                rows={4}
-                className="w-full px-5 py-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-semibold text-slate-900 resize-none"
-              />
-            </div>
+        <div className="space-y-4">
+          <div>
+            <label className={labelClass}>Event Title</label>
+            <input
+              type="text" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})}
+              placeholder="e.g. Golden Retriever Meetup"
+              className={fieldClass}
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Category</label>
+            <select
+              value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}
+              className={fieldClass}
+            >
+              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Description</label>
+            <textarea
+              value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})}
+              placeholder="What will happen at this event?"
+              rows={5}
+              className={cn(textareaClass, 'resize-none')}
+            />
           </div>
         </div>
       );
       case 2: return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-          <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-4">
+          <FieldPair>
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2"><Calendar size={14} className="inline mr-1 -mt-0.5"/> Date</label>
-              <input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="w-full px-5 py-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-semibold text-slate-900"/>
+              <label className={labelClass}><Calendar size={13} className="inline mr-1 -mt-0.5"/> Date</label>
+              <input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className={cn(fieldClass, 'px-3')}/>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2"><Clock size={14} className="inline mr-1 -mt-0.5"/> Time</label>
-              <input type="time" value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})} className="w-full px-5 py-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-semibold text-slate-900"/>
+              <label className={labelClass}><Clock size={13} className="inline mr-1 -mt-0.5"/> Time</label>
+              <input type="time" value={formData.time} onChange={e => setFormData({...formData, time: e.target.value})} className={cn(fieldClass, 'px-3')}/>
             </div>
-          </div>
+          </FieldPair>
           <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2"><MapPin size={14} className="inline mr-1 -mt-0.5"/> Location / Venue</label>
-            <input type="text" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} placeholder="e.g. Cubbon Park Dog Park" className="w-full px-5 py-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-semibold text-slate-900"/>
+            <label className={labelClass}><MapPin size={13} className="inline mr-1 -mt-0.5"/> Location / Venue</label>
+            <input type="text" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} placeholder="e.g. Cubbon Park Dog Park" className={fieldClass}/>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <FieldPair>
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2"><Users size={14} className="inline mr-1 -mt-0.5"/> Max Capacity</label>
-              <input type="number" value={formData.capacity} onChange={e => setFormData({...formData, capacity: parseInt(e.target.value)})} className="w-full px-5 py-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-semibold text-slate-900"/>
+              <label className={labelClass}><Users size={13} className="inline mr-1 -mt-0.5"/> Max Capacity</label>
+              <input type="number" inputMode="numeric" value={formData.capacity} onChange={e => setFormData({...formData, capacity: parseInt(e.target.value)})} className={fieldClass}/>
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2"><IndianRupee size={14} className="inline mr-1 -mt-0.5"/> Ticket Price</label>
-              <input type="number" value={formData.price} onChange={e => setFormData({...formData, price: parseInt(e.target.value)})} className="w-full px-5 py-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-semibold text-slate-900"/>
+              <label className={labelClass}><IndianRupee size={13} className="inline mr-1 -mt-0.5"/> Ticket Price</label>
+              <input type="number" inputMode="numeric" value={formData.price} onChange={e => setFormData({...formData, price: parseInt(e.target.value)})} className={fieldClass}/>
             </div>
-          </div>
+          </FieldPair>
 
           {/* -- Handler / trainer support -- */}
-          <div className="border-t border-slate-100 pt-6">
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
-              <ShieldCheck size={14} className="inline mr-1 -mt-0.5"/> Trainer / Handler Support
+          <div className="border-t border-border-light pt-4">
+            <label className={labelClass}>
+              <ShieldCheck size={13} className="inline mr-1 -mt-0.5"/> Trainer / Handler Support
             </label>
-            <p className="text-xs font-medium text-slate-500 mb-3 leading-relaxed">
+            <p className="text-xs font-medium text-text-secondary mb-3 leading-relaxed">
               Optional for the owner. We suggest it to anyone whose pet is marked reactive; if they
               take it, the fee comes to you with the ticket and you arrange the handler on the day.
             </p>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-2">
               {TRAINER_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
                   onClick={() => setTrainer({ provision: opt.value })}
                   className={cn(
-                    "px-3 py-3 rounded-xl border text-left transition cursor-pointer",
+                    "w-full min-h-[56px] px-4 py-3 rounded-2xl border text-left transition cursor-pointer flex items-center gap-3",
                     trainer.provision === opt.value
-                      ? "border-[#F87B68] bg-orange-50/60 ring-2 ring-orange-500/15"
-                      : "border-slate-200 hover:border-slate-300"
+                      ? "border-primary-main bg-primary-light/15 ring-2 ring-primary-main/15"
+                      : "border-border-light bg-white"
                   )}
                 >
-                  <span className="block text-sm font-black text-slate-900">{opt.label}</span>
-                  <span className="block text-[11px] font-medium text-slate-500 mt-0.5">{opt.hint}</span>
+                  <span className={cn('w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0', trainer.provision === opt.value ? 'border-primary-main bg-primary-main' : 'border-text-disabled')}>
+                    {trainer.provision === opt.value && <span className="w-2 h-2 bg-white rounded-full" />}
+                  </span>
+                  <span>
+                    <span className="block text-sm font-black text-text-primary">{opt.label}</span>
+                    <span className="block text-[11px] font-medium text-text-secondary mt-0.5">{opt.hint}</span>
+                  </span>
                 </button>
               ))}
             </div>
 
             {trainer.provision !== 'none' && (
-              <div className="mt-4 space-y-4 animate-in fade-in slide-in-from-top-2">
+              <div className="mt-4 space-y-4">
                 {trainer.provision === 'paid' && (
-                  <div className="max-w-xs">
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                      <IndianRupee size={14} className="inline mr-1 -mt-0.5"/> Price Per Pet
+                  <div>
+                    <label className={labelClass}>
+                      <IndianRupee size={13} className="inline mr-1 -mt-0.5"/> Price Per Pet
                     </label>
                     <input
-                      type="number" min="1"
+                      type="number" min="1" inputMode="numeric"
                       value={trainer.pricePerPet}
                       onChange={(e) => setTrainer({ pricePerPet: e.target.value })}
-                      className="w-full px-5 py-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-semibold text-slate-900"
+                      className={fieldClass}
                     />
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">What The Handler Does</label>
+                  <label className={labelClass}>What The Handler Does</label>
                   <textarea
-                    rows={2}
+                    rows={3}
                     value={trainer.note}
                     onChange={(e) => setTrainer({ note: e.target.value })}
                     placeholder="e.g. Certified handler stays with the pet for the full session and manages introductions."
-                    className="w-full px-5 py-3 text-sm border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 font-semibold text-slate-900 resize-none"
+                    className={cn(textareaClass, 'resize-none')}
                   />
                 </div>
 
-                <p className="text-[11px] font-medium text-slate-500 bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 leading-relaxed">
+                <p className="text-[11px] font-medium text-text-secondary bg-bg-primary border border-border-light rounded-xl px-4 py-3 leading-relaxed">
                   Every booking that includes a handler is flagged in your Bookings list and sent to
                   you as a notification. Arranging the trainer on the day is your responsibility.
                 </p>
@@ -231,9 +235,9 @@ export function CreateEventView() {
         </div>
       );
       case 3: return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
+        <div className="space-y-4">
           <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Event Cover Image</label>
+            <label className={labelClass}>Event Cover Image</label>
             <input
               type="file"
               ref={fileInputRef}
@@ -242,27 +246,28 @@ export function CreateEventView() {
               className="hidden"
             />
             {formData.image ? (
-              <div className="relative border-2 border-slate-200 rounded-3xl overflow-hidden group h-64">
+              <div className="relative border border-border-light rounded-[24px] overflow-hidden aspect-video">
                 <img src={formData.image} alt="Event Cover Preview" className="w-full h-full object-cover" />
-                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                  <button type="button" disabled={uploadingImage} onClick={() => fileInputRef.current?.click()} className="px-5 py-2 bg-white text-slate-900 rounded-xl text-xs font-bold shadow-md hover:bg-slate-100 transition cursor-pointer">
-                    {uploadingImage ? 'Uploading…' : 'Change Photo'}
+                {/* Always shown: a phone has no hover to reveal it. */}
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-3 flex justify-center">
+                  <button type="button" disabled={uploadingImage} onClick={() => fileInputRef.current?.click()} className="min-h-[44px] px-5 bg-white text-text-primary rounded-xl text-xs font-bold shadow-md transition cursor-pointer flex items-center gap-2">
+                    {uploadingImage ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />} {uploadingImage ? 'Uploading…' : 'Change Photo'}
                   </button>
                 </div>
               </div>
             ) : (
               <div
                 onClick={() => !uploadingImage && fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-200 rounded-3xl p-10 flex flex-col items-center justify-center text-center hover:bg-slate-50 hover:border-orange-500/50 transition cursor-pointer h-64"
+                className="border-2 border-dashed border-accent-teal/50 rounded-[24px] p-8 flex flex-col items-center justify-center text-center bg-bg-primary transition cursor-pointer min-h-[240px]"
               >
-                <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center text-[#F87B68] mb-4 shadow-sm">
+                <div className="w-16 h-16 bg-primary-light/30 rounded-full flex items-center justify-center text-primary-main mb-4 shadow-sm">
                   {uploadingImage ? <Loader2 size={28} className="animate-spin" /> : <ImageIcon size={28} />}
                 </div>
-                <h4 className="text-sm font-black text-slate-900 mb-1">{uploadingImage ? 'Uploading...' : 'Upload Cover Photo'}</h4>
-                <p className="text-xs font-medium text-slate-500 max-w-xs mb-6">High quality photos make your event 3x more likely to be booked. (16:9 ratio recommended)</p>
-                <button type="button" className="px-5 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-md hover:bg-black transition flex items-center gap-2 pointer-events-none">
+                <h4 className="text-sm font-black text-text-primary mb-1">{uploadingImage ? 'Uploading...' : 'Upload Cover Photo'}</h4>
+                <p className="text-xs font-medium text-text-secondary max-w-xs mb-5">High quality photos make your event 3x more likely to be booked. (16:9 ratio recommended)</p>
+                <span className="min-h-[40px] px-5 bg-text-primary text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-2 pointer-events-none">
                   <Upload size={14}/> Browse Files
-                </button>
+                </span>
               </div>
             )}
           </div>
@@ -272,134 +277,107 @@ export function CreateEventView() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in duration-500 pb-20">
+    <div className="space-y-4">
 
-      {/* Header */}
-      <div className="flex items-center gap-4 bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
-        <button onClick={() => navigate('/vendor/events-organizer/events')} className="w-10 h-10 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center text-slate-500 transition cursor-pointer">
-          <ArrowLeft size={18} />
-        </button>
-        <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight">{isEdit ? 'Edit Event' : 'Create New Event'}</h2>
-          <p className="text-sm font-semibold text-slate-500 mt-0.5">Step {step} of 3: {step === 1 ? 'Basic Details' : step === 2 ? 'Logistics & Pricing' : 'Media & Cover'}</p>
+      {/* Step header (the title and Back are in the app bar). */}
+      <div className="px-1">
+        <p className="text-sm font-bold text-text-primary">Step {step} of 3: {step === 1 ? 'Basic Details' : step === 2 ? 'Logistics & Pricing' : 'Media & Cover'}</p>
+        <div className="flex gap-2 mt-2">
+          {[1,2,3].map(i => (
+            <div key={i} className={cn("h-1.5 flex-1 rounded-full transition-all duration-500", i <= step ? "bg-primary-main" : "bg-border-light")} />
+          ))}
         </div>
       </div>
 
-      {error && <div className="bg-red-50 border border-red-100 text-red-700 text-sm font-semibold rounded-2xl p-4">{error}</div>}
-
-      {/* Progress */}
-      <div className="flex gap-2">
-        {[1,2,3].map(i => (
-          <div key={i} className={cn("h-1.5 flex-1 rounded-full transition-all duration-500", i <= step ? "bg-[#F87B68]" : "bg-slate-200")} />
-        ))}
-      </div>
+      <InlineError>{error}</InlineError>
 
       {/* Form Container */}
-      <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm min-h-[400px]">
+      <div className="bg-white p-4 rounded-[20px] border border-border-light shadow-sm">
         {renderStep()}
       </div>
 
-      {/* Footer Controls */}
-      <div className="flex justify-between items-center bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">
+      {step === 3 && (
         <button
+          onClick={() => setShowPreview(true)}
+          className="w-full min-h-[48px] bg-white border border-border-light text-text-primary text-sm font-bold rounded-2xl transition flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <Eye size={18}/> Preview Event
+        </button>
+      )}
+
+      {/* Footer Controls */}
+      <StickyActionBar>
+        <PrimaryButton
+          tone="soft"
+          className="flex-none px-5"
           onClick={() => step > 1 ? setStep(s => s - 1) : navigate('/vendor/events-organizer/events')}
-          className="px-6 py-3 bg-slate-50 hover:bg-slate-100 text-slate-700 text-sm font-bold rounded-xl transition cursor-pointer"
         >
           {step > 1 ? 'Back' : 'Cancel'}
-        </button>
+        </PrimaryButton>
 
-        <div className="flex gap-3">
-          {step === 3 && (
-            <button
-              onClick={() => setShowPreview(true)}
-              className="px-6 py-3 bg-slate-900 hover:bg-black text-white text-sm font-bold rounded-xl transition shadow-lg flex items-center gap-2 cursor-pointer"
-            >
-              <Eye size={18}/> Preview Event
-            </button>
-          )}
+        {step < 3 ? (
+          <PrimaryButton onClick={handleNext}>
+            Next Step <ArrowRight size={18}/>
+          </PrimaryButton>
+        ) : (
+          <PrimaryButton onClick={handlePublish} disabled={saving} loading={saving} icon={saving ? undefined : Check}>
+            {isEdit ? 'Save Changes' : 'Publish Event'}
+          </PrimaryButton>
+        )}
+      </StickyActionBar>
 
-          {step < 3 ? (
-            <button
-              onClick={handleNext}
-              className="px-6 py-3 bg-[#F87B68] hover:bg-[#F87B68] text-white text-sm font-bold rounded-xl transition shadow-lg shadow-orange-900/20 flex items-center gap-2 cursor-pointer"
-            >
-              Next Step <ArrowRight size={18}/>
-            </button>
-          ) : (
-            <button
-              onClick={handlePublish}
-              disabled={saving}
-              className="px-6 py-3 bg-[#F87B68] hover:bg-[#F87B68] disabled:opacity-60 text-white text-sm font-bold rounded-xl transition shadow-lg shadow-orange-900/20 flex items-center gap-2 cursor-pointer"
-            >
-              {saving ? <Loader2 size={18} className="animate-spin" /> : <Check size={18}/>} {isEdit ? 'Save Changes' : 'Publish Event'}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Preview Modal (User App Simulator) */}
-      {showPreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowPreview(false)}></div>
-          <div className="relative bg-white w-full max-w-[400px] h-[800px] max-h-[90vh] rounded-[3rem] border-8 border-slate-900 shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-10">
-            {/* Phone notch */}
-            <div className="absolute top-0 inset-x-0 h-7 flex justify-center z-50">
-              <div className="w-32 h-full bg-slate-900 rounded-b-3xl"></div>
-            </div>
-
-            {/* User App UI */}
-            <div className="flex-1 overflow-y-auto bg-gray-50 custom-scrollbar">
-              <div className="h-64 bg-slate-200 relative overflow-hidden">
-                {formData.image ? (
-                  <img src={formData.image} alt="Cover" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-slate-400">
-                    <ImageIcon size={40} className="opacity-50" />
-                  </div>
-                )}
-                <button onClick={() => setShowPreview(false)} className="absolute top-10 left-4 w-10 h-10 bg-white/80 backdrop-blur rounded-full flex items-center justify-center shadow cursor-pointer">
-                  <ArrowLeft size={20} />
-                </button>
+      {/* Preview — what a pet parent sees, as a full-screen sheet. */}
+      <BottomSheet open={showPreview} onClose={() => setShowPreview(false)} fullScreen title="Preview" bodyClassName="px-0 pt-0">
+        <div className="bg-gray-50 min-h-full">
+          <div className="h-56 bg-slate-200 relative overflow-hidden">
+            {formData.image ? (
+              <img src={formData.image} alt="Cover" className="w-full h-full object-cover" />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-slate-400">
+                <ImageIcon size={40} className="opacity-50" />
               </div>
-              <div className="p-5 -mt-6 relative bg-gray-50 rounded-t-3xl">
-                <span className="px-3 py-1 bg-[#F87B68] text-white text-[10px] font-black uppercase rounded-lg shadow-sm">
-                  {formData.category}
-                </span>
-                <h1 className="text-2xl font-black text-gray-900 mt-3">{formData.title || 'Untitled Event'}</h1>
-                <p className="text-[#F87B68] font-black text-xl mt-1">₹{formData.price}</p>
+            )}
+            <button onClick={() => setShowPreview(false)} aria-label="Close preview" className="absolute top-4 left-4 w-10 h-10 bg-white/80 backdrop-blur rounded-full flex items-center justify-center shadow cursor-pointer">
+              <ArrowLeft size={20} />
+            </button>
+          </div>
+          <div className="p-5 -mt-6 relative bg-gray-50 rounded-t-3xl">
+            <span className="px-3 py-1 bg-[#F87B68] text-white text-[10px] font-black uppercase rounded-lg shadow-sm">
+              {formData.category}
+            </span>
+            <h1 className="text-2xl font-black text-gray-900 mt-3">{formData.title || 'Untitled Event'}</h1>
+            <p className="text-[#F87B68] font-black text-xl mt-1">₹{formData.price}</p>
 
-                <div className="flex gap-4 mt-6 border-b border-gray-200 pb-6">
-                  <div className="flex-1">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase">Date & Time</p>
-                    <p className="text-sm font-bold text-gray-800 mt-1">{formData.date || 'TBD'} • {formData.time || 'TBD'}</p>
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase">Location</p>
-                    <p className="text-sm font-bold text-gray-800 mt-1">{formData.location || 'TBD'}</p>
-                  </div>
-                </div>
-
-                <div className="mt-6">
-                  <h3 className="font-black text-gray-900 text-lg mb-2">About Event</h3>
-                  <p className="text-sm text-gray-600 leading-relaxed font-medium">
-                    {formData.description || 'No description provided.'}
-                  </p>
-                </div>
+            <div className="flex gap-4 mt-6 border-b border-gray-200 pb-6">
+              <div className="flex-1">
+                <p className="text-[10px] font-bold text-gray-400 uppercase">Date & Time</p>
+                <p className="text-sm font-bold text-gray-800 mt-1">{formData.date || 'TBD'} • {formData.time || 'TBD'}</p>
+              </div>
+              <div className="flex-1">
+                <p className="text-[10px] font-bold text-gray-400 uppercase">Location</p>
+                <p className="text-sm font-bold text-gray-800 mt-1">{formData.location || 'TBD'}</p>
               </div>
             </div>
 
-            {/* Fixed Bottom Bar */}
-            <div className="bg-white p-4 border-t border-gray-100 flex gap-3 pb-8 shrink-0">
-              <button className="w-12 h-12 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center shrink-0">
-                <MessageSquare size={20} />
-              </button>
-              <button className="flex-1 bg-[#F87B68] text-white rounded-xl font-bold text-sm shadow-lg">
-                Book Ticket
-              </button>
+            <div className="mt-6">
+              <h3 className="font-black text-gray-900 text-lg mb-2">About Event</h3>
+              <p className="text-sm text-gray-600 leading-relaxed font-medium">
+                {formData.description || 'No description provided.'}
+              </p>
             </div>
           </div>
+
+          {/* The customer screen's bottom bar, shown for reference only. */}
+          <div className="bg-white p-4 border-t border-gray-100 flex gap-3">
+            <button className="w-12 h-12 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center shrink-0">
+              <MessageSquare size={20} />
+            </button>
+            <button className="flex-1 bg-[#F87B68] text-white rounded-xl font-bold text-sm shadow-lg">
+              Book Ticket
+            </button>
+          </div>
         </div>
-      )}
+      </BottomSheet>
 
     </div>
   );

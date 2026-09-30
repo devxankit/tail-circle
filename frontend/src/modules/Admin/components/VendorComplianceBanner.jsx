@@ -66,20 +66,22 @@ export function VendorComplianceBanner() {
     }
   };
 
+  // Semantic tokens, not red/orange/amber: the app remaps those palettes to
+  // coral, which would make all three levels look the same.
   const tone = breached
-    ? { wrap: 'bg-red-50 border-red-300', icon: 'bg-red-100 text-red-600', head: 'text-red-900', body: 'text-red-800', bar: 'bg-red-500' }
+    ? { wrap: 'bg-white border-error/40', icon: 'bg-error/10 text-error', head: 'text-error', body: 'text-text-primary', bar: 'bg-error' }
     : remaining <= 1
-      ? { wrap: 'bg-orange-50 border-orange-300', icon: 'bg-orange-100 text-orange-600', head: 'text-orange-900', body: 'text-orange-800', bar: 'bg-orange-500' }
-      : { wrap: 'bg-amber-50 border-amber-300', icon: 'bg-amber-100 text-amber-600', head: 'text-amber-900', body: 'text-amber-800', bar: 'bg-amber-500' };
+      ? { wrap: 'bg-white border-warning/50', icon: 'bg-warning/15 text-warning', head: 'text-warning', body: 'text-text-primary', bar: 'bg-warning' }
+      : { wrap: 'bg-white border-warning/30', icon: 'bg-warning/10 text-warning', head: 'text-text-primary', body: 'text-text-secondary', bar: 'bg-warning' };
 
   const Icon = breached ? ShieldAlert : AlertTriangle;
   const pct = Math.min(100, Math.round((points / Math.max(1, threshold)) * 100));
 
   return (
-    <div className={`mx-3 sm:mx-6 mt-4 rounded-xl border-2 ${tone.wrap} overflow-hidden`}>
+    <div className={`rounded-[20px] border-2 shadow-sm ${tone.wrap} overflow-hidden`}>
       <div className="p-4">
         <div className="flex items-start gap-3">
-          <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${tone.icon}`}>
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${tone.icon}`}>
             <Icon size={18} />
           </div>
 
@@ -89,8 +91,8 @@ export function VendorComplianceBanner() {
                 {breached ? 'Your account is under review' : 'Service warning'}
               </h3>
               {!breached && (
-                <button onClick={() => setDismissed(true)} className="p-1 rounded hover:bg-black/5 shrink-0" title="Hide for now">
-                  <X size={15} className={tone.body} />
+                <button onClick={() => setDismissed(true)} className="-mr-1 -mt-1 min-h-[36px] px-2 rounded-lg flex items-center gap-1 text-[12px] font-bold shrink-0 text-text-secondary active:bg-black/5" aria-label="Hide for now">
+                  <X size={15} /> Hide
                 </button>
               )}
             </div>
@@ -111,19 +113,19 @@ export function VendorComplianceBanner() {
             <div className="flex flex-wrap items-center gap-2 mt-3">
               {active.length > 0 && (
                 <button onClick={() => setExpanded((e) => !e)}
-                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-[12px] font-bold bg-white/70 hover:bg-white ${tone.body}`}>
+                  className={`min-h-[40px] flex items-center gap-1 px-3 rounded-xl text-[12px] font-bold bg-bg-primary border border-border-light ${tone.body}`}>
                   {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   {expanded ? 'Hide details' : `See what was recorded (${active.length})`}
                 </button>
               )}
               {unacknowledgedCount > 0 && (
                 <button onClick={acknowledge} disabled={acknowledging}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[12px] font-bold bg-white/70 hover:bg-white text-gray-700 disabled:opacity-50">
+                  className="min-h-[40px] flex items-center gap-1 px-3 rounded-xl text-[12px] font-bold bg-bg-primary border border-border-light text-text-primary disabled:opacity-50">
                   <Check size={14} /> I understand
                 </button>
               )}
               <Link to={compliancePathFor(pathname)}
-                className={`px-3 py-1.5 rounded-lg text-[12px] font-bold bg-white/70 hover:bg-white ${tone.body}`}>
+                className={`min-h-[40px] flex items-center px-3 rounded-xl text-[12px] font-bold bg-bg-primary border border-border-light ${tone.body}`}>
                 Open Service Standing
               </Link>
             </div>
@@ -131,9 +133,9 @@ export function VendorComplianceBanner() {
         </div>
 
         {expanded && (
-          <div className="mt-4 ml-12 space-y-2">
+          <div className="mt-4 space-y-2">
             {active.map((v) => (
-              <div key={v._id} className="bg-white/80 rounded-lg p-3 border border-black/5">
+              <div key={v._id} className="bg-bg-primary rounded-xl p-3 border border-border-light">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-[13px] font-bold text-gray-900">{v.label}</p>

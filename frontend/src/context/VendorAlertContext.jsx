@@ -222,7 +222,10 @@ function VendorAlertOverlay() {
   if (alerts.length === 0) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-[9999] w-[min(380px,calc(100vw-2rem))] space-y-2">
+    <div
+      className="fixed left-3 right-3 z-[9999] max-w-[406px] ml-auto space-y-2"
+      style={{ top: 'calc(12px + env(safe-area-inset-top, 0px))' }}
+    >
       {/*
         Shown only when there is something to hear and the browser has not yet
         allowed it. Without this the partner would believe sound is on while the
@@ -231,7 +234,7 @@ function VendorAlertOverlay() {
       {needsUnlock && (
         <button
           onClick={enableSound}
-          className="w-full flex items-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-lg text-[13px] font-bold"
+          className="w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 bg-warning text-white rounded-2xl shadow-lg text-[13px] font-bold"
         >
           <Volume2 size={16} /> Tap to enable alert sound
         </button>
@@ -240,7 +243,7 @@ function VendorAlertOverlay() {
       {alerts.map((a) => (
         <div
           key={a.dedupeKey}
-          className={`bg-white rounded-xl shadow-2xl border-2 overflow-hidden ${
+          className={`bg-white rounded-[20px] shadow-2xl border-2 overflow-hidden ${
             a.urgent ? 'border-[#66B4B1]' : 'border-gray-200'
           } ${a.persistent ? 'animate-pulse-slow' : ''}`}
         >
@@ -252,10 +255,11 @@ function VendorAlertOverlay() {
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <button onClick={toggleSound} title={soundEnabled ? 'Mute alerts' : 'Unmute alerts'}
-                className="p-1 rounded hover:bg-black/10">
+                aria-label={soundEnabled ? 'Mute alerts' : 'Unmute alerts'}
+                className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-black/10">
                 {soundEnabled ? <Volume2 size={14} /> : <BellOff size={14} />}
               </button>
-              <button onClick={() => dismiss(a.dedupeKey)} title="Dismiss" className="p-1 rounded hover:bg-black/10">
+              <button onClick={() => dismiss(a.dedupeKey)} title="Dismiss" aria-label="Dismiss" className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-black/10">
                 <X size={14} />
               </button>
             </div>
@@ -266,7 +270,7 @@ function VendorAlertOverlay() {
             <p className="text-[13px] text-gray-700 leading-snug">{a.body}</p>
             {a.expiresAt && <Countdown expiresAt={a.expiresAt} />}
             <button onClick={() => openAlert(a)}
-              className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#66B4B1] hover:opacity-90 text-white rounded-lg text-[13px] font-bold">
+              className="mt-3 w-full min-h-[44px] flex items-center justify-center gap-2 px-4 py-2.5 bg-[#66B4B1] hover:opacity-90 text-white rounded-xl text-[13px] font-bold">
               Open <ExternalLink size={14} />
             </button>
           </div>
