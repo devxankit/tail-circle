@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useShopVendor } from '../context/ShopVendorContext';
 import { useToast } from '../components/Toast';
 import { replyToShopFeedback } from '../../../../services/vendor';
+import { formatDate } from '../utils/formatDate';
 import { Star, MessageSquare, CornerUpLeft, CheckCircle } from 'lucide-react';
 import { cn } from '../../../user/utils/cn';
 import { SearchBar, EmptyState, StickyActionBar, PrimaryButton, textareaClass, useSubScreen } from '../../vendor/mobile';
@@ -44,7 +45,7 @@ export function CustomerFeedbackView() {
       await refresh();
       addToast({ message: 'Reply saved.', type: 'success' });
     } catch (err) {
-      addToast({ message: err?.response?.data?.message || 'Could not send reply', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Could not send reply', type: 'error' });
     } finally {
       setSending(false);
     }
@@ -148,7 +149,7 @@ export function CustomerFeedbackView() {
               {item.status === 'Unread' && <span className="absolute top-4 right-4 w-2.5 h-2.5 rounded-full bg-primary-main" />}
               <div className="flex justify-between items-start mb-1 pr-5 gap-2">
                 <h4 className="text-sm font-bold text-text-primary">{item.customer}</h4>
-                <span className="text-[10px] font-bold text-text-secondary shrink-0">{item.date}</span>
+                <span className="text-[10px] font-bold text-text-secondary shrink-0">{formatDate(item.date)}</span>
               </div>
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-[9px] font-bold uppercase tracking-widest text-text-secondary bg-bg-secondary px-2 py-0.5 rounded">{item.type}</span>

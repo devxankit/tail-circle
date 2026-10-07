@@ -46,7 +46,7 @@ export function EventsView() {
         if (await confirm({ title: 'Are you sure you want to cancel this event?', confirmLabel: 'Cancel Event', cancelLabel: 'Keep Event', danger: true })) await updateEvent(id, { status: 'Cancelled' });
       }
     } catch (err) {
-      setError(err?.response?.data?.message || 'Could not complete that action');
+      setError(err?.response?.data?.message || err?.message || 'Could not complete that action');
     }
   };
 

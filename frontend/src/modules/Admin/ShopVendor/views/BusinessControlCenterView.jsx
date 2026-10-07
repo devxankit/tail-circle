@@ -59,7 +59,7 @@ export function BusinessControlCenterView() {
       await updateVendorProfile({ online: nextOnline });
     } catch (err) {
       setProfile(prev => ({ ...prev, status: isOnline ? 'Online' : 'Offline' }));
-      addToast({ message: err?.response?.data?.message || 'Could not update store status', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Could not update store status', type: 'error' });
     }
   };
 
@@ -81,7 +81,7 @@ export function BusinessControlCenterView() {
       await refresh();
       addToast({ message: `Settings saved successfully.`, type: 'success' });
     } catch (err) {
-      addToast({ message: err?.response?.data?.message || 'Could not save profile', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Could not save profile', type: 'error' });
     } finally {
       setSaving(false);
     }
@@ -97,7 +97,7 @@ export function BusinessControlCenterView() {
       setProfile(prev => ({ ...prev, logo: url }));
       addToast({ message: 'Logo uploaded! Click Save Changes to apply.', type: 'info' });
     } catch (err) {
-      addToast({ message: err?.response?.data?.message || 'Could not upload logo', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Could not upload logo', type: 'error' });
     } finally {
       setUploadingLogo(false);
     }
@@ -118,7 +118,7 @@ export function BusinessControlCenterView() {
       addToast({ message: 'Password updated successfully!', type: 'success' });
       setPasswords({ current: '', new: '' });
     } catch (err) {
-      addToast({ message: err?.response?.data?.message || 'Could not update password', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Could not update password', type: 'error' });
     } finally {
       setChangingPassword(false);
     }
@@ -154,7 +154,7 @@ export function BusinessControlCenterView() {
       await refresh();
       addToast({ message: 'Document uploaded for admin verification!', type: 'success' });
     } catch (err) {
-      addToast({ message: err?.response?.data?.message || 'Could not upload document', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Could not upload document', type: 'error' });
     } finally {
       setUploadingDoc(false);
     }
@@ -166,7 +166,7 @@ export function BusinessControlCenterView() {
       await refresh();
       addToast({ message: 'Document removed.', type: 'info' });
     } catch (err) {
-      addToast({ message: err?.response?.data?.message || 'Could not remove document', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Could not remove document', type: 'error' });
     }
   };
 

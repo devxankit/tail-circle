@@ -54,7 +54,7 @@ export function ServiceRequestsView() {
       const updated = await updateRequestStatus(selectedRequest.id, status);
       setSelectedRequest(updated);
     } catch (err) {
-      addToast({ message: err?.response?.data?.message || 'Could not update this request', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Could not update this request', type: 'error' });
     }
   };
 
@@ -284,7 +284,7 @@ function CustomerCallbackRequests() {
     try {
       await claimRequest(id);
     } catch (err) {
-      addToast({ message: err?.response?.data?.message || 'Could not claim this request', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Could not claim this request', type: 'error' });
     } finally {
       setBusyId(null);
     }
@@ -295,7 +295,7 @@ function CustomerCallbackRequests() {
     try {
       await resolveRequest(id);
     } catch (err) {
-      addToast({ message: err?.response?.data?.message || 'Could not update this request', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Could not update this request', type: 'error' });
     } finally {
       setBusyId(null);
     }

@@ -1,15 +1,15 @@
 {
   "name": "tailcircle-backend",
   "version": "1.0.0",
-  "description": "Backend API for TailCircle — pet-services super-app",
+  "description": "Backend API for TailCircle \u2014 pet-services super-app",
   "type": "module",
   "main": "src/server.js",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
+    "start": "node api.js && node src/server.js",
+    "dev": "node api.js && nodemon src/server.js",
     "smoke": "node scripts/smoke.js",
     "migrate:refunds": "node scripts/migrate-refund-reconciliation.mjs",
     "check:refunds": "node scripts/check-refund-reconciliation.mjs",

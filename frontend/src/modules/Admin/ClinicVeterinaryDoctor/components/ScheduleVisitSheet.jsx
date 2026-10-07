@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useVendor } from '../context/ClinicVendorContext';
 import { BottomSheet, PrimaryButton, InlineError, useVendorToast, errorMessage, fieldClass, labelClass } from '../../vendor/mobile';
 

@@ -10,6 +10,7 @@ import {
 import { maskAccount, encryptField } from '../../utils/fieldCrypto.js';
 import { Order } from '../order/order.model.js';
 import { Product } from '../shop/product.model.js';
+import { Review } from '../review/review.model.js';
 import { VendorProfile, VendorLedgerEntry, Payout } from './vendor.models.js';
 
 const oid = (id) => new mongoose.Types.ObjectId(String(id));

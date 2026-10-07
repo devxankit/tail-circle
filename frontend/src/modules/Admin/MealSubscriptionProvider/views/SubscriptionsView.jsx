@@ -15,7 +15,7 @@ export function SubscriptionsView() {
     try {
       await pauseSubscription(sub.id, sub.status === 'Paused');
     } catch (err) {
-      setError(err?.response?.data?.message || 'Could not update subscription');
+      setError(err?.response?.data?.message || err?.message || 'Could not update subscription');
     }
   };
 
@@ -24,7 +24,7 @@ export function SubscriptionsView() {
     try {
       await cancelSubscription(subId);
     } catch (err) {
-      setError(err?.response?.data?.message || 'Could not cancel subscription');
+      setError(err?.response?.data?.message || err?.message || 'Could not cancel subscription');
     }
   };
 

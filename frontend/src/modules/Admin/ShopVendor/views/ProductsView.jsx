@@ -111,7 +111,7 @@ export function ProductsView() {
       await refresh();
       setViewState('list');
     } catch (err) {
-      addToast({ message: err?.response?.data?.message || 'Could not save the product', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Could not save the product', type: 'error' });
     } finally {
       setSaving(false);
     }
@@ -138,7 +138,7 @@ export function ProductsView() {
       await refresh();
       addToast({ message: 'Product deleted.', type: 'info' });
     } catch (err) {
-      addToast({ message: err?.response?.data?.message || 'Could not delete the product', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Could not delete the product', type: 'error' });
     }
   };
 
@@ -210,7 +210,7 @@ export function ProductsView() {
                     setFormData(prev => ({ ...prev, image: url }));
                     addToast({ message: 'Image uploaded successfully.', type: 'info' });
                   } catch (err) {
-                    addToast({ message: err?.response?.data?.message || 'Could not upload image', type: 'error' });
+                    addToast({ message: err?.response?.data?.message || err?.message || 'Could not upload image', type: 'error' });
                   } finally {
                     setUploadingImage(false);
                   }

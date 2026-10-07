@@ -27,7 +27,7 @@ export function EventGalleryView() {
         await addGalleryItem({ url, caption: file.name });
       }
     } catch (err) {
-      setError(err?.response?.data?.message || 'Could not upload one or more files');
+      setError(err?.response?.data?.message || err?.message || 'Could not upload one or more files');
     } finally {
       setUploading(false);
     }
@@ -38,7 +38,7 @@ export function EventGalleryView() {
     try {
       await removeGalleryItem(id);
     } catch (err) {
-      addToast({ message: err?.response?.data?.message || 'Could not remove item', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Could not remove item', type: 'error' });
     }
   };
 

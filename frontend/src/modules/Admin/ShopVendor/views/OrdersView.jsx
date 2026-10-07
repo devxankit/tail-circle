@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useShopVendor } from '../context/ShopVendorContext';
 import { useToast } from '../components/Toast';
 import { updateShopOrderStatus } from '../../../../services/vendor';
+import { formatDateTime } from '../utils/formatDate';
 import {
   Search, Eye, Printer, Download, MapPin,
   CreditCard, Package, Truck, CheckCircle, XCircle
@@ -54,7 +55,7 @@ export function OrdersView() {
       addToast({ message: MSG[newStatusLabel] || 'Order updated', type: newStatusLabel === 'Cancelled' ? 'warning' : 'success' });
       setSelectedOrder(null);
     } catch (err) {
-      addToast({ message: err?.response?.data?.message || 'Could not update the order', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Could not update the order', type: 'error' });
     } finally {
       setUpdating(false);
     }
@@ -96,14 +97,14 @@ export function OrdersView() {
             <div class="invoice-meta">
               <h2>INVOICE</h2>
               <p>${order.id}</p>
-              <p>Date: ${order.date}</p>
+              <p>Date: ${formatDateTime(order.date)}</p>
             </div>
           </div>
           <div class="info-grid">
             <div class="info-box">
               <p class="section-title">Bill To</p>
               <p style="font-weight:700;font-size:15px;">${order.customer}</p>
-              <p style="color:#64748b;font-size:13px;margin-top:4px;">123, Palm Grove Apartments<br/>Indiranagar, Bangalore - 560038</p>
+              <p style="color:#64748b;font-size:13px;margin-top:4px;">${order.address || 'Address not provided'}${order.phone ? `<br/>${order.phone}` : ''}</p>
             </div>
             <div class="info-box">
               <p class="section-title">Order Details</p>
@@ -134,7 +135,7 @@ export function OrdersView() {
   };
 
   const handleDownloadInvoice = (order) => {
-    const content = `INVOICE\n${'='.repeat(50)}\nOrder ID: ${order.id}\nDate: ${order.date}\nCustomer: ${order.customer}\nDelivery Type: ${order.deliveryType}\nPayment: ${order.paymentStatus}\nStatus: ${order.status}\n${'─'.repeat(50)}\nProducts (${order.products} items)\n${'─'.repeat(50)}\nTOTAL AMOUNT: ₹${order.total}\n${'='.repeat(50)}\nTailCircle Shop Partner\nGenerated: ${new Date().toLocaleDateString('en-IN')}`;
+    const content = `INVOICE\n${'='.repeat(50)}\nOrder ID: ${order.id}\nDate: ${formatDateTime(order.date)}\nCustomer: ${order.customer}\nPhone: ${order.phone || '-'}\nAddress: ${order.address || '-'}\nDelivery Type: ${order.deliveryType}\nPayment: ${order.paymentStatus}\nStatus: ${order.status}\n${'─'.repeat(50)}\nProducts (${order.products} items)\n${'─'.repeat(50)}\nTOTAL AMOUNT: ₹${order.total}\n${'='.repeat(50)}\nTailCircle Shop Partner\nGenerated: ${new Date().toLocaleDateString('en-IN')}`;
     const blob = new Blob([content], { type: 'text/plain' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -151,7 +152,7 @@ export function OrdersView() {
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between px-1">
-          <p className="text-xs font-semibold text-text-secondary">{selectedOrder.date}</p>
+          <p className="text-xs font-semibold text-text-secondary">{formatDateTime(selectedOrder.date)}</p>
           <StatusBadge label={selectedOrder.status} tone={ORDER_TONE[selectedOrder.status] || 'neutral'} />
         </div>
 
@@ -184,13 +185,17 @@ export function OrdersView() {
               <div className="w-10 h-10 rounded-full bg-bg-primary flex items-center justify-center text-text-primary font-bold shrink-0">{selectedOrder.customer.charAt(0)}</div>
               <div>
                 <p className="text-sm font-bold text-text-primary">{selectedOrder.customer}</p>
-                <p className="text-xs font-medium text-text-secondary">+91 9876543210</p>
+                {selectedOrder.phone ? (
+                  <a href={`tel:${selectedOrder.phone}`} className="text-xs font-medium text-[#4C8684]">{selectedOrder.phone}</a>
+                ) : (
+                  <p className="text-xs font-medium text-text-secondary">No phone number on the order</p>
+                )}
               </div>
             </div>
             <div className="border-t border-border-light pt-3 flex items-start gap-3">
               <MapPin size={16} className="text-text-secondary mt-0.5 shrink-0" />
               <div>
-                <p className="text-sm font-semibold text-text-primary">123, Palm Grove Apartments, Indiranagar, Bangalore - 560038</p>
+                <p className="text-sm font-semibold text-text-primary">{selectedOrder.address || 'No delivery address on the order'}</p>
                 <p className="text-xs font-bold text-text-secondary mt-1 uppercase">{selectedOrder.deliveryType} Delivery</p>
               </div>
             </div>
@@ -301,7 +306,7 @@ export function OrdersView() {
             <ListCard
               key={order.id}
               title={order.id}
-              subtitle={`${order.date} · ${order.customer}`}
+              subtitle={`${formatDateTime(order.date)} · ${order.customer}`}
               badge={<StatusBadge label={order.status} tone={ORDER_TONE[order.status] || 'neutral'} />}
               amount={`₹${order.total}`}
               onClick={() => setSelectedOrder(order)}

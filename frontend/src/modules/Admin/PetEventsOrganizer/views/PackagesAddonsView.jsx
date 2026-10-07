@@ -40,7 +40,7 @@ export function PackagesAddonsView() {
       }
       setModalItem(null);
     } catch (err) {
-      setError(err?.response?.data?.message || 'Could not save');
+      setError(err?.response?.data?.message || err?.message || 'Could not save');
     } finally {
       setSaving(false);
     }
@@ -48,11 +48,11 @@ export function PackagesAddonsView() {
 
   const handleDeletePackage = async (id) => {
     if (!(await confirm({ title: 'Delete this package?', confirmLabel: 'Delete', danger: true }))) return;
-    try { await removePackage(id); } catch (err) { addToast({ message: err?.response?.data?.message || 'Could not delete', type: 'error' }); }
+    try { await removePackage(id); } catch (err) { addToast({ message: err?.response?.data?.message || err?.message || 'Could not delete', type: 'error' }); }
   };
   const handleDeleteAddon = async (id) => {
     if (!(await confirm({ title: 'Delete this add-on?', confirmLabel: 'Delete', danger: true }))) return;
-    try { await removeAddon(id); } catch (err) { addToast({ message: err?.response?.data?.message || 'Could not delete', type: 'error' }); }
+    try { await removeAddon(id); } catch (err) { addToast({ message: err?.response?.data?.message || err?.message || 'Could not delete', type: 'error' }); }
   };
 
   return (

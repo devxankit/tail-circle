@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useShopVendor } from '../context/ShopVendorContext';
 import { useToast } from '../components/Toast';
 import { resolveShopReturn } from '../../../../services/vendor';
+import { formatDate } from '../utils/formatDate';
 import { RefreshCcw, CheckCircle, XCircle, CreditCard, AlertTriangle } from 'lucide-react';
 import {
   SearchBar, ListCard, StatusBadge, EmptyState, StickyActionBar, PrimaryButton, SectionLabel, useSubScreen,
@@ -45,7 +46,7 @@ export function ReturnsRefundsView() {
       });
       setSelectedRequest(null);
     } catch (err) {
-      addToast({ message: err?.response?.data?.message || 'Could not update the return', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Could not update the return', type: 'error' });
     } finally {
       setProcessing(false);
     }
@@ -134,7 +135,7 @@ export function ReturnsRefundsView() {
             <ListCard
               key={req.id}
               title={req.id}
-              subtitle={`Order: ${req.orderId} · ${req.date}`}
+              subtitle={`Order: ${req.orderId} · ${formatDate(req.date)}`}
               badge={(
                 <StatusBadge
                   tone={RETURN_TONE[req.status] || 'neutral'}
