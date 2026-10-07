@@ -8,7 +8,7 @@ import { Modal } from '../components/Modal';
 import {
   StatGrid, StatusBadge, StickyActionBar, PrimaryButton, SectionLabel, SearchBar, ListCard,
   EmptyState, SkeletonList, InlineError, FilterChips, Toggle as KitToggle, Select, Input,
-  Textarea, fieldClass, textareaClass, useSubScreen,
+  Textarea, fieldClass, textareaClass, useSubScreen, useVendorToast,
 } from './mobile';
 
 const rupees = (paise) => Math.round((paise || 0) / 100);
@@ -36,7 +36,7 @@ export function VendorPayouts() {
     setLoading(true);
     Promise.all([fetchVendorLedger(), fetchVendorPayouts()])
       .then(([l, p]) => { setLedger(l); setPayouts(p); })
-      .catch((e) => setError(e?.response?.data?.message || 'Could not load payout data'))
+      .catch((e) => setError(e?.response?.data?.message || e?.message || 'Could not load payout data'))
       .finally(() => setLoading(false));
   };
 
@@ -57,7 +57,7 @@ export function VendorPayouts() {
       await requestVendorPayout();
       load();
     } catch (err) {
-      setError(err?.response?.data?.message || 'Could not request payout');
+      setError(err?.response?.data?.message || err?.message || 'Could not request payout');
     } finally {
       setRequesting(false);
     }
@@ -184,7 +184,7 @@ export function VendorSupport() {
     setLoading(true);
     fetchMyTickets()
       .then(setTickets)
-      .catch((e) => setError(e?.response?.data?.message || 'Could not load tickets'))
+      .catch((e) => setError(e?.response?.data?.message || e?.message || 'Could not load tickets'))
       .finally(() => setLoading(false));
   };
 
@@ -203,7 +203,7 @@ export function VendorSupport() {
       setNewTicket({ subject: '', category: 'other', message: '' });
       load();
     } catch (err) {
-      setError(err?.response?.data?.message || 'Could not open ticket');
+      setError(err?.response?.data?.message || err?.message || 'Could not open ticket');
     } finally {
       setSaving(false);
     }
@@ -219,7 +219,7 @@ export function VendorSupport() {
       setReplyText('');
       load();
     } catch (err) {
-      setError(err?.response?.data?.message || 'Could not send reply');
+      setError(err?.response?.data?.message || err?.message || 'Could not send reply');
     } finally {
       setSaving(false);
     }
@@ -376,6 +376,7 @@ export function VendorSupport() {
    labelled as a local draft rather than faked as persisted.
    ========================================================================= */
 export function VendorSettings() {
+  const { addToast } = useVendorToast();
   const [settings, setSettings] = useState({
     publicProfile: true,
     marketingEmails: false
@@ -395,9 +396,12 @@ export function VendorSettings() {
     setSettings(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
+  // Save sits in the bottom bar, far from the banner at the top; the toast
+  // confirms it wherever the partner has scrolled to.
   const handleSave = () => {
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
+    addToast({ message: 'Preferences saved on this device. They are not synced to your account yet.', type: 'info', duration: 4000 });
   };
 
   const handleChangePassword = async () => {
@@ -413,7 +417,7 @@ export function VendorSettings() {
       setPasswordDone(true);
       setTimeout(() => setPasswordDone(false), 3000);
     } catch (err) {
-      setPasswordError(err?.response?.data?.message || 'Could not change password');
+      setPasswordError(err?.response?.data?.message || err?.message || 'Could not change password');
     } finally {
       setChangingPassword(false);
     }

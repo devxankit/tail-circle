@@ -24,7 +24,7 @@ export function FinanceCenterView() {
     setLoading(true);
     Promise.all([fetchVendorLedger(), fetchVendorPayouts()])
       .then(([l, p]) => { setLedger(l); setPayouts(p); })
-      .catch((e) => setError(e?.response?.data?.message || 'Could not load finance data'))
+      .catch((e) => setError(e?.response?.data?.message || e?.message || 'Could not load finance data'))
       .finally(() => setLoading(false));
   };
 
@@ -38,7 +38,7 @@ export function FinanceCenterView() {
       await requestVendorPayout();
       load();
     } catch (err) {
-      setError(err?.response?.data?.message || 'Could not request payout');
+      setError(err?.response?.data?.message || err?.message || 'Could not request payout');
     } finally {
       setRequesting(false);
     }

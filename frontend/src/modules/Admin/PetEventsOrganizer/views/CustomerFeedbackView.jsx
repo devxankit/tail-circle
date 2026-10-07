@@ -37,7 +37,7 @@ export function CustomerFeedbackView() {
       setSelectedReview((r) => ({ ...r, reply: replyText, status: 'Replied' }));
       setReplyText('');
     } catch (err) {
-      setError(err?.response?.data?.message || 'Could not post reply');
+      setError(err?.response?.data?.message || err?.message || 'Could not post reply');
     } finally {
       setSending(false);
     }

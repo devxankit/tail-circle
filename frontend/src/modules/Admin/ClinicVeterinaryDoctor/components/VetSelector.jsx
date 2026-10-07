@@ -97,7 +97,7 @@ function AddVetModal({ open, onClose, onAdded }) {
       await addVet({ ...form, consultFee: Number(form.consultFee) || 0 });
       onAdded();
     } catch (err) {
-      setError(err?.response?.data?.message || 'Could not add this vet');
+      setError(err?.response?.data?.message || err?.message || 'Could not add this vet');
     } finally {
       setSaving(false);
     }

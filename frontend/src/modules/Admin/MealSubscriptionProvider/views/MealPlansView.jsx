@@ -34,7 +34,7 @@ export function MealPlansView() {
       const url = await uploadVendorFile(file, 'meal-plans');
       setNewPlan(prev => ({ ...prev, image: url }));
     } catch (err) {
-      addToast({ message: err?.response?.data?.message || 'Could not upload image', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Could not upload image', type: 'error' });
     } finally {
       setUploadingImage(false);
     }

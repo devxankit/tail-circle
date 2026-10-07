@@ -51,7 +51,7 @@ export function InventoryView() {
       setUpdateAmount('');
       setUpdateReason('Restock');
     } catch (err) {
-      addToast({ message: err?.response?.data?.message || 'Could not update stock', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Could not update stock', type: 'error' });
     } finally {
       setSavingStock(false);
     }
@@ -116,7 +116,7 @@ export function InventoryView() {
       await refresh();
       addToast({ message: `Imported ${parsed.length} product${parsed.length === 1 ? '' : 's'}.`, type: 'success' });
     } catch (err) {
-      addToast({ message: err?.response?.data?.message || 'Bulk import failed partway through', type: 'error' });
+      addToast({ message: err?.response?.data?.message || err?.message || 'Bulk import failed partway through', type: 'error' });
     } finally {
       setUploading(false);
     }

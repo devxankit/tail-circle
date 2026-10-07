@@ -52,7 +52,7 @@ export function BusinessControlCenterView() {
       await addVendorDocument(docKind, url);
       await refresh();
     } catch (err) {
-      setSaveError(err?.response?.data?.message || 'Could not upload document');
+      setSaveError(err?.response?.data?.message || err?.message || 'Could not upload document');
     } finally {
       setUploadingDoc(false);
     }
@@ -63,7 +63,7 @@ export function BusinessControlCenterView() {
       await removeVendorDocument(index);
       await refresh();
     } catch (err) {
-      setSaveError(err?.response?.data?.message || 'Could not remove document');
+      setSaveError(err?.response?.data?.message || err?.message || 'Could not remove document');
     }
   };
 
@@ -76,7 +76,7 @@ export function BusinessControlCenterView() {
       const url = await uploadVendorFile(file, 'vendor-logo');
       setFormData((f) => ({ ...f, logo: url }));
     } catch (err) {
-      setSaveError(err?.response?.data?.message || 'Could not upload logo');
+      setSaveError(err?.response?.data?.message || err?.message || 'Could not upload logo');
     } finally {
       setUploadingLogo(false);
     }
@@ -100,7 +100,7 @@ export function BusinessControlCenterView() {
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 3000);
     } catch (err) {
-      setSaveError(err?.response?.data?.message || 'Could not save profile');
+      setSaveError(err?.response?.data?.message || err?.message || 'Could not save profile');
     } finally {
       setIsSaving(false);
     }
@@ -119,7 +119,7 @@ export function BusinessControlCenterView() {
       setPasswordDone(true);
       setTimeout(() => setPasswordDone(false), 3000);
     } catch (err) {
-      setPasswordError(err?.response?.data?.message || 'Could not change password');
+      setPasswordError(err?.response?.data?.message || err?.message || 'Could not change password');
     } finally {
       setChangingPassword(false);
     }

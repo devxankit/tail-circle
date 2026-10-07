@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { Inbox } from 'lucide-react';
 import { cn } from '../../../user/utils/cn';
 
@@ -19,11 +20,24 @@ export function EmptyState({ icon: Icon = Inbox, title, text, action, className,
   );
 }
 
-/** Inline error line (the red text screens show above a form). */
+/**
+ * Inline error line (the red text screens show above a form).
+ *
+ * Forms save from the bottom bar, often scrolled far below where this sits, so
+ * a new message brings itself into view — otherwise a failed save looked like
+ * a button that did nothing.
+ */
 export function InlineError({ children, className }) {
+  const ref = useRef(null);
+  const shown = useRef('');
+  useEffect(() => {
+    const text = ref.current?.textContent || '';
+    if (text && text !== shown.current) ref.current.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    shown.current = text;
+  });
   if (!children) return null;
   return (
-    <p role="alert" className={cn('text-sm font-semibold text-error bg-error/5 border border-error/15 rounded-xl px-3 py-2.5', className)}>
+    <p ref={ref} role="alert" className={cn('text-sm font-semibold text-error bg-error/5 border border-error/15 rounded-xl px-3 py-2.5', className)}>
       {children}
     </p>
   );

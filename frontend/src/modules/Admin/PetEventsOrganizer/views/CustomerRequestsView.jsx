@@ -35,7 +35,7 @@ export function CustomerRequestsView() {
       setQuoteAmount('');
       setQuoteMessage('');
     } catch (err) {
-      setError(err?.response?.data?.message || 'Could not send quote');
+      setError(err?.response?.data?.message || err?.message || 'Could not send quote');
     } finally {
       setSending(false);
     }

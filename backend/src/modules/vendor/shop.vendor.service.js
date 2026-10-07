@@ -150,6 +150,13 @@ export function toVendorOrder(o, vendorId) {
     id: o.orderNo,
     _id: String(o._id),
     customer: o.addressSnapshot?.fullName || 'Customer',
+    // Where to deliver. The dashboard used to print one invented phone number
+    // and address on every order, because neither was sent.
+    phone: o.addressSnapshot?.phone || '',
+    address: [
+      o.addressSnapshot?.line1, o.addressSnapshot?.line2, o.addressSnapshot?.landmark,
+      o.addressSnapshot?.city, o.addressSnapshot?.state, o.addressSnapshot?.pincode,
+    ].filter(Boolean).join(', '),
     products: mine ? mine.items.length : o.items?.length || 0,
     items: (mine ? mine.items : o.items || []).map((i) => ({
       name: i.name, size: i.size, qty: i.qty, total: i.total,

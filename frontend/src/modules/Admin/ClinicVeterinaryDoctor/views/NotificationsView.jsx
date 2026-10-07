@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Bell, Calendar, AlertTriangle, Check, Loader2, Info } from 'lucide-react';
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from '../../../../services/notifications';
-import { ChipTabs, SkeletonList } from '../../vendor/mobile';
+import { ChipTabs, SkeletonList, useVendorToast, errorMessage } from '../../vendor/mobile';
 
 const TYPE_ICON = {
   booking: Calendar,
@@ -21,6 +21,7 @@ export function NotificationsView({ onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [processing, setProcessing] = useState(false);
+  const { addToast } = useVendorToast();
 
   const load = () => {
     setLoading(true);
@@ -37,6 +38,8 @@ export function NotificationsView({ onNavigate }) {
     try {
       await markAllNotificationsRead();
       setItems((prev) => prev.map((n) => ({ ...n, unread: false })));
+    } catch (err) {
+      addToast({ message: errorMessage(err, 'Could not mark notifications as read.'), type: 'error' });
     } finally {
       setProcessing(false);
     }

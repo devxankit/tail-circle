@@ -126,7 +126,7 @@ export function VetProfileView() {
       const url = await uploadVendorFile(file, 'vet-documents');
       setProfile(await addVetDocument({ kind: docKind, url }, doctorId));
     } catch (err) {
-      setError(err?.response?.data?.message || 'Could not upload document');
+      setError(err?.response?.data?.message || err?.message || 'Could not upload document');
     } finally {
       setUploadingDoc(false);
     }
