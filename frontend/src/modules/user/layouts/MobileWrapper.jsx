@@ -6,9 +6,14 @@ export function MobileWrapper({ children }) {
   const location = useLocation();
   const isVendor = location.pathname.startsWith('/vendor');
   const isAdmin = location.pathname.startsWith('/admin');
-  const isLanding = location.pathname === '/' || location.pathname.startsWith('/landing');
+  const isPublicWeb = 
+    location.pathname === '/' || 
+    location.pathname.startsWith('/landing') ||
+    location.pathname.startsWith('/privacy') ||
+    location.pathname.startsWith('/terms') ||
+    location.pathname.startsWith('/contact');
 
-  if (isLanding) {
+  if (isPublicWeb) {
     return (
       <div className="min-h-screen w-full overflow-x-hidden flex flex-col" style={{ userSelect: 'text', WebkitUserSelect: 'text', MozUserSelect: 'text', msUserSelect: 'text' }}>
         {children}

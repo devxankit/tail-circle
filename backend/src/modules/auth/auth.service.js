@@ -75,20 +75,27 @@ async function enforceOtpCooldown(phone) {
  */
 export async function requestOtp(rawPhone) {
   const phone = normalizePhone(rawPhone);
-  await enforceOtpCooldown(phone);
+  const isDefaultUser = phone === '+919111966732';
 
-  const code = generateNumericCode(env.otp.length);
+  if (!isDefaultUser) {
+    await enforceOtpCooldown(phone);
+  }
+
+  const code = isDefaultUser ? '1234' : generateNumericCode(env.otp.length);
   const codeHash = await bcrypt.hash(code, 10);
-  const expiresAt = new Date(Date.now() + env.otp.expiresMinutes * 60 * 1000);
+  const expiresAt = isDefaultUser
+    ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+    : new Date(Date.now() + env.otp.expiresMinutes * 60 * 1000);
 
   // Invalidate previous unconsumed codes for this phone.
   await Otp.deleteMany({ phone, consumed: false });
   await Otp.create({ phone, codeHash, expiresAt });
 
-  await sendOtpSms(phone, code, env.otp.expiresMinutes);
-  // Only print the code to the terminal when SMS delivery is OFF (dev/no gateway).
-  // When SMS is enabled the code is delivered to the phone and never logged.
-  if (!env.sms.enabled) logger.info(`OTP for ${phone}: ${code}`);
+  if (!isDefaultUser) {
+    await sendOtpSms(phone, code, env.otp.expiresMinutes);
+  }
+  // Only print the code to the terminal when SMS delivery is OFF or for default test user.
+  if (!env.sms.enabled || isDefaultUser) logger.info(`OTP for ${phone}: ${code}`);
 
   return { expiresInMinutes: env.otp.expiresMinutes };
 }
@@ -98,6 +105,27 @@ export async function requestOtp(rawPhone) {
  */
 export async function verifyOtp(rawPhone, code) {
   const phone = normalizePhone(rawPhone);
+  const isDefaultUser = phone === '+919111966732';
+
+  // Fast-track verification for default OTP test user
+  if (isDefaultUser && code === '1234') {
+    await Otp.updateMany({ phone, consumed: false }, { $set: { consumed: true } });
+
+    let user = await User.findOne({ phone });
+    const isNewUser = !user;
+    if (!user) {
+      user = await User.create({ phone, isPhoneVerified: true });
+    } else if (!user.isPhoneVerified) {
+      user.isPhoneVerified = true;
+    }
+    if (user.isBlocked) throw ApiError.forbidden('Account is blocked');
+    user.lastLoginAt = new Date();
+    await user.save();
+
+    const tokens = await issueTokens(user);
+    return { user, tokens, isNewUser };
+  }
+
   const otp = await Otp.findOne({ phone, consumed: false }).sort({ createdAt: -1 });
   if (!otp) throw ApiError.badRequest('No OTP requested for this number');
   if (otp.expiresAt < new Date()) throw ApiError.badRequest('OTP has expired');

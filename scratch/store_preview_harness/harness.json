@@ -1,0 +1,8 @@
+[
+ {"name":"v_dash","path":"/__store_preview__/index.html?screen=v-dash","wait":4000},
+ {"name":"v_bookings","path":"/__store_preview__/index.html?screen=v-bookings","wait":3000},
+ {"name":"v_clinic","path":"/__store_preview__/index.html?screen=v-clinic","wait":3000},
+ {"name":"v_payouts","path":"/__store_preview__/index.html?screen=v-payouts","wait":3000},
+ {"name":"u_matches","path":"/__store_preview__/index.html?screen=u-matches","wait":3000},
+ {"name":"u_vets","path":"/__store_preview__/index.html?screen=u-vets","wait":3000}
+]

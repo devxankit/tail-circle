@@ -1,22 +1,53 @@
 /* ==========================================================================
    TAIL CIRCLE — OFFICIAL REFERENCE FOOTER
-   Exact 1-Row Alignment: [© 2026 Tail Circle] --- [Logo] --- [Pet life. Sorted.]
+   Clean Multi-Row Alignment with Navigation & Brand Meta
    ========================================================================== */
 
 .tc-landing-footer {
   width: 100%;
-  margin-top: clamp(16px, 2.5vw, 24px);
+  margin-top: clamp(24px, 3.5vw, 40px);
   border-top: 1px solid #E0E1DC;
   box-sizing: border-box;
   padding: 0;
-  background: transparent;
+  background: #FAFAF7;
+}
+
+.tc-footer-nav-row {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 18px 20px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px 18px;
+  box-sizing: border-box;
+}
+
+.tc-footer-nav-link {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #69716E;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.tc-footer-nav-link:hover {
+  color: #087F78;
+}
+
+.tc-footer-nav-dot {
+  color: #D1D5DB;
+  font-size: 12px;
+  user-select: none;
 }
 
 .tc-footer-row {
   width: 100%;
   max-width: 1120px;
   margin: 0 auto;
-  padding: clamp(14px, 2.5vw, 22px) clamp(16px, 3vw, 24px);
+  padding: clamp(12px, 2vw, 18px) clamp(16px, 3vw, 24px) clamp(20px, 3vw, 28px);
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -61,9 +92,18 @@
 }
 
 /* Maintain single row even on small mobile devices without wrapping */
-@media (max-width: 480px) {
+@media (max-width: 580px) {
+  .tc-footer-nav-row {
+    padding: 14px 12px 6px;
+    gap: 8px 12px;
+  }
+
+  .tc-footer-nav-link {
+    font-size: 12px;
+  }
+
   .tc-footer-row {
-    padding: 14px 10px;
+    padding: 12px 10px 20px;
     gap: 8px;
   }
 

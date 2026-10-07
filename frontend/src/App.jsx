@@ -224,6 +224,9 @@ import { NotFound } from './components/error/NotFound';
 
 // Lazy Imports
 const LandingPage = lazy(() => import('./modules/landingPage').then(m => ({ default: m.LandingPage || m.default })));
+const PrivacyPolicy = lazy(() => import('./modules/public/pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy || m.default })));
+const TermsAndConditions = lazy(() => import('./modules/public/pages/TermsAndConditions').then(m => ({ default: m.TermsAndConditions || m.default })));
+const ContactUs = lazy(() => import('./modules/public/pages/ContactUs').then(m => ({ default: m.ContactUs || m.default })));
 const AuthLayout = lazy(() => import('./modules/user/layouts/AuthLayout').then(m => ({ default: m.AuthLayout })));
 const Splash = lazy(() => import('./modules/user/features/auth/Splash').then(m => ({ default: m.Splash })));
 const Login = lazy(() => import('./modules/user/features/auth/Login').then(m => ({ default: m.Login })));
@@ -559,6 +562,15 @@ function App() {
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/landing" element={<LandingPage />} />
                 <Route path="/splash" element={<Splash />} />
+
+                {/* Public Legal & Contact Pages */}
+                <Route path="/privacy" element={<PrivacyPolicy />} />
+                <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+                <Route path="/terms" element={<TermsAndConditions />} />
+                <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
+                <Route path="/terms-of-service" element={<TermsAndConditions />} />
+                <Route path="/contact" element={<ContactUs />} />
+                <Route path="/contact-us" element={<ContactUs />} />
 
                 {/* Auth Routes */}
                 <Route path="/auth" element={<AuthLayout />}>
